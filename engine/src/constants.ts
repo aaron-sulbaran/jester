@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.1.0";
+export const SCORER_VERSION = "jester-engine/0.2.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -33,17 +33,21 @@ export const POSE = {
 export const LAG = {
   /** Global lag search range: player may be up to this early (ms, negative) ... */
   minMs: -200,
-  /** ... and up to this late (ms). */
-  maxMs: 800,
+  /** ... and up to this late (ms). A first-time player following unseen moves ran 700 ms late. */
+  maxMs: 1200,
   /** Local slack around the chosen lag, per frame (frames each side). */
   slackFrames: 3,
 } as const;
 
 export const TIMING = {
-  /** Lag at or below this is normal reaction time: full timing credit (ms). */
-  freeMs: 300,
-  /** Lag at or above this gets zero timing credit (ms). */
-  zeroMs: 800,
+  /**
+   * Lag at or below this is normal: full timing credit (ms). Covers reaction to moves the player has not
+   * seen plus tracker latency (frames are stamped when tracking finishes). 0.2.0: was 300, after a real
+   * webcam round of a good copy came in 700 ms late and lost most of its timing credit.
+   */
+  freeMs: 650,
+  /** Lag at or above this gets zero timing credit (ms). 0.2.0: was 800. */
+  zeroMs: 1200,
 } as const;
 
 export const ROUND = {

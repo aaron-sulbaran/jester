@@ -12,6 +12,8 @@ export interface Pose2D {
   /** Angles in degrees, 0 = pointing straight down, positive = toward the figure's own left (image right). */
   lUpper: number; lFore: number; rUpper: number; rFore: number;
   lThigh: number; lShin: number; rThigh: number; rShin: number;
+  /** Hand angles; default: in line with the forearm. */
+  lHand?: number; rHand?: number;
 }
 
 export const STAND: Pose2D = {
@@ -50,8 +52,14 @@ export function landmarks(p: Pose2D, aspect = 1, visibility = 0.99): Landmark[] 
   for (const [i, pt] of all) set(i, pt[0], pt[1]);
   // Face and hand/foot detail points sit near their parents.
   for (let i = 1; i <= 10; i++) set(i, nose[0], nose[1]);
-  for (const [i, src] of [[17, lWr], [19, lWr], [21, lWr], [29, lAn], [31, lAn]] as const) set(i, src[0], src[1]);
-  for (const [i, src] of [[18, rWr], [20, rWr], [22, rWr], [30, rAn], [32, rAn]] as const) set(i, src[0], src[1]);
+  // Knuckles (index 19/20, pinky 17/18) a short way past the wrist; heel at the ankle, toe below it.
+  const lKnuckle = limb(lWr, p.lHand ?? p.lFore, 0.15 * s), rKnuckle = limb(rWr, p.rHand ?? p.rFore, 0.15 * s);
+  for (const i of [17, 19]) set(i, lKnuckle[0], lKnuckle[1]);
+  for (const i of [18, 20]) set(i, rKnuckle[0], rKnuckle[1]);
+  set(21, lWr[0], lWr[1]); set(22, rWr[0], rWr[1]);
+  set(29, lAn[0], lAn[1]); set(30, rAn[0], rAn[1]);
+  const lToe = limb(lAn, 0, 0.1 * s), rToe = limb(rAn, 0, 0.1 * s);
+  set(31, lToe[0], lToe[1]); set(32, rToe[0], rToe[1]);
   return pts.map(([x, y]) => [x / aspect, y, visibility] as const);
 }
 
@@ -78,6 +86,8 @@ export function mirrorCopy(p: Pose2D): Pose2D {
     cx: 1 - p.cx,
     lUpper: -p.rUpper, lFore: -p.rFore, rUpper: -p.lUpper, rFore: -p.lFore,
     lThigh: -p.rThigh, lShin: -p.rShin, rThigh: -p.lThigh, rShin: -p.lShin,
+    lHand: p.rHand === undefined ? undefined : -p.rHand,
+    rHand: p.lHand === undefined ? undefined : -p.lHand,
   };
 }
 

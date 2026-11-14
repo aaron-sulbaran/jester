@@ -1,7 +1,7 @@
 // Jester app shell, Version 1: one clip, one player, one score.
 // Clip side: ./clip.ts (stand-in). Player side: Lisa's tracker. Score: ../engine.
 
-import { comparePoses, type Landmarks, type LandmarkObject, type PoseRoundResult } from "../../engine/src/index.ts";
+import { comparePoses, LIMBS, type Landmarks, type LandmarkObject, type PoseRoundResult } from "../../engine/src/index.ts";
 import { sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { analyzeVideo, starterClip, type Clip } from "./clip.ts";
 import { cameraPlayer, playRound, simulatedPlayer, type Player } from "./round.ts";
@@ -126,6 +126,11 @@ $("start").addEventListener("click", async () => {
 
 $("again").addEventListener("click", () => $("start").click());
 
+function playerSideLabel(limb: string): string {
+  const label = LIMBS[limb]?.label ?? limb;
+  return label.replace(/\b(left|right)\b/g, (m) => (m === "left" ? "right" : "left"));
+}
+
 function showResults(r: PoseRoundResult) {
   $("results").classList.remove("hidden");
   $("live").textContent = "";
@@ -141,12 +146,15 @@ function showResults(r: PoseRoundResult) {
   }
   $("score").textContent = String(r.score);
   $("tier").textContent = r.tier ?? "";
-  const lag = r.lagMs > 0 ? `${Math.round(r.lagMs)} ms behind` : r.lagMs < 0 ? `${Math.round(-r.lagMs)} ms ahead` : "right on time";
+  // Below this score the player barely followed the clip, so the measured lag means nothing.
+  const lagMeaningful = r.score >= 35;
+  const lag = !lagMeaningful ? "" : r.lagMs > 0 ? `You were ${Math.round(r.lagMs)} ms behind.` : r.lagMs < 0 ? `You were ${Math.round(-r.lagMs)} ms ahead.` : "You were right on time.";
   const worst = r.worstLimb ? ` Work on ${r.worstLimb.label}: mostly ${r.worstLimb.direction === "angle" ? "at the wrong angle" : "too " + r.worstLimb.direction}.` : "";
-  $("summary").textContent = `You were ${lag}.${worst}`;
+  $("summary").textContent = `${lag}${worst}`.trim();
   const rows = Object.entries(r.perLimb)
     .sort((a, b) => a[1].credit - b[1].credit)
-    .map(([name, l]) => `<tr><td>${name}</td><td><span class="bar" style="width:${Math.round(l.credit * 120)}px"></span></td><td>${Math.round(l.credit * 100)}%</td></tr>`);
+    // Limb keys use the performer's sides; the player copies as a mirror, so name rows from the player's own side.
+    .map(([name, l]) => `<tr><td>${playerSideLabel(name)}</td><td><span class="bar" style="width:${Math.round(l.credit * 120)}px"></span></td><td>${Math.round(l.credit * 100)}%</td></tr>`);
   $("limbs").innerHTML = rows.join("");
   setStatus(`Round over. Scorer ${r.scorerVersion}.`);
 }
