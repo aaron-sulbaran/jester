@@ -46,7 +46,10 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
 }
 
 /** A stand-in performer that copies the clip with some wobble and 150 ms lag. For testing without a camera. */
-export function simulatedPlayer(clip: Clip, noiseDegrees: () => number): Player {
+/** Knees, ankles, heels, toes: hidden when the simulated player is seated (`?seated=1`). */
+const LEG_POINTS = new Set([25, 26, 27, 28, 29, 30, 31, 32]);
+
+export function simulatedPlayer(clip: Clip, noiseDegrees: () => number, seated = false): Player {
   let timer = 0;
   const aspect = clip.width / clip.height;
   return {
@@ -54,7 +57,8 @@ export function simulatedPlayer(clip: Clip, noiseDegrees: () => number): Player 
     start(onFrame, clipClockMs) {
       const loop = () => {
         const ms = clipClockMs();
-        const landmarks = ms >= 0 ? simulatedPlayerPose(clip.samples, ms / 1000, { noiseDegrees: noiseDegrees(), aspect }) : null;
+        let landmarks: LandmarkObject[] | null = ms >= 0 ? simulatedPlayerPose(clip.samples, ms / 1000, { noiseDegrees: noiseDegrees(), aspect }) : null;
+        if (landmarks && seated) landmarks = landmarks.map((l, i) => (LEG_POINTS.has(i) ? { ...l, visibility: 0 } : l));
         onFrame({ t: performance.now(), landmarks, aspect, mirrored: false, clipTimeMs: ms });
       };
       timer = window.setInterval(loop, 1000 / 30);

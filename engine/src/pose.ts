@@ -34,6 +34,8 @@ export interface LimbComparison {
   /** Player direction y minus reference direction y: positive means the player's limb points lower. */
   verticalDelta: number;
   weight: number;
+  /** True when the clip shows and moves this limb but the player's was out of view (counted as a miss). */
+  unseen?: boolean;
 }
 
 export interface PoseComparison {
@@ -46,16 +48,32 @@ export interface PoseComparison {
  * Compare two sets of limb directions. `multipliers` scales each limb's base weight (motion weighting);
  * pass undefined for plain weights.
  */
-function compareDirs(ref: Dirs, player: Dirs, multipliers?: readonly number[]): PoseComparison {
+function compareDirs(ref: Dirs, player: Dirs, multipliers?: readonly number[], penalizeUnseen = false): PoseComparison {
   let sum = 0, covered = 0, total = 0;
   const limbs: LimbComparison[] = [];
+  const motionBase = POSE.motionWeightBase;
   for (let b = 0; b < LIMB_DEFS.length; b++) {
-    const base = LIMB_DEFS[b]!.weight * (multipliers?.[b] ?? 1);
+    const mult = multipliers?.[b] ?? 1;
+    const base = LIMB_DEFS[b]!.weight * mult;
     total += base;
     const r = ref[b], p = player[b];
-    if (!r || !p) continue;
+    if (!r || r.visibility < POSE.minVisibility) continue;
+    if (!p || p.visibility < POSE.minVisibility) {
+      // The clip shows this limb but the camera cannot see the player's. If the clip's limb is doing
+      // anything (moving, or held away from how it hangs when standing, like a held squat), count a miss:
+      // hiding your legs must not hide leg mistakes. A limb the clip leaves at rest costs nothing, since
+      // laptop cameras often cut off legs.
+      if (!penalizeUnseen || !multipliers) continue;
+      const moving = motionBase < 1 ? Math.max(0, (mult - motionBase) / (1 - motionBase)) : 0;
+      const posed = 1 - limbCredit(angleDeg(r, STILL_DIRS[b]!));
+      const active = Math.min(1, Math.max(moving * POSE.unseenPenalty, posed));
+      // Full limb weight, not the motion-scaled `base`: a held squat is still, but it is the whole point.
+      const w = LIMB_DEFS[b]!.weight * active * r.visibility;
+      if (w <= 0) continue;
+      limbs.push({ limb: LIMB_NAMES[b]!, credit: 0, errorDeg: 0, verticalDelta: 0, weight: w, unseen: true });
+      continue;
+    }
     const vis = Math.min(r.visibility, p.visibility);
-    if (vis < POSE.minVisibility) continue;
     const w = base * vis;
     const errorDeg = angleDeg(r, p);
     const credit = limbCredit(errorDeg);
@@ -174,7 +192,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
     const hit = cache.get(key);
     if (hit !== undefined) return hit;
     const rd = refDirs[j], pd = playerDirs[i];
-    const c = rd && pd ? compareDirs(rd, pd, mult[j]).credit : null;
+    const c = rd && pd ? compareDirs(rd, pd, mult[j], true).credit : null;
     cache.set(key, c);
     return c;
   };
@@ -246,29 +264,33 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
   const timing = timingCredit(lagMs);
 
   // 3. Per-limb breakdown at the matched frames.
-  const acc: Record<string, { credit: number; err: number; vert: number; seen: number; loss: number }> = {};
-  for (const name of LIMB_NAMES) acc[name] = { credit: 0, err: 0, vert: 0, seen: 0, loss: 0 };
+  const acc: Record<string, { credit: number; err: number; vert: number; frames: number; seen: number; unseen: number; loss: number; unseenLoss: number }> = {};
+  for (const name of LIMB_NAMES) acc[name] = { credit: 0, err: 0, vert: 0, frames: 0, seen: 0, unseen: 0, loss: 0, unseenLoss: 0 };
   for (let i = 0; i < n; i++) {
     const j = frameMatch[i]!;
     if (j < 0 || frameCredits[i] === null) continue;
-    const cmp = compareDirs(refDirs[j]!, playerDirs[i]!, mult[j]);
+    const cmp = compareDirs(refDirs[j]!, playerDirs[i]!, mult[j], true);
     for (const l of cmp.limbs) {
       const a = acc[l.limb]!;
-      a.credit += l.credit; a.err += l.errorDeg; a.vert += l.verticalDelta; a.seen++;
+      a.credit += l.credit; a.frames++;
       a.loss += l.weight * (1 - l.credit);
+      if (l.unseen) { a.unseen++; a.unseenLoss += l.weight; }
+      else { a.err += l.errorDeg; a.vert += l.verticalDelta; a.seen++; }
     }
   }
   const perLimb: Record<string, LimbBreakdown> = {};
   let worst: { limb: string; loss: number } | null = null;
   for (const name of LIMB_NAMES) {
     const a = acc[name]!;
-    if (a.seen === 0) continue;
-    const meanVert = a.vert / a.seen;
+    if (a.frames === 0) continue;
+    const meanVert = a.seen > 0 ? a.vert / a.seen : 0;
     perLimb[name] = {
-      credit: a.credit / a.seen,
-      meanErrorDeg: a.err / a.seen,
-      direction: meanVert > 0.25 ? "low" : meanVert < -0.25 ? "high" : "angle",
+      credit: a.credit / a.frames,
+      meanErrorDeg: a.seen > 0 ? a.err / a.seen : 0,
+      // Mostly out of view: say so, since "too low" or "wrong angle" would be a guess.
+      direction: a.unseenLoss > 0.5 * a.loss ? "unseen" : meanVert > 0.25 ? "low" : meanVert < -0.25 ? "high" : "angle",
       framesSeen: a.seen,
+      unseenShare: a.unseen / a.frames,
     };
     if (a.loss > 0 && (!worst || a.loss > worst.loss + 1e-12)) worst = { limb: name, loss: a.loss };
   }

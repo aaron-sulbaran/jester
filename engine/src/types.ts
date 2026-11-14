@@ -58,9 +58,11 @@ export interface LimbBreakdown {
   credit: number;
   /** Mean angle error in degrees. */
   meanErrorDeg: number;
-  /** "low", "high" or "angle": the most common way the player's limb was off. */
-  direction: "low" | "high" | "angle";
+  /** "low", "high" or "angle": the most common way the player's limb was off. "unseen": it was mostly out of view while the clip moved it. */
+  direction: "low" | "high" | "angle" | "unseen";
   framesSeen: number;
+  /** Share of scored frames where the clip moved this limb but the player's was out of view (counted as a miss). */
+  unseenShare: number;
 }
 
 export interface PoseRoundResult {
@@ -82,7 +84,7 @@ export interface PoseRoundResult {
   validShare: number;
   perLimb: Record<string, LimbBreakdown>;
   /** The limb with the largest weighted loss, named from the player's own side. */
-  worstLimb: { limb: string; label: string; direction: "low" | "high" | "angle" } | null;
+  worstLimb: { limb: string; label: string; direction: "low" | "high" | "angle" | "unseen" } | null;
   /** Per grid frame credit (0..1) or null when unscorable. Useful for a timeline chart. */
   frameCredits: (number | null)[];
 }
