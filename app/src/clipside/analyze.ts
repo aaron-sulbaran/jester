@@ -8,7 +8,7 @@ import {
 import type { Candidate, ClipSource, FrameDetections, Guide, Track } from "../../../clip/src/index.ts";
 import { createPeopleDetector } from "./detect.ts";
 import { sha256Hex } from "./fingerprint.ts";
-import { readFrames, type FrameCanvas } from "./frames.ts";
+import { readFrames, type FrameCanvas, type VideoInfo } from "./frames.ts";
 import { loadPrepared, savePrepared } from "./store.ts";
 
 export { loadPrepared, savePrepared } from "./store.ts";
@@ -31,6 +31,13 @@ export interface PrepareOptions {
 }
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
+
+/** What was learned before a refusal: which decoder read the clip and how many frames were analysed. */
+export interface PrepareFacts { decoder: Prepared["decoder"] | null; frames: number }
+
+export type PrepareResult = { data: Prepared; error: null } | { data: null; error: string; facts: PrepareFacts };
+
+const TRACKER_STOPPED = "The pose tracker stopped working. Reload the page and try again.";
 
 /** A 32 pixel wide copy of the frame, as a colour signature for cut detection. */
 function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] {
@@ -61,7 +68,7 @@ export async function prepareClip(
   video: HTMLVideoElement,
   onProgress: (share: number) => void,
   options: PrepareOptions = {},
-): Promise<Result<Prepared>> {
+): Promise<PrepareResult> {
   attach(file, video);
   onProgress(0);
   const fingerprint = await sha256Hex(file);
@@ -73,22 +80,28 @@ export async function prepareClip(
     }
   }
 
-  const detector = await createPeopleDetector();
-  if (detector.error !== null) return { data: null, error: detector.error };
-  const scratch = document.createElement("canvas");
   const frames: FrameDetections[] = [];
-  let read;
+  const refuse = (error: string, decoder: PrepareFacts["decoder"] = null): PrepareResult =>
+    ({ data: null, error, facts: { decoder, frames: frames.length } });
+
+  const detector = await createPeopleDetector();
+  if (detector.error !== null) return refuse(detector.error);
+  const scratch = document.createElement("canvas");
+  let read: Awaited<ReturnType<typeof readFrames>>;
   try {
     read = await readFrames(file, video, { sampleHz: SAMPLE_HZ, maxMs: MAX_MS, maxSide: MAX_SIDE }, async ({ tMs, canvas, index, count }) => {
       frames.push({ tMs, people: detector.data.detect(canvas, tMs), signature: signatureOf(canvas, scratch) });
       onProgress((index + 1) / count);
     });
+  } catch {
+    // Decoding failures come back as `read.error`; anything thrown came from the tracker.
+    return refuse(TRACKER_STOPPED);
   } finally {
     detector.data.close();
   }
-  if (read.error !== null) return { data: null, error: read.error };
+  if (read.error !== null) return refuse(read.error);
 
-  const info = read.data;
+  const info: VideoInfo = read.data;
   const source: ClipSource = {
     width: info.width,
     height: info.height,
@@ -101,7 +114,7 @@ export async function prepareClip(
   const confirmFrame = pickConfirmFrame(ranked, tracks);
   const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
   const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
-  if (verdict.refuse !== null) return { data: null, error: verdict.refuse };
+  if (verdict.refuse !== null) return refuse(verdict.refuse, info.decoder);
 
   const warnings = [...(info.durationMs > MAX_MS ? [LONG_CLIP] : []), ...verdict.warnings];
   const prepared: Prepared = {

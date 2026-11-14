@@ -38,6 +38,19 @@ function fitWithin(width: number, height: number, maxSide: number): { width: num
 /** Thrown when Mediabunny cannot start decoding, so the fallback may take over. */
 class CannotStart extends Error {}
 
+/** Wraps an error thrown by the caller's `onFrame`, so it is passed back out instead of read as a decoding failure. */
+class FrameHandlerFailed extends Error {
+  constructor(readonly original: unknown) { super("onFrame failed"); }
+}
+
+async function handOver(onFrame: (frame: Frame) => Promise<void>, frame: Frame): Promise<void> {
+  try {
+    await onFrame(frame);
+  } catch (error) {
+    throw new FrameHandlerFailed(error);
+  }
+}
+
 async function readWithMediabunny(
   file: File,
   options: FrameOptions,
@@ -78,13 +91,14 @@ async function readWithMediabunny(
       if (!canvas) throw new CannotStart();
       started = true;
       previous = canvas;
-      await onFrame({ tMs: times[index]!, canvas, index, count: times.length });
+      await handOver(onFrame, { tMs: times[index]!, canvas, index, count: times.length });
       index++;
       await nextTask();
     }
     if (index === 0) throw new CannotStart();
     return { width, height, durationMs, decoder: "webcodecs", count: index };
   } catch (error) {
+    if (error instanceof FrameHandlerFailed) throw error;
     if (!started) throw new CannotStart();
     throw error;
   } finally {
@@ -127,7 +141,7 @@ async function readWithVideoElement(
     video.currentTime = tMs / 1000;
     await waitFor(video, "seeked", 3000);
     canvas.getContext("2d")!.drawImage(video, 0, 0, size.width, size.height);
-    await onFrame({ tMs, canvas, index, count: times.length });
+    await handOver(onFrame, { tMs, canvas, index, count: times.length });
     await nextTask();
   }
   video.currentTime = 0;
@@ -137,6 +151,7 @@ async function readWithVideoElement(
 /**
  * Reads the file at fixed times `i * 1000 / sampleHz`, calling `onFrame` for each and waiting for it.
  * `video` must already have the file as its source; it is only used when Mediabunny cannot decode.
+ * A decoding failure comes back as `error`; an error thrown by `onFrame` is thrown again, unchanged.
  */
 export async function readFrames(
   file: File,
@@ -147,12 +162,14 @@ export async function readFrames(
   try {
     return { data: await readWithMediabunny(file, options, onFrame), error: null };
   } catch (error) {
+    if (error instanceof FrameHandlerFailed) throw error.original;
     if (!(error instanceof CannotStart)) return { data: null, error: CANNOT_READ };
   }
   try {
     const info = await readWithVideoElement(video, options, onFrame);
     return info ? { data: info, error: null } : { data: null, error: CANNOT_READ };
-  } catch {
+  } catch (error) {
+    if (error instanceof FrameHandlerFailed) throw error.original;
     return { data: null, error: CANNOT_READ };
   }
 }

@@ -4,7 +4,7 @@
 
 import type { Box, Guide } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
-import { finishClip, prepareClip, type Prepared } from "./clipside/analyze.ts";
+import { finishClip, prepareClip, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
 interface LabSummary {
@@ -132,18 +132,30 @@ function start(p: Prepared, trackId: number) {
   void video.play();
 }
 
-function tick() {
-  requestAnimationFrame(tick);
+/** Sends playback back to the start of the guide's range when it leaves it. True when it did. */
+function keepInRange(): boolean {
   const guide = playing;
-  if (!guide || !guide.timeline) return;
+  if (!guide) return false;
   const { startMs, endMs } = guide.range;
   const frameMs = 1000 / guide.source.sampleHz;
   const nowMs = video.currentTime * 1000;
-  if (nowMs >= endMs + frameMs || nowMs < startMs - frameMs || video.ended) {
-    video.currentTime = startMs / 1000;
-    if (video.paused) void video.play();
-    return;
-  }
+  if (nowMs < endMs + frameMs && nowMs >= startMs - frameMs && !video.ended) return false;
+  video.currentTime = startMs / 1000;
+  if (video.paused) void video.play();
+  return true;
+}
+
+// Animation frames stop while the page is hidden; these keep the loop going regardless.
+video.addEventListener("timeupdate", keepInRange);
+video.addEventListener("ended", keepInRange);
+
+function tick() {
+  requestAnimationFrame(tick);
+  const guide = playing;
+  if (!guide || !guide.timeline || keepInRange()) return;
+  const { startMs } = guide.range;
+  const frameMs = 1000 / guide.source.sampleHz;
+  const nowMs = video.currentTime * 1000;
   const frames = guide.timeline.frames;
   const index = Math.min(frames.length - 1, Math.max(0, Math.round((nowMs - startMs) / frameMs)));
   drawFrame(overlay, video, toObjects(frames[index]?.landmarks ?? null));
@@ -161,18 +173,18 @@ async function run(file: File) {
   progress.value = 0;
   setStatus(["Loading the pose tracker and reading the clip..."]);
   const began = performance.now();
-  let result: Awaited<ReturnType<typeof prepareClip>>;
+  let result: PrepareResult;
   try {
     result = await prepareClip(file, video, (share) => { progress.value = share; }, { ignoreSaved: params.get("fresh") === "1" });
   } catch (error) {
-    result = { data: null, error: `Something went wrong reading the clip: ${(error as Error).message}` };
+    result = { data: null, error: `Something went wrong reading the clip: ${(error as Error).message}`, facts: { decoder: null, frames: 0 } };
   }
   const seconds = Math.round((performance.now() - began) / 100) / 10;
   prepared = result.data;
   summary = {
     file: file.name,
-    decoder: result.data?.decoder ?? null,
-    frames: result.data?.frames.length ?? 0,
+    decoder: result.data ? result.data.decoder : result.facts.decoder,
+    frames: result.data ? result.data.frames.length : result.facts.frames,
     candidates: result.data?.candidates.map((c) => ({ number: c.number, trackId: c.trackId, label: c.label, score: Math.round(c.score * 1000) / 1000 })) ?? [],
     cuts: result.data?.cuts ?? [],
     seconds,
@@ -184,7 +196,7 @@ async function run(file: File) {
   window.__clipLab = summary;
   showFacts([
     ["File", file.name],
-    ["Decoder", summary.decoder ?? "none"],
+    ["Decoder", summary.decoder ?? "not known"],
     ["Frames analysed", String(summary.frames)],
     ["People found", String(summary.candidates.length)],
     ["Cuts", String(summary.cuts.length)],
