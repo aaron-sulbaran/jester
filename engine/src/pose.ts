@@ -1,7 +1,8 @@
 // Pose channel: compare the player's limbs to the clip subject's limbs, frame by frame,
 // at one global lag, and turn it into a round score. Pure functions only.
 
-import { GRID_MS, LAG, POSE, ROUND, SCORER_VERSION } from "./constants.ts";
+import { GRID_MS, LAG, PLACEMENT, POSE, ROUND, SCORER_VERSION } from "./constants.ts";
+import { scorePlacement } from "./placement.ts";
 import { LIMBS, LIMB_NAMES, limbDirection, mirrorLandmarks, swapSide, type Direction } from "./geometry.ts";
 import { gridLength, resamplePoses } from "./resample.ts";
 import { clamp01, falloff, mapToScore, tierFor, timingCredit } from "./scoring.ts";
@@ -188,6 +189,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
   const empty = (failure: PoseRoundResult["failure"]): PoseRoundResult => ({
     channel: "pose", scorerVersion: SCORER_VERSION, score: null, tier: null, failure,
     accuracy: 0, stillBaseline: 0, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
+    placement: { used: false, credit: 0, stillBaseline: 0, gain: 0, worst: null, outlineFit: null, outlineHints: { distance: null, side: null } },
   });
   if (n === 0 || refDirs.every((d) => d === null)) return empty("no-reference");
 
@@ -331,7 +333,10 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
     used[b] >= POSE.hiddenUsedMinShare * valid && used[b] > 0 && hiddenWhileUsed[b] / used[b] >= POSE.hiddenCapShare);
 
   const failed = valid === 0 || 1 - validShare > POSE.maxInvalidShare;
-  const raw = gain * (ROUND.accuracyWeight + (1 - ROUND.accuracyWeight) * timing);
+  // 5. Placement: relative moves count PLACEMENT.weight of the gain when the clip travels; outline fit is reported only.
+  const placement = scorePlacement(refGrid, playerGrid, frameMatch.map((j, i) => (frameCredits[i] === null ? -1 : j)), refAspect, playerAspect);
+  const combinedGain = placement.used ? (1 - PLACEMENT.weight) * gain + PLACEMENT.weight * placement.gain : gain;
+  const raw = combinedGain * (ROUND.accuracyWeight + (1 - ROUND.accuracyWeight) * timing);
   const uncapped = failed ? null : mapToScore(raw, ROUND.floor, ROUND.ceiling);
   const score = uncapped !== null && hiddenLimbs.length > 0 ? Math.min(uncapped, ROUND.hiddenCap) : uncapped;
   return {
@@ -348,6 +353,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
     perLimb,
     worstLimb,
     hiddenLimbs,
+    placement,
     frameCredits,
   };
 }

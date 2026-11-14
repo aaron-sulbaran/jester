@@ -131,6 +131,20 @@ function playerSideLabel(limb: string): string {
   return label.replace(/\b(left|right)\b/g, (m) => (m === "left" ? "right" : "left"));
 }
 
+function placementText(r: PoseRoundResult): string {
+  const pl = r.placement;
+  const missed = { sideways: "the clip's sideways steps", "up-down": "the clip's dips and rises", distance: "the clip's moves toward and away from the camera" } as const;
+  const moves = pl.used
+    ? `Moving with the clip: ${Math.round(pl.gain * 100)} (counts 25%).${pl.gain < 0.8 && pl.worst ? ` Follow ${missed[pl.worst]}.` : ""}`
+    : "Moving with the clip: not scored (this clip stays in place).";
+  if (pl.outlineFit === null) return moves;
+  const hints = [
+    pl.outlineHints.distance === "closer" ? "step closer" : pl.outlineHints.distance === "back" ? "step back" : "",
+    pl.outlineHints.side ? `move to your ${pl.outlineHints.side}` : "",
+  ].filter(Boolean);
+  return `${moves} Outline fit: ${pl.outlineFit} (not scored)${hints.length ? `: ${hints.join(" and ")} to line up with the clip` : ""}.`;
+}
+
 /** "left thigh, right thigh and left shin", from the player's own side; all four leg parts read as "legs". */
 function listLabels(limbs: string[]): string {
   const legs = ["leftThigh", "rightThigh", "leftShin", "rightShin"];
@@ -162,6 +176,7 @@ function showResults(r: PoseRoundResult) {
     : r.worstLimb.direction === "unseen"
       ? ` The camera could not see your ${r.worstLimb.label} while the clip moved it, so those moves counted as misses. Step back so your whole body is in view.`
       : ` Work on ${r.worstLimb.label}: mostly ${how(r.worstLimb.direction)}.`;
+  $("placement").textContent = placementText(r);
   const capped = r.hiddenLimbs.length > 0
     ? `Capped at 50: the camera could not see your ${listLabels(r.hiddenLimbs)} for most of the moves that used them. Step back so your whole body is in view. `
     : "";
