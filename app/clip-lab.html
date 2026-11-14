@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clip lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 760px; background: #fff; color: #111; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p.sub { margin: 0 0 12px; color: #555; }
+    progress { width: 100%; }
+    #status { min-height: 1.4em; }
+    canvas { display: block; width: 100%; height: auto; background: #000; }
+    video { display: none; }
+    #people { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    #people button[aria-pressed="true"] { font-weight: bold; outline: 2px solid #f5c542; }
+    table { border-collapse: collapse; margin-top: 12px; }
+    td { border: 1px solid #ccc; padding: 4px 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Clip lab</h1>
+  <p class="sub">Pick a video, choose a person, and check the skeleton sits on them.</p>
+  <input id="file" type="file" accept="video/*" />
+  <progress id="progress" value="0" max="1"></progress>
+  <p id="status">Pick a video to start.</p>
+
+  <section id="choose" class="hidden">
+    <canvas id="confirm" width="720" height="405"></canvas>
+    <div id="people"></div>
+  </section>
+
+  <section id="play" class="hidden">
+    <canvas id="overlay" width="720" height="405"></canvas>
+  </section>
+
+  <table id="facts"></table>
+
+  <video id="video" playsinline muted></video>
+  <script type="module" src="./src/clip-lab.ts"></script>
+</body>
+</html>

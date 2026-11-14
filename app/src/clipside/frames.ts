@@ -1,7 +1,6 @@
 // Reads a video file as frames at fixed times, in order. Mediabunny (WebCodecs) first; when it
 // cannot decode the file, the <video> element is stepped with seeks instead.
 
-import { ALL_FORMATS, BlobSource, CanvasSink, Input } from "mediabunny";
 
 export type FrameCanvas = HTMLCanvasElement | OffscreenCanvas;
 export type Decoder = "webcodecs" | "video-element";
@@ -44,6 +43,14 @@ async function readWithMediabunny(
   options: FrameOptions,
   onFrame: (frame: Frame) => Promise<void>,
 ): Promise<VideoInfo> {
+  // Loaded on first use, so the main page does not carry the decoder until a video is picked.
+  let mediabunny: typeof import("mediabunny");
+  try {
+    mediabunny = await import("mediabunny");
+  } catch {
+    throw new CannotStart();
+  }
+  const { ALL_FORMATS, BlobSource, CanvasSink, Input } = mediabunny;
   const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
   let started = false;
   try {
