@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { comparePoses, limbCredit, scorePoseRound } from "../src/index.ts";
-import { dance, landmarks, mirrorCopy, STAND, timeline } from "./synth.ts";
+import { dance, landmarks, LEGS, mirrorCopy, squatDance, STAND, timeline } from "./synth.ts";
 
 test("limb credit: dead zone, falloff, zero", () => {
   assert.equal(limbCredit(0), 1);
@@ -134,4 +134,43 @@ test("hands: a bent wrist is found and named from the player's own side", () => 
   assert.equal(r.worstLimb?.limb, "leftHand");
   assert.equal(r.worstLimb?.label, "right hand");
   assert.ok(r.score !== null && r.score < 100 && r.score > 70, `score ${r.score}`);
+});
+
+test("seated: perfect arms with hidden legs cannot score high on a squat clip", () => {
+  const squatRef = timeline(squatDance, { durationS: 20 });
+  const full = scorePoseRound(squatRef, timeline(squatDance, { durationS: 20, transform: mirrorCopy }));
+  const seated = scorePoseRound(squatRef, timeline(squatDance, { durationS: 20, transform: mirrorCopy, hide: LEGS }));
+  console.log(`squat clip: full body ${full.score}, seated ${seated.score}`);
+  assert.ok(full.score !== null && full.score >= 97, `full ${full.score}`);
+  assert.ok(seated.score !== null && seated.score <= 60, `seated ${seated.score}`);
+  assert.equal(seated.worstLimb?.direction, "unseen");
+  assert.ok(["leftThigh", "rightThigh", "leftShin", "rightShin"].includes(seated.worstLimb!.limb), seated.worstLimb!.limb);
+  assert.ok(seated.perLimb.leftThigh!.unseenShare > 0.9, `unseen ${seated.perLimb.leftThigh!.unseenShare}`);
+});
+
+test("seated: hidden legs also cost on the dance clip, whose legs step a little", () => {
+  const seated = scorePoseRound(ref, timeline(dance, { durationS: 20, transform: mirrorCopy, hide: LEGS }));
+  console.log(`dance clip: seated ${seated.score}`);
+  assert.ok(seated.score !== null && seated.score < 95, `seated ${seated.score}`);
+});
+
+test("seated: hidden legs cost nothing when the clip never moves its legs", () => {
+  const armsOnly = (t: number) => ({ ...dance(t), lThigh: 3, lShin: 0, rThigh: -3, rShin: 0 });
+  const armsRef = timeline(armsOnly, { durationS: 20 });
+  const seated = scorePoseRound(armsRef, timeline(armsOnly, { durationS: 20, transform: mirrorCopy, hide: LEGS }));
+  assert.ok(seated.score !== null && seated.score >= 97, `seated ${seated.score}`);
+});
+
+test("seated: a clip that holds squats still costs a seated player (posed, not moving)", () => {
+  // Stand 2.5 s, drop into a squat over 0.5 s, hold it 2.5 s, rise over 0.5 s; arms move throughout.
+  const held = (t: number) => {
+    const c = t % 6;
+    const down = c < 2.5 ? 0 : c < 3 ? (c - 2.5) / 0.5 : c < 5.5 ? 1 : 1 - (c - 5.5) / 0.5;
+    const arm = 60 * Math.sin(2 * Math.PI * 0.5 * t);
+    return { ...STAND, lUpper: 90 + arm, lFore: 90 + arm, rUpper: -90 - arm, rFore: -90 - arm, lThigh: 3 + 75 * down, lShin: -15 * down, rThigh: -3 - 75 * down, rShin: 15 * down };
+  };
+  const heldRef = timeline(held, { durationS: 24 });
+  const seated = scorePoseRound(heldRef, timeline(held, { durationS: 24, transform: mirrorCopy, hide: LEGS }));
+  console.log(`held-squat clip: seated ${seated.score}`);
+  assert.ok(seated.score !== null && seated.score <= 75, `seated ${seated.score}`);
 });

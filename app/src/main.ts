@@ -86,7 +86,7 @@ async function countdown(seconds: number) {
 }
 
 async function getPlayer(c: Clip): Promise<Player> {
-  if (simMode()) return simulatedPlayer(c, noise);
+  if (simMode()) return simulatedPlayer(c, noise, params.has("seated"));
   if (!camera) {
     setStatus("Starting the camera and pose tracker...");
     camera = await cameraPlayer(cam);
@@ -149,12 +149,19 @@ function showResults(r: PoseRoundResult) {
   // Below this score the player barely followed the clip, so the measured lag means nothing.
   const lagMeaningful = r.score >= 35;
   const lag = !lagMeaningful ? "" : r.lagMs > 0 ? `You were ${Math.round(r.lagMs)} ms behind.` : r.lagMs < 0 ? `You were ${Math.round(-r.lagMs)} ms ahead.` : "You were right on time.";
-  const worst = r.worstLimb ? ` Work on ${r.worstLimb.label}: mostly ${r.worstLimb.direction === "angle" ? "at the wrong angle" : "too " + r.worstLimb.direction}.` : "";
+  const how = (d: string) => (d === "angle" ? "at the wrong angle" : "too " + d);
+  const worst = !r.worstLimb ? ""
+    : r.worstLimb.direction === "unseen"
+      ? ` The camera could not see your ${r.worstLimb.label} while the clip moved it, so those moves counted as misses. Step back so your whole body is in view.`
+      : ` Work on ${r.worstLimb.label}: mostly ${how(r.worstLimb.direction)}.`;
   $("summary").textContent = `${lag}${worst}`.trim();
   const rows = Object.entries(r.perLimb)
     .sort((a, b) => a[1].credit - b[1].credit)
     // Limb keys use the performer's sides; the player copies as a mirror, so name rows from the player's own side.
-    .map(([name, l]) => `<tr><td>${playerSideLabel(name)}</td><td><span class="bar" style="width:${Math.round(l.credit * 120)}px"></span></td><td>${Math.round(l.credit * 100)}%</td></tr>`);
+    .map(([name, l]) => {
+      const notSeen = l.unseenShare >= 0.1 ? ` <small>(not in view ${Math.round(l.unseenShare * 100)}% of the time)</small>` : "";
+      return `<tr><td>${playerSideLabel(name)}</td><td><span class="bar" style="width:${Math.round(l.credit * 120)}px"></span></td><td>${Math.round(l.credit * 100)}%${notSeen}</td></tr>`;
+    });
   $("limbs").innerHTML = rows.join("");
   setStatus(`Round over. Scorer ${r.scorerVersion}.`);
 }

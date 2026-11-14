@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.2.0";
+export const SCORER_VERSION = "jester-engine/0.3.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -26,6 +26,15 @@ export const POSE = {
   motionWeightBase: 0.5,
   /** Half-width of the window used to measure a reference limb's motion (frames). */
   motionWindowFrames: 15,
+  /**
+   * 0.3.0: a limb the clip shows and is using, but the camera cannot see on the player, counts as a miss.
+   * Its weight is the limb's full weight times min(1, max(motion share * this, posed)). Motion share is 0
+   * for a limb the clip holds still and 1 for its busiest limb; posed is 0 for a limb hanging as when
+   * standing and 1 for one held 60 degrees or more away (a squat). 2 means a limb moving at half the
+   * busiest rate costs its full weight. 0 turns off the motion part. Before 0.3.0 hidden limbs dropped out,
+   * and a player sitting down scored 98 on the starter clip, which has squats.
+   */
+  unseenPenalty: 2,
   /** Round fails as "low tracking" when more than this share of frames is unscorable. */
   maxInvalidShare: 0.3,
 } as const;

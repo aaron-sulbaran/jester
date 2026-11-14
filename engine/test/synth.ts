@@ -63,6 +63,17 @@ export function landmarks(p: Pose2D, aspect = 1, visibility = 0.99): Landmark[] 
   return pts.map(([x, y]) => [x / aspect, y, visibility] as const);
 }
 
+/** Squats with arm moves: the legs carry much of the motion. `t` in seconds. */
+export function squatDance(t: number): Pose2D {
+  const w = 2 * Math.PI * 0.4;
+  const down = Math.max(0, Math.sin(w * t));
+  return {
+    ...STAND,
+    lUpper: 20 + 70 * down, lFore: 20 + 70 * down, rUpper: -20 - 70 * down, rFore: -20 - 70 * down,
+    lThigh: 3 + 70 * down, lShin: -10 * down, rThigh: -3 - 70 * down, rShin: 10 * down,
+  };
+}
+
 /** A dance: arms wave and legs step, with a few held poses. `t` in seconds. */
 export function dance(t: number): Pose2D {
   const w = 2 * Math.PI * 0.6;
@@ -105,7 +116,12 @@ export interface TimelineOptions {
   drop?: (i: number) => boolean;
   transform?: (p: Pose2D) => Pose2D;
   visibility?: (i: number) => number;
+  /** Landmark indices the camera never sees (visibility 0), e.g. LEGS for a seated player. */
+  hide?: readonly number[];
 }
+
+/** Hip-down landmarks: knees, ankles, heels, toes. Hips stay (a seated player's hips are often in view). */
+export const LEGS: readonly number[] = [25, 26, 27, 28, 29, 30, 31, 32];
 
 export function timeline(motion: (t: number) => Pose2D, o: TimelineOptions = {}): PoseTimeline {
   const { durationS = 20, fps = 30, width = 1280, height = 720, mirrored = false, delayMs = 0, jitterMs = 0 } = o;
@@ -116,7 +132,9 @@ export function timeline(motion: (t: number) => Pose2D, o: TimelineOptions = {})
     const tMs = (i * 1000) / fps + (jitterMs ? jitterMs * Math.sin(i * 12.9898) : 0);
     const p0 = motion(Math.max(0, tMs - delayMs) / 1000);
     const p = o.transform ? o.transform(p0) : p0;
-    frames.push({ tMs: Math.max(0, tMs), landmarks: o.drop?.(i) ? null : landmarks(p, aspect, o.visibility?.(i) ?? 0.99) });
+    let lms = o.drop?.(i) ? null : landmarks(p, aspect, o.visibility?.(i) ?? 0.99);
+    if (lms && o.hide) lms = lms.map((l, k) => (o.hide!.includes(k) ? ([l[0], l[1], 0] as const) : l));
+    frames.push({ tMs: Math.max(0, tMs), landmarks: lms });
   }
   return { schema: "pose-timeline/1", source: { width, height, mirrored }, frames };
 }
