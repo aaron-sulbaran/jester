@@ -174,3 +174,34 @@ test("seated: a clip that holds squats still costs a seated player (posed, not m
   console.log(`held-squat clip: seated ${seated.score}`);
   assert.ok(seated.score !== null && seated.score <= 75, `seated ${seated.score}`);
 });
+
+test("hidden cap: a seated player on a clip that uses its legs is capped, and the result says why", () => {
+  const squatRef = timeline(squatDance, { durationS: 20 });
+  const seated = scorePoseRound(squatRef, timeline(squatDance, { durationS: 20, transform: mirrorCopy, hide: LEGS }));
+  assert.ok(seated.score !== null && seated.score <= 50, `seated ${seated.score}`);
+  assert.ok(seated.hiddenLimbs.includes("leftThigh") && seated.hiddenLimbs.includes("rightThigh"), seated.hiddenLimbs.join(","));
+  assert.ok(seated.tier === "OK" || seated.tier === "Miss", `tier ${seated.tier}`);
+});
+
+test("hidden cap: legs hidden only briefly do not cap", () => {
+  const squatRef = timeline(squatDance, { durationS: 20 });
+  // Legs out of view for 2 s of 20 s.
+  const player = timeline(squatDance, { durationS: 20, transform: mirrorCopy });
+  const brief = { ...player, frames: player.frames.map((f, i) => (i >= 300 && i < 360 && f.landmarks ? { ...f, landmarks: f.landmarks.map((l, k) => (LEGS.includes(k) ? ([l[0], l[1], 0] as const) : l)) } : f)) };
+  const r = scorePoseRound(squatRef, brief);
+  assert.deepEqual(r.hiddenLimbs, []);
+  assert.ok(r.score !== null && r.score > 50, `score ${r.score}`);
+});
+
+test("hidden cap: an arms-only clip never caps a seated player", () => {
+  const armsOnly = (t: number) => ({ ...dance(t), lThigh: 3, lShin: 0, rThigh: -3, rShin: 0 });
+  const seated = scorePoseRound(timeline(armsOnly, { durationS: 20 }), timeline(armsOnly, { durationS: 20, transform: mirrorCopy, hide: LEGS }));
+  assert.deepEqual(seated.hiddenLimbs, []);
+  assert.ok(seated.score !== null && seated.score >= 97, `seated ${seated.score}`);
+});
+
+test("feet: hidden feet never cost points (laptop cameras rarely see them)", () => {
+  const r = scorePoseRound(ref, timeline(dance, { durationS: 20, transform: mirrorCopy, hide: [29, 30, 31, 32] }));
+  assert.ok(r.score !== null && r.score >= 99, `score ${r.score}`);
+  assert.deepEqual(r.hiddenLimbs, []);
+});

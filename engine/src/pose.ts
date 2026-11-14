@@ -51,7 +51,6 @@ export interface PoseComparison {
 function compareDirs(ref: Dirs, player: Dirs, multipliers?: readonly number[], penalizeUnseen = false): PoseComparison {
   let sum = 0, covered = 0, total = 0;
   const limbs: LimbComparison[] = [];
-  const motionBase = POSE.motionWeightBase;
   for (let b = 0; b < LIMB_DEFS.length; b++) {
     const mult = multipliers?.[b] ?? 1;
     const base = LIMB_DEFS[b]!.weight * mult;
@@ -63,10 +62,8 @@ function compareDirs(ref: Dirs, player: Dirs, multipliers?: readonly number[], p
       // anything (moving, or held away from how it hangs when standing, like a held squat), count a miss:
       // hiding your legs must not hide leg mistakes. A limb the clip leaves at rest costs nothing, since
       // laptop cameras often cut off legs.
-      if (!penalizeUnseen || !multipliers) continue;
-      const moving = motionBase < 1 ? Math.max(0, (mult - motionBase) / (1 - motionBase)) : 0;
-      const posed = 1 - limbCredit(angleDeg(r, STILL_DIRS[b]!));
-      const active = Math.min(1, Math.max(moving * POSE.unseenPenalty, posed));
+      if (!penalizeUnseen || !multipliers || LIMB_DEFS[b]!.ignoreUnseen) continue;
+      const active = limbActivity(r, b, mult);
       // Full limb weight, not the motion-scaled `base`: a held squat is still, but it is the whole point.
       const w = LIMB_DEFS[b]!.weight * active * r.visibility;
       if (w <= 0) continue;
@@ -85,6 +82,17 @@ function compareDirs(ref: Dirs, player: Dirs, multipliers?: readonly number[], p
   let wsum = 0;
   for (const l of limbs) wsum += l.weight;
   return { credit: wsum > 0 ? sum / wsum : null, limbs };
+}
+
+/**
+ * How much the clip is using limb b in this frame, 0..1: moving it (from the motion multiplier, scaled by
+ * POSE.unseenPenalty) or holding it away from how it hangs when standing (60 degrees or more counts fully).
+ */
+function limbActivity(r: Direction, b: number, mult: number): number {
+  const motionBase = POSE.motionWeightBase;
+  const moving = motionBase < 1 ? Math.max(0, (mult - motionBase) / (1 - motionBase)) : 0;
+  const posed = 1 - limbCredit(angleDeg(r, STILL_DIRS[b]!));
+  return Math.min(1, Math.max(moving * POSE.unseenPenalty, posed));
 }
 
 export interface CompareOptions {
@@ -179,7 +187,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
 
   const empty = (failure: PoseRoundResult["failure"]): PoseRoundResult => ({
     channel: "pose", scorerVersion: SCORER_VERSION, score: null, tier: null, failure,
-    accuracy: 0, stillBaseline: 0, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, frameCredits: new Array(n).fill(null),
+    accuracy: 0, stillBaseline: 0, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
   });
   if (n === 0 || refDirs.every((d) => d === null)) return empty("no-reference");
 
@@ -302,9 +310,30 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
       }
     : null;
 
+  // 4. Hidden cap: a major limb (weight 1 or more) the clip uses in a fair share of the round, but the
+  //    camera could not see on the player for most of that time. The per-frame miss alone lets perfect
+  //    arms carry a seated player to "Great" on a clip with a few squats; this caps the round instead.
+  const used = new Array(LIMB_DEFS.length).fill(0), hiddenWhileUsed = new Array(LIMB_DEFS.length).fill(0);
+  for (let i = 0; i < n; i++) {
+    const j = frameMatch[i]!;
+    if (j < 0 || frameCredits[i] === null) continue;
+    const rd = refDirs[j]!, pd = playerDirs[i]!;
+    for (let b = 0; b < LIMB_DEFS.length; b++) {
+      const r = rd[b];
+      if (!r || r.visibility < POSE.minVisibility || limbActivity(r, b, mult[j]![b]!) < POSE.hiddenActiveMin) continue;
+      used[b]++;
+      const p = pd[b];
+      if (!p || p.visibility < POSE.minVisibility) hiddenWhileUsed[b]++;
+    }
+  }
+  const hiddenLimbs = LIMB_NAMES.filter((_, b) =>
+    LIMB_DEFS[b]!.weight >= 1 && !LIMB_DEFS[b]!.ignoreUnseen &&
+    used[b] >= POSE.hiddenUsedMinShare * valid && used[b] > 0 && hiddenWhileUsed[b] / used[b] >= POSE.hiddenCapShare);
+
   const failed = valid === 0 || 1 - validShare > POSE.maxInvalidShare;
   const raw = gain * (ROUND.accuracyWeight + (1 - ROUND.accuracyWeight) * timing);
-  const score = failed ? null : mapToScore(raw, ROUND.floor, ROUND.ceiling);
+  const uncapped = failed ? null : mapToScore(raw, ROUND.floor, ROUND.ceiling);
+  const score = uncapped !== null && hiddenLimbs.length > 0 ? Math.min(uncapped, ROUND.hiddenCap) : uncapped;
   return {
     channel: "pose",
     scorerVersion: SCORER_VERSION,
@@ -318,6 +347,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
     validShare,
     perLimb,
     worstLimb,
+    hiddenLimbs,
     frameCredits,
   };
 }

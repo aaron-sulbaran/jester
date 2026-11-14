@@ -85,6 +85,11 @@ export interface PoseRoundResult {
   perLimb: Record<string, LimbBreakdown>;
   /** The limb with the largest weighted loss, named from the player's own side. */
   worstLimb: { limb: string; label: string; direction: "low" | "high" | "angle" | "unseen" } | null;
+  /**
+   * Major limbs the clip used but the camera could not see on the player for most of that time
+   * (reference performer's sides). Non-empty means the score was capped at ROUND.hiddenCap.
+   */
+  hiddenLimbs: string[];
   /** Per grid frame credit (0..1) or null when unscorable. Useful for a timeline chart. */
   frameCredits: (number | null)[];
 }

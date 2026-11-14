@@ -131,6 +131,14 @@ function playerSideLabel(limb: string): string {
   return label.replace(/\b(left|right)\b/g, (m) => (m === "left" ? "right" : "left"));
 }
 
+/** "left thigh, right thigh and left shin", from the player's own side; all four leg parts read as "legs". */
+function listLabels(limbs: string[]): string {
+  const legs = ["leftThigh", "rightThigh", "leftShin", "rightShin"];
+  if (legs.every((l) => limbs.includes(l)) && limbs.every((l) => legs.includes(l))) return "legs";
+  const labels = limbs.map(playerSideLabel);
+  return labels.length < 2 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
 function showResults(r: PoseRoundResult) {
   $("results").classList.remove("hidden");
   $("live").textContent = "";
@@ -154,7 +162,10 @@ function showResults(r: PoseRoundResult) {
     : r.worstLimb.direction === "unseen"
       ? ` The camera could not see your ${r.worstLimb.label} while the clip moved it, so those moves counted as misses. Step back so your whole body is in view.`
       : ` Work on ${r.worstLimb.label}: mostly ${how(r.worstLimb.direction)}.`;
-  $("summary").textContent = `${lag}${worst}`.trim();
+  const capped = r.hiddenLimbs.length > 0
+    ? `Capped at 50: the camera could not see your ${listLabels(r.hiddenLimbs)} for most of the moves that used them. Step back so your whole body is in view. `
+    : "";
+  $("summary").textContent = `${capped}${lag}${capped ? "" : worst}`.trim();
   const rows = Object.entries(r.perLimb)
     .sort((a, b) => a[1].credit - b[1].credit)
     // Limb keys use the performer's sides; the player copies as a mirror, so name rows from the player's own side.
