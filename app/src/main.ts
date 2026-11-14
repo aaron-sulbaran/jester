@@ -1,11 +1,12 @@
 // Jester app shell, Version 1: one clip, one player, one score.
 // Clip side: ./clip.ts (stand-in). Player side: Lisa's tracker. Score: ../engine.
 
-import { comparePoses, LIMBS, type Landmarks, type LandmarkObject, type PoseRoundResult } from "../../engine/src/index.ts";
+import { comparePoses, LIMBS, type Landmarks, type LandmarkObject, type PoseRoundResult, type TrajectoryRoundResult } from "../../engine/src/index.ts";
 import { sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { analyzeVideo, starterClip, type Clip } from "./clip.ts";
-import { cameraPlayer, playRound, simulatedPlayer, type Player } from "./round.ts";
-import { drawFrame, fitCanvas } from "./draw.ts";
+import { cameraPlayer, playObjectRound, playRound, simulatedPlayer, type Player } from "./round.ts";
+import { drawFrame, drawObject, fitCanvas } from "./draw.ts";
+import { OBJECT_NAMES, objectClip, simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clipVideo = $<HTMLVideoElement>("clip");
@@ -15,6 +16,8 @@ const playerCanvas = $<HTMLCanvasElement>("playerCanvas");
 const params = new URLSearchParams(location.search);
 
 let clip: Clip | null = null;
+/** Set instead of `clip` when the player copies an object. */
+let objClip: ObjectClip | null = null;
 let camera: Player | null = null;
 let playing = false;
 let clipNowMs = 0;
@@ -44,6 +47,7 @@ function clipPoseAt(ms: number): LandmarkObject[] | null {
 
 function clipReady(c: Clip, label: string) {
   clip = c;
+  objClip = null;
   fitCanvas(clipCanvas, c.width / c.height);
   const found = c.samples.filter((s) => s.landmarks).length;
   setStatus(`${label}: ${(c.durationMs / 1000).toFixed(1)} s, person found in ${found} of ${c.samples.length} samples.`);
@@ -56,6 +60,21 @@ $("demoClip").addEventListener("click", () => {
   $<HTMLProgressElement>("progress").value = 1;
   clipReady(starterClip(), "Starter clip");
 });
+
+for (const name of OBJECT_NAMES) {
+  const b = document.createElement("button");
+  b.textContent = name[0]!.toUpperCase() + name.slice(1);
+  b.addEventListener("click", () => {
+    clip = null;
+    objClip = objectClip(name);
+    clipVideo.removeAttribute("src");
+    fitCanvas(clipCanvas, objClip.width / objClip.height);
+    $<HTMLProgressElement>("progress").value = 1;
+    setStatus(`Object clip: ${name}, ${objClip.durationMs / 1000} s. ${objClip.hint}`);
+    $<HTMLButtonElement>("start").disabled = false;
+  });
+  $("objectButtons").appendChild(b);
+}
 
 $("clipFile").addEventListener("change", async (e) => {
   const file = (e.target as HTMLInputElement).files?.[0];
@@ -87,6 +106,35 @@ async function countdown(seconds: number) {
 
 async function getPlayer(c: Clip): Promise<Player> {
   if (simMode()) return simulatedPlayer(c, noise, params.has("seated"));
+  return getCamera();
+}
+
+async function startObjectRound(o: ObjectClip) {
+  $<HTMLButtonElement>("start").disabled = true;
+  $("results").classList.add("hidden");
+  let player: Player;
+  try {
+    // In simulated mode the wobble slider stands for effort: 0 is a full copy, 40 is a fifth of the movement.
+    player = simMode() ? simulatedObjectPlayer(o, () => 1 - noise() / 50) : await getCamera();
+  } catch (err) {
+    setStatus("Camera did not start: " + (err as Error).message + ". Tick 'Simulated player' to try without one.");
+    $<HTMLButtonElement>("start").disabled = false;
+    return;
+  }
+  setStatus(o.hint);
+  await countdown(3);
+  playing = true;
+  const round = await playObjectRound(o, player, (f) => {
+    lastPlayer = { pose: f.player, aspect: f.playerAspect };
+    clipNowMs = Math.max(0, f.clipMs);
+  });
+  playing = false;
+  (window as any).__jesterLastRound = { result: round.result, frameCount: round.frames.length };
+  showObjectResults(round.result, o);
+  $<HTMLButtonElement>("start").disabled = false;
+}
+
+async function getCamera(): Promise<Player> {
   if (!camera) {
     setStatus("Starting the camera and pose tracker...");
     camera = await cameraPlayer(cam);
@@ -95,6 +143,7 @@ async function getPlayer(c: Clip): Promise<Player> {
 }
 
 $("start").addEventListener("click", async () => {
+  if (objClip && !playing) return startObjectRound(objClip);
   if (!clip || playing) return;
   const c = clip;
   $<HTMLButtonElement>("start").disabled = true;
@@ -153,6 +202,43 @@ function listLabels(limbs: string[]): string {
   return labels.length < 2 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
 }
 
+const EVENT_WORDS: Record<string, [string, string]> = {
+  jump: ["jump", "jumps"], crouch: ["duck", "ducks"], moveLeft: ["move left", "moves left"], moveRight: ["move right", "moves right"],
+};
+
+function showObjectResults(r: TrajectoryRoundResult, o: ObjectClip) {
+  $("results").classList.remove("hidden");
+  $("live").textContent = "";
+  $("limbs").innerHTML = "";
+  $("placement").textContent = "";
+  if (r.score == null) {
+    $("score").textContent = "No score";
+    $("tier").textContent = "";
+    $("summary").textContent = r.failure === "low-tracking"
+      ? "The camera lost you for too much of the round. Step back so your upper body is in view, and try again."
+      : `The ${o.name} hardly moves, so there is nothing to copy.`;
+    setStatus("Round over.");
+    return;
+  }
+  $("score").textContent = String(r.score);
+  $("tier").textContent = r.tier ?? "";
+  // Which of the object's moves the player caught, by kind.
+  const byType = new Map<string, { hit: number; all: number }>();
+  for (const m of r.matches) {
+    const e = byType.get(m.type) ?? { hit: 0, all: 0 };
+    e.all++; if (m.playerFrame !== null) e.hit++;
+    byType.set(m.type, e);
+  }
+  const caught = [...byType].map(([t, e]) => `${e.hit} of ${e.all} ${EVENT_WORDS[t]![e.all === 1 ? 0 : 1]}`);
+  const parts = [
+    caught.length ? `You caught ${caught.join(", ")}.` : "",
+    r.activity < 0.6 ? "Move bigger: step and bounce with your whole body, not just your arms." : "",
+    r.score >= 35 ? (r.lagMs > 0 ? `You were ${Math.round(r.lagMs)} ms behind.` : "You were right on time.") : "",
+  ].filter(Boolean);
+  $("summary").textContent = `Copying the ${o.name}. ${parts.join(" ")}`;
+  setStatus(`Round over. Scorer ${r.scorerVersion}.`);
+}
+
 function showResults(r: PoseRoundResult) {
   $("results").classList.remove("hidden");
   $("live").textContent = "";
@@ -196,7 +282,8 @@ function showResults(r: PoseRoundResult) {
 
 function render() {
   requestAnimationFrame(render);
-  if (clip) {
+  if (objClip) drawObject(clipCanvas, objClip.boxAt(playing ? clipNowMs : 0), objClip.name);
+  else if (clip) {
     const ms = clip.videoUrl ? clipVideo.currentTime * 1000 : playing ? clipNowMs : 0;
     drawFrame(clipCanvas, clip.videoUrl ? clipVideo : null, clipPoseAt(ms));
   }
