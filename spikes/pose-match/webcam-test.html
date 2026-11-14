@@ -14,14 +14,17 @@ button{padding:8px 14px;font-size:15px}
 <h1>Webcam extraction test</h1>
 <p><button id="go">Start camera</button> <label><input type="checkbox" id="showMask" checked> mask</label> <label><input type="checkbox" id="showOutline" checked> outline</label> <label><input type="checkbox" id="showBones" checked> skeleton</label></p>
 <div id="hud">idle</div>
+<div id="joints" style="font-family:monospace;margin:4px 0"></div>
 <div id="stage"><video id="cam" playsinline muted></video><canvas id="out" width="640" height="480"></canvas></div>
 <p class="hint">Stand back so your whole body is in frame. Frames are not mirrored in the data; this page flips only the view. Outputs: landmarks, mask, outline (see webcam.mjs).</p>
 <script type="module">
 import { createWebcamTracker } from "./webcam.mjs";
+import { Calibrator } from "./calibration.mjs";
+const calib = new Calibrator();
 const $ = (id) => document.getElementById(id);
 const cam = $("cam"), cv = $("out"), ctx = cv.getContext("2d"), hud = $("hud");
 const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
-let tracker = null, latest = null, frames = 0, missing = 0;
+let lastCal = null, tracker = null, latest = null, frames = 0, missing = 0;
 const off = document.createElement("canvas");
 
 function draw(f) {
@@ -53,8 +56,17 @@ $("go").onclick = async () => {
     await cam.play();
   } catch (e) { hud.textContent = "Camera blocked or missing (" + e.name + "). Allow camera access for this site and reload."; $("go").disabled = false; return; }
   hud.textContent = "Loading model...";
-  tracker = await createWebcamTracker({ video: cam, onFrame: (f) => { latest = f; frames++; if (!f.landmarks) missing++; draw(f); } });
+  tracker = await createWebcamTracker({ video: cam, onFrame: (f) => { latest = f; frames++; if (!f.landmarks) missing++; lastCal = calib.update(f.landmarks, tracker ? tracker.stats.fps || 30 : 30); draw(f); } });
   window.tracker = tracker; tracker.start();
+  const NAMES = { 11: "L shoulder", 12: "R shoulder", 23: "L hip", 24: "R hip", 25: "L knee", 26: "R knee", 27: "L ankle", 28: "R ankle", 15: "L wrist", 16: "R wrist" };
+  setInterval(() => {
+    const q = latest && latest.landmarks;
+    $("joints").innerHTML = Object.entries(NAMES).map(([i, n]) => {
+      const v = q ? q[i].visibility : 0, onScreen = q && q[i].y >= 0 && q[i].y <= 1 && q[i].x >= 0 && q[i].x <= 1;
+      const ok = v >= .5 && onScreen;
+      return '<span style="color:' + (ok ? "#7ddf8a" : "#ff6b6b") + '">' + n + " " + v.toFixed(2) + (onScreen || !q ? "" : " off-screen") + "</span>";
+    }).join(" | ") + (lastCal ? "<br>" + (lastCal.passed ? "CALIBRATED. " : "Calibrating " + Math.round(lastCal.progress * 100) + "%. ") + lastCal.message + (lastCal.lowFps ? " (low fps: lite model suggested)" : "") : "") + (q && [25, 26, 27, 28].some((i) => q[i].visibility < .5 || q[i].y > 1) ? "<br>LEGS NOT FULLY IN FRAME: step back until knees and ankles are green." : "");
+  }, 300);
   setInterval(() => {
     const p = latest && latest.landmarks;
     const hidden = p ? [11,12,23,24,25,26,27,28].filter((i) => p[i].visibility < .5).length : 8;
