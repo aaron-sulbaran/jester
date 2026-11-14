@@ -8,3 +8,5 @@ export { frameSignature, signatureDistance, findCuts, shotRanges } from "./cuts.
 export { motionPerFrame, rankCandidates, pickConfirmFrame, withConfirmBoxes } from "./rank.ts";
 export { checkClip, checkSubject } from "./rules.ts";
 export type { Verdict } from "./rules.ts";
+export { keyMoments, paceOf } from "./moments.ts";
+export { buildGuide } from "./guide.ts";
