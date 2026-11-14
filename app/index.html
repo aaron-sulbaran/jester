@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jester</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Jester</h1>
+    <p class="sub">Copy the clip. Get a score.</p>
+  </header>
+
+  <section id="setup" class="panel">
+    <div class="row">
+      <button id="demoClip">Use the starter clip</button>
+      <label class="file">Or pick a video <input id="clipFile" type="file" accept="video/*" /></label>
+    </div>
+    <div class="row">
+      <label><input id="simPlayer" type="checkbox" /> Simulated player (no camera)</label>
+      <label id="noiseWrap" class="hidden">Wobble <input id="noise" type="range" min="0" max="40" value="10" /> <span id="noiseVal">10</span> deg</label>
+    </div>
+    <progress id="progress" value="0" max="1"></progress>
+    <p id="status">Pick a clip to start.</p>
+    <button id="start" disabled>Start round</button>
+  </section>
+
+  <section id="stage" class="stage">
+    <figure>
+      <video id="clip" playsinline muted></video>
+      <canvas id="clipCanvas" width="480" height="360"></canvas>
+      <figcaption>Clip</figcaption>
+    </figure>
+    <figure>
+      <video id="cam" playsinline muted></video>
+      <canvas id="playerCanvas" width="480" height="360"></canvas>
+      <figcaption>You <span id="live"></span></figcaption>
+    </figure>
+  </section>
+  <div id="countdown" class="countdown hidden"></div>
+
+  <section id="results" class="panel hidden">
+    <h2><span id="score"></span> <small id="tier"></small></h2>
+    <p id="summary"></p>
+    <table id="limbs"></table>
+    <button id="again">Try again</button>
+  </section>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

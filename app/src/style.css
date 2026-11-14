@@ -1,0 +1,20 @@
+:root { font-family: system-ui, sans-serif; color: #eee; background: #15131a; }
+body { max-width: 1040px; margin: 0 auto; padding: 16px; }
+header h1 { margin: 0; font-size: 2rem; }
+.sub { margin: 4px 0 16px; color: #aaa; }
+.panel { background: #221f29; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+button { background: #f5c542; color: #15131a; border: 0; border-radius: 6px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: default; }
+progress { width: 100%; }
+.stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+figure { margin: 0; background: #000; border-radius: 10px; overflow: hidden; position: relative; }
+figure video { display: none; }
+figure canvas { width: 100%; display: block; }
+figcaption { position: absolute; top: 8px; left: 10px; font-size: 0.9rem; background: #0008; padding: 2px 8px; border-radius: 4px; }
+.countdown { position: fixed; inset: 0; display: grid; place-items: center; font-size: 8rem; font-weight: 800; background: #0006; pointer-events: none; }
+.hidden { display: none !important; }
+#score { font-size: 3rem; }
+table { border-collapse: collapse; margin: 8px 0 16px; }
+td { padding: 2px 12px 2px 0; }
+.bar { display: inline-block; height: 8px; background: #f5c542; border-radius: 4px; }
