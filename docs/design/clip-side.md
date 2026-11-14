@@ -96,6 +96,17 @@ interface ClipCheck {
 - `app/api/clip-check.ts`: the one server function, a Vercel function beside the static build (the app has no server today). It holds the API key, which Aaron sets in the host's settings with a spend limit and which never enters the repo. It accepts at most 16 images of 200 KB each, checks the page's origin, and limits calls per address and per day.
 - AI provider: open, Aaron's call before version 2. Claude through the official SDK needs an API key with credits. Gemini has a free tier, takes the video itself, and counts for the MLH prize. Either way the answer is forced into the form's shape and the function hides the provider.
 
+## What blind mode gets from the clip side
+
+The team's blind mode (hub page `kb/game-modes`) gives each player one subject of the clip as a secret role, shows only its outline or stick figure, and then reveals everyone inside the original video. So the clip side hands over every subject, not one:
+
+- `prepareVideo(file, video, onProgress)`: the analysis, with every candidate ranked and numbered.
+- `subjectGuides(prepared)`: one guide per subject. For a person: the pose timeline, a box over time, and an outline per frame. For a thing: a box over time and an outline, scored by the engine's trajectory channel.
+- `confirmSubject(prepared, trackId)`: one guide, for solo play.
+- `analyzeVideo` keeps working for the first app shell.
+
+Order of building: people, then outlines, then things.
+
 ## Versions
 
 - **Version 1:** stages 0 to 5 for people. Several people, confirm, saved guide, refusals.

@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.7 strict, Node 22.18+ test runner, Vite 6, Mediabunny (WebCodecs), MediaPipe Pose Landmarker 0.10.14 loaded from the CDN constants in `spikes/pose-match/webcam.mjs`, IndexedDB, Web Crypto.
 
-**Spec:** `docs/design/clip-side.md`. This plan covers its stages 0 to 5 for people. Out of scope here: the object detector and box path for non-people, the AI check, the 30 per second second pass, a worker (Version 1 runs on the page and yields between frames), sharing guides.
+**Spec:** `docs/design/clip-side.md`. This plan covers its stages 0 to 5 for people. Tasks 7 and 8 were added at 6:40 PM for the team's blind mode: an outline per subject, and things as subjects. Out of scope here: the AI check, the 30 per second second pass, a worker (the build runs on the page and yields between frames), sharing guides.
 
 ## Global Constraints
 
@@ -21,7 +21,7 @@
 - Public functions that can fail return `{ data, error }` (`error` is a sentence a player can read, or null). Do not throw across the `app/src/clip.ts` boundary.
 - No video files in the repo. Copy no code from outside this repo.
 - Coordinates are MediaPipe normalized image coordinates, unmirrored, as in `engine/src/types.ts`.
-- Commit as the repo's configured identity on branch `aaron/clip-extract`. Before editing `app/src/main.ts`, `app/src/round.ts` or `app/index.html`, run `../hack-princeton-hub/hub pulse "<what and why>"` from the repo.
+- Commit as the repo's configured identity on branch `aaron/clip-extract`. Do not edit `app/src/main.ts`, `app/src/round.ts`, `app/index.html` or `app/src/style.css`: a teammate is building blind mode there.
 - Starting numbers from the spec, used verbatim: 15 samples per second; first 30 seconds only; up to 4 people; tracks under 1 second dropped; refuse under 3 seconds, more than one cut every 2 seconds, subject in under half the frames of its shot, subject under a quarter of the frame height.
 
 ## Review Focus
@@ -138,6 +138,7 @@ export interface Prepared {
 }
 export function prepareClip(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<{ data: Prepared; error: null } | { data: null; error: string }>;
 export function finishClip(prepared: Prepared, trackId: number): { data: Guide; error: null } | { data: null; error: string };
+export function subjectGuides(prepared: Prepared): { guides: Guide[]; skipped: { number: number; reason: string }[] };
 export function loadPrepared(fingerprint: string): Promise<Prepared | null>;
 export function savePrepared(prepared: Prepared): Promise<void>;
 ```
@@ -145,23 +146,56 @@ export function savePrepared(prepared: Prepared): Promise<void>;
 - [ ] **Step 1: Read the docs** for Mediabunny (opening a `File`, checking that the video track can be decoded, getting canvases at chosen timestamps with rotation applied and a size limit) and for MediaPipe `PoseLandmarker` (`numPoses`, `detectForVideo`, time stamp rules).
 - [ ] **Step 2: Implement `frames.ts`:** `readFrames(file, video, { sampleHz: 15, maxMs: 30000, maxSide: 720 }, onFrame)` decodes through Mediabunny at fixed times `i * 1000 / sampleHz`, in order, calling `await onFrame({ tMs, canvas, index, count })` and yielding to the page between frames. If Mediabunny cannot decode the file, fall back to stepping `video.currentTime` and waiting for `seeked`, as today's `analyzeVideo` does. If both fail, return the error "This browser cannot read that video. Save it as an H.264 MP4 and try again."
 - [ ] **Step 3: Implement `detect.ts`:** a pose tracker with `numPoses: 4`, model `full`, `runningMode: "VIDEO"`, GPU then CPU, a fresh instance per clip. `detect(canvas, tMs)` passes `tMs` as the time stamp (raised by 1 if it would not increase) and returns `Detection[]` using `boxFromLandmarks`.
-- [ ] **Step 4: Implement `analyze.ts` and `store.ts`.** `prepareClip`: fingerprint; return the saved analysis if one exists (`fromSaved: true`); otherwise read frames, compute each frame's `signature` from a 32 pixel wide copy, detect people, then `findCuts`, `linkTracks`, `rankCandidates`, `pickConfirmFrame`, `checkClip`; save; return. A refusal from `checkClip` is returned as `error`. When the file is longer than 30 seconds, `warnings` includes "This clip is longer than 30 seconds, so only the first 30 are used." `finishClip` runs `checkSubject` and `buildGuide`. The store is IndexedDB database `jester`, object store `prepared`, keyed by fingerprint, holding records with `schema: "prepared/1"`.
+- [ ] **Step 4: Implement `analyze.ts` and `store.ts`.** `prepareClip`: fingerprint; return the saved analysis if one exists (`fromSaved: true`); otherwise read frames, compute each frame's `signature` from a 32 pixel wide copy, detect people, then `findCuts`, `linkTracks`, `rankCandidates`, `pickConfirmFrame`, `checkClip`; save; return. A refusal from `checkClip` is returned as `error`. When the file is longer than 30 seconds, `warnings` includes "This clip is longer than 30 seconds, so only the first 30 are used." `finishClip` runs `checkSubject` and `buildGuide`. `subjectGuides` does the same for every candidate, in rank order: blind mode gives each player one subject, so it needs them all; a candidate that `checkSubject` refuses goes to `skipped` with its sentence. The store is IndexedDB database `jester`, object store `prepared`, keyed by fingerprint, holding records with `schema: "prepared/1"`.
 - [ ] **Step 5: Run `npm run build` in `app/`.** Expected: typecheck and build pass.
 - [ ] **Step 6: Commit** `app: clip side browser work (fingerprint, saved analysis, frames, people detector)`.
 
-### Task 6: Wire it into the app: confirm step, shot range, preview
+### Task 6: The app's entry points and a clip lab page
+
+Blind mode is being built in the main screens by a teammate, and the look is being redesigned, so this task does not edit `app/src/main.ts`, `app/src/round.ts`, `app/index.html` or `app/src/style.css`.
 
 **Files:**
-- Modify: `app/src/clip.ts`, `app/src/main.ts`, `app/src/round.ts`, `app/index.html`, `app/src/style.css`, `app/README.md`.
+- Modify: `app/src/clip.ts`, `app/README.md`.
+- Create: `app/clip-lab.html`, `app/src/clip-lab.ts`.
 
 **Interfaces:**
 - Consumes: Task 5.
-- Produces in `app/src/clip.ts`: `Clip` gains `guide: Guide | null` and `offsetMs: number` (0 for the starter clip); `prepareVideo(file, video, onProgress)` and `confirmSubject(prepared, trackId, videoUrl): { data: Clip; error: null } | { data: null; error: string }`; `analyzeVideo` is removed; `starterClip()` is unchanged apart from the two new fields.
+- Produces in `app/src/clip.ts`: `Clip` gains `guide: Guide | null` (null for the starter clip). `analyzeVideo(file, video, onProgress): Promise<Clip>` keeps its signature for the existing shell: it runs `prepareClip`, takes the top candidate, and returns a whole-clip `Clip` on media time from 0, with `samples` at every analysed frame (landmarks null where that person is absent); on a refusal it throws an `Error` carrying the sentence, as the shell already expects. New exports for the screens to come: `prepareVideo(file, video, onProgress)` (returns what `prepareClip` returns), `confirmSubject(prepared, trackId)` (returns what `finishClip` returns), and `subjectGuides` re-exported.
 
-- [ ] **Step 1: Pulse** the files, then rewire `clip.ts`. `Clip.samples` is built from the guide's timeline so the existing overlay and live meter keep working.
-- [ ] **Step 2: Confirm panel** in `index.html` and `main.ts`: after a file is prepared, show the frame at `confirmTMs` with each candidate's numbered box, the top candidate selected, one button per candidate, and "Use this person". It appears even with one candidate. Errors from `prepareVideo` and `confirmSubject` go to the status line as they are. Keep the styling plain; the look is being redesigned.
-- [ ] **Step 3: Shot range.** In `round.ts` and `main.ts`, clip time is `video.currentTime * 1000 - clip.offsetMs`; a round starts the video at `offsetMs` and ends at `offsetMs + durationMs` or on `ended`.
-- [ ] **Step 4: Preview button** "Preview the guide": plays the confirmed range once with the skeleton drawn over the video, no camera, no score.
-- [ ] **Step 5: Run `npm run build` in `app/`, and `npm run check` in `clip/` and `engine/`.** Expected: all pass.
-- [ ] **Step 6: Manual checks in a browser,** recorded in `app/README.md` under "Checked" and "Not checked" with what was actually seen: the starter clip still plays a simulated round to a score; a real clip of one person shows the confirm panel and the preview skeleton sits on the person; a sideways phone clip comes out upright; a clip with no person shows "No person found in this clip." and another file can be picked; an undecodable file shows the H.264 sentence; the same file opened twice skips tracking the second time.
-- [ ] **Step 7: Commit** `app: confirm the subject, play only its shot, preview the guide`, push, and open a pull request.
+- [ ] **Step 1: Rewire `clip.ts`** as above. `starterClip()` is unchanged apart from `guide: null`.
+- [ ] **Step 2: Build the clip lab** (`/clip-lab.html` on the dev server): pick a file; a progress bar; one status line that shows refusals and warnings as they are; the frame at `confirmTMs` with each candidate's numbered box and one button per candidate, the top one selected, shown even with a single candidate; after choosing, the video plays the guide's range in a loop with that subject's skeleton and box drawn over it; a small table with the decoder used, frames analysed, people found, cuts, seconds taken, and whether the result was saved or fresh. Plain styling.
+- [ ] **Step 3: Run `npm run build` in `app/`, and `npm run check` in `clip/` and `engine/`.** Expected: all pass.
+- [ ] **Step 4: Manual checks in the lab** with the files in `../test-clips` (outside the repo, never committed), recorded in `app/README.md` under "Checked" and "Not checked" with what was actually seen: `one-person.mp4` shows one candidate and the skeleton sits on the person; `two-people.mp4` shows two candidates and each skeleton stays on its own person; `with-cut.mp4` reports one cut and plays only the chosen person's shot; `sideways-phone.mp4` comes out upright; `no-person.mp4` shows "No person found in this clip." and another file can be picked; `hevc.mp4` either works or shows the H.264 sentence; opening `one-person.mp4` twice reports "saved" the second time. Also confirm the main page still plays the starter clip with the simulated player (`/?nocam=1`).
+- [ ] **Step 5: Commit** `app: clip side entry points and a clip lab page`.
+
+### Task 7: An outline per frame for people
+
+Blind mode shows a player only the outline of their subject, so each guide carries one.
+
+**Files:**
+- Modify: `clip/src/types.ts`, `clip/src/guide.ts`, `clip/test/guide.test.ts`, `app/src/clipside/detect.ts`, `app/src/clipside/analyze.ts`, `app/src/clip-lab.ts`.
+
+**Interfaces:**
+- `Detection` and `TrackPoint` gain `outline: [number, number][] | null` (a closed polygon in normalized image coordinates, at most 60 points). `Guide` gains `outlines: ([number, number][] | null)[]`, one entry per timeline frame. Saved records move to `schema: "prepared/2"`; older records are ignored and analysed again.
+
+- [ ] **Step 1: Read the MediaPipe docs** on `outputSegmentationMasks` for the pose tracker: whether each detected person gets a mask, and how to read and close a mask.
+- [ ] **Step 2: Write failing tests** in `guide.test.ts`: `outlines` has the timeline's length; a frame where the track has no point is null; the polygon of a point is carried through unchanged.
+- [ ] **Step 3: Implement.** Turn each person's mask into a polygon with `binarizeMask` and `extractOutline` from `spikes/pose-match/webcam.mjs` (60 points). If the tracker returns one combined mask, keep only the part inside that person's box. The lab draws the outline over the video.
+- [ ] **Step 4: Run all checks and the build;** in the lab, confirm on `two-people.mp4` that each outline wraps its own person. Record what was seen in `app/README.md`.
+- [ ] **Step 5: Commit** `clip: an outline per frame for people`.
+
+### Task 8: Things as subjects
+
+Blind mode roles include things (a dog, a ball). The engine scores them from a box over time.
+
+**Files:**
+- Modify: `clip/src/types.ts`, `clip/src/tracks.ts`, `clip/src/rank.ts`, `clip/src/rules.ts`, `clip/src/guide.ts` and their tests; `app/src/clipside/detect.ts`, `app/src/clipside/analyze.ts`, `app/src/clip-lab.ts`.
+
+**Interfaces:**
+- `Detection` and `TrackPoint`: `landmarks` becomes `readonly Landmark[] | null`, and both gain `kind: "person" | "thing"` and `label: string` ("Person", or the detector's category such as "dog"). Tracks never mix kinds. `Candidate.label` is "Person 1" and so on for people, and the category with a number for things ("Dog 1"). For a thing, motion is the movement of the box centre in box heights; the guide has `timeline: null`, `channel: "trajectory"`, `subject.kind: "thing"`, and its outline is the mask polygon when one exists, else the box as a four point polygon. Saved records move to `schema: "prepared/3"`.
+
+- [ ] **Step 1: Read the MediaPipe docs** for the object detector (categories, score threshold, running mode).
+- [ ] **Step 2: Write failing tests:** a person and a thing that overlap stay two tracks; a thing's candidate ranks by size, place, box movement and time on screen; `buildGuide` for a thing gives a null timeline, the trajectory channel and a box track; a thing that never moves is refused with "This one does not move, so there is nothing to copy."
+- [ ] **Step 3: Implement.** Run the object detector on every third analysed frame with a score threshold of 0.5, drop the "person" category (the pose tracker covers people) and any thing box that overlaps a person's box by more than 0.6, and link things with a `maxGap` of 15 frames.
+- [ ] **Step 4: Run all checks and the build;** in the lab, try a clip with an animal or a ball if one is on hand and record what was seen, including a miss.
+- [ ] **Step 5: Commit** `clip: things as subjects`.
