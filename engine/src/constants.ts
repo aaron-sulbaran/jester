@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.3.0";
+export const SCORER_VERSION = "jester-engine/0.4.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -35,6 +35,12 @@ export const POSE = {
    * and a player sitting down scored 98 on the starter clip, which has squats.
    */
   unseenPenalty: 2,
+  /** 0.4.0 hidden cap: a frame counts as the clip using a limb when its activity (see unseenPenalty) is at least this. */
+  hiddenActiveMin: 0.5,
+  /** ... and the limb counts for the cap only if the clip uses it in at least this share of scored frames. */
+  hiddenUsedMinShare: 0.1,
+  /** ... and the round is capped when the player's limb was out of view for at least this share of those frames. */
+  hiddenCapShare: 0.5,
   /** Round fails as "low tracking" when more than this share of frames is unscorable. */
   maxInvalidShare: 0.3,
 } as const;
@@ -69,6 +75,12 @@ export const ROUND = {
   floor: 0,
   /** Raw value that maps to score 100. 1.0 until calibrated on good human copies (then likely about 0.9). */
   ceiling: 1.0,
+  /**
+   * 0.4.0: the highest score a round can get when a major limb the clip uses stayed out of view (see
+   * PoseRoundResult.hiddenLimbs). 50 is the "OK" tier: a seated player scored 82 "Great" on the starter
+   * clip under 0.3.0, which the team judged far too high.
+   */
+  hiddenCap: 50,
   /** If standing still already earns more than 1 - this, the clip has little to copy: use plain accuracy. */
   minHeadroom: 0.1,
 } as const;

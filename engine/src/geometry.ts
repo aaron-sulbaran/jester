@@ -25,6 +25,8 @@ export interface LimbDef {
   /** Importance: arms drive perceived similarity most. */
   weight: number;
   label: string;
+  /** Out of view on the player never costs points (too often unseen by laptop cameras to judge). */
+  ignoreUnseen?: boolean;
 }
 
 const MID_SHOULDER = [LM.leftShoulder, LM.rightShoulder] as const;
@@ -51,8 +53,8 @@ export const LIMBS: Readonly<Record<string, LimbDef>> = {
   // Feet seen from the front are short and noisy (heel to toe points at the camera), so they weigh least.
   leftHand: { from: LM.leftWrist, to: L_KNUCKLES, weight: 0.5, label: "left hand" },
   rightHand: { from: LM.rightWrist, to: R_KNUCKLES, weight: 0.5, label: "right hand" },
-  leftFoot: { from: LM.leftHeel, to: LM.leftFootIndex, weight: 0.25, label: "left foot" },
-  rightFoot: { from: LM.rightHeel, to: LM.rightFootIndex, weight: 0.25, label: "right foot" },
+  leftFoot: { from: LM.leftHeel, to: LM.leftFootIndex, weight: 0.25, label: "left foot", ignoreUnseen: true },
+  rightFoot: { from: LM.rightHeel, to: LM.rightFootIndex, weight: 0.25, label: "right foot", ignoreUnseen: true },
 };
 
 export const LIMB_NAMES: readonly string[] = Object.keys(LIMBS);
