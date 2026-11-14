@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.4.0";
+export const SCORER_VERSION = "jester-engine/0.5.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -82,6 +82,30 @@ export const ROUND = {
    */
   hiddenCap: 50,
   /** If standing still already earns more than 1 - this, the clip has little to copy: use plain accuracy. */
+  minHeadroom: 0.1,
+} as const;
+
+/**
+ * 0.5.0 placement: where the body is and how big it looks (src/placement.ts). Anchor = shoulder midpoint,
+ * size = torso length. Distances are in torso lengths, size differences in natural log of the size ratio.
+ */
+export const PLACEMENT = {
+  /** Share of the round score that comes from relative moves, when the clip travels enough to score them. */
+  weight: 0.25,
+  /** Within a placement credit: position share; the rest is size. */
+  positionShare: 0.7,
+  /** Relative position error: full credit within this many torso lengths, zero at the second. */
+  posFullTorsos: 0.25,
+  posZeroTorsos: 1.0,
+  /** Size error (|log ratio|): full credit within 0.1 (about 10 percent), zero at 0.4 (about 50 percent). */
+  sizeFullLog: 0.1,
+  sizeZeroLog: 0.4,
+  /** Outline fit (shown, not scored): anchor offset from the subject's, in the subject's torso lengths. */
+  outlinePosFullTorsos: 0.15,
+  outlinePosZeroTorsos: 0.8,
+  /** Placement needs anchor and size on at least this share of matched frames (seated players often hide hips). */
+  minFrameShare: 0.5,
+  /** Staying in place must lose at least this much placement credit, or the clip does not travel enough to score. */
   minHeadroom: 0.1,
 } as const;
 

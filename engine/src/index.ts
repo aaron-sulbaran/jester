@@ -8,6 +8,7 @@ export type { PoseComparison, LimbComparison, CompareOptions, PoseRoundOptions }
 export { scoreTrajectoryRound, detectEvents, matchEvents } from "./trajectory.ts";
 export type { TrajectoryRoundOptions } from "./trajectory.ts";
 export { skeletonGate } from "./gate.ts";
+export { scorePlacement } from "./placement.ts";
 export type { GateResult } from "./gate.ts";
 export { LIMBS, LIMB_NAMES } from "./geometry.ts";
 export { fromWebcamFrames, fromClipSamples } from "./adapters.ts";

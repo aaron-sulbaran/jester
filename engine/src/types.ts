@@ -65,6 +65,23 @@ export interface LimbBreakdown {
   unseenShare: number;
 }
 
+/** Where the body is and how big it looks. See src/placement.ts. */
+export interface PlacementResult {
+  /** True when the clip travels enough to score relative moves; then they count PLACEMENT.weight of the score. */
+  used: boolean;
+  /** Mean relative-move credit 0..1, and what staying in place would have earned. */
+  credit: number;
+  stillBaseline: number;
+  /** Credit above staying in place, 0..1 (0 when not used). */
+  gain: number;
+  /** The relative move the player matched worst. */
+  worst: "sideways" | "up-down" | "distance" | null;
+  /** 0..100: how well the player's position and size in frame matched the subject's on the mirrored screen. Shown, not scored. */
+  outlineFit: number | null;
+  /** What would improve the outline fit: step closer or back, move to your left or right. */
+  outlineHints: { distance: "closer" | "back" | null; side: "left" | "right" | null };
+}
+
 export interface PoseRoundResult {
   channel: "pose";
   scorerVersion: string;
@@ -90,6 +107,7 @@ export interface PoseRoundResult {
    * (reference performer's sides). Non-empty means the score was capped at ROUND.hiddenCap.
    */
   hiddenLimbs: string[];
+  placement: PlacementResult;
   /** Per grid frame credit (0..1) or null when unscorable. Useful for a timeline chart. */
   frameCredits: (number | null)[];
 }
