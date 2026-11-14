@@ -10,6 +10,10 @@ export const LM = {
   leftHip: 23, rightHip: 24,
   leftKnee: 25, rightKnee: 26,
   leftAnkle: 27, rightAnkle: 28,
+  leftPinky: 17, rightPinky: 18,
+  leftIndex: 19, rightIndex: 20,
+  leftHeel: 29, rightHeel: 30,
+  leftFootIndex: 31, rightFootIndex: 32,
 } as const;
 
 /** A limb end is one landmark, or several whose midpoint is used. */
@@ -25,6 +29,9 @@ export interface LimbDef {
 
 const MID_SHOULDER = [LM.leftShoulder, LM.rightShoulder] as const;
 const MID_HIP = [LM.leftHip, LM.rightHip] as const;
+/** The knuckles: midpoint of the index and pinky base points. */
+const L_KNUCKLES = [LM.leftIndex, LM.leftPinky] as const;
+const R_KNUCKLES = [LM.rightIndex, LM.rightPinky] as const;
 
 /** Limb names use the REFERENCE performer's left and right. Order is fixed (it is the iteration order). */
 export const LIMBS: Readonly<Record<string, LimbDef>> = {
@@ -40,6 +47,12 @@ export const LIMBS: Readonly<Record<string, LimbDef>> = {
   hipLine: { from: LM.leftHip, to: LM.rightHip, weight: 0.75, label: "hips" },
   torso: { from: MID_HIP, to: MID_SHOULDER, weight: 0.75, label: "torso" },
   neck: { from: MID_SHOULDER, to: LM.nose, weight: 0.5, label: "head" },
+  // Hands and feet: the tracker's detail points are jumpier than the big joints, so they weigh less.
+  // Feet seen from the front are short and noisy (heel to toe points at the camera), so they weigh least.
+  leftHand: { from: LM.leftWrist, to: L_KNUCKLES, weight: 0.5, label: "left hand" },
+  rightHand: { from: LM.rightWrist, to: R_KNUCKLES, weight: 0.5, label: "right hand" },
+  leftFoot: { from: LM.leftHeel, to: LM.leftFootIndex, weight: 0.25, label: "left foot" },
+  rightFoot: { from: LM.rightHeel, to: LM.rightFootIndex, weight: 0.25, label: "right foot" },
 };
 
 export const LIMB_NAMES: readonly string[] = Object.keys(LIMBS);

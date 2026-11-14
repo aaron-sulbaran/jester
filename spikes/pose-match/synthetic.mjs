@@ -55,8 +55,15 @@ export function makeStickPose(spec, options = {}) {
   const headCenter = step(shoulderMid, torsoAngle, SEGMENT.head * s);
   for (let i = 0; i <= 10; i++) p[i] = { x: headCenter.x + (i % 2 ? 0.01 : -0.01) * s, y: headCenter.y };
   // Hands and feet sit just past wrists and ankles.
-  for (const [side, wrist] of [[0, L.leftWrist], [1, L.rightWrist]]) for (const i of [17, 19, 21]) p[i + side] = { ...p[wrist] };
-  for (const [side, ankle] of [[0, L.leftAnkle], [1, L.rightAnkle]]) for (const i of [29, 31]) p[i + side] = { x: p[ankle].x, y: p[ankle].y + 0.01 * s };
+  // Knuckles (index, pinky) continue the forearm; the thumb sits at the wrist. Heel at the ankle, toe just below.
+  for (const [side, wrist, fore] of [[0, L.leftWrist, spec.leftForearm], [1, L.rightWrist, spec.rightForearm]]) {
+    const knuckle = step(p[wrist], fore, 0.05 * s);
+    p[17 + side] = { ...knuckle }; p[19 + side] = { ...knuckle }; p[21 + side] = { ...p[wrist] };
+  }
+  for (const [side, ankle] of [[0, L.leftAnkle], [1, L.rightAnkle]]) {
+    p[29 + side] = { ...p[ankle] };
+    p[31 + side] = { x: p[ankle].x, y: p[ankle].y + 0.03 * s };
+  }
   // Stand the figure on the ground line.
   const lowest = Math.max(p[L.leftAnkle].y, p[L.rightAnkle].y);
   const offsetY = groundY - lowest - 0.02;
@@ -106,11 +113,12 @@ function rotateAround(point, pivot, degrees, aspect) {
   return { ...point, x: pivot.x + (dx * Math.cos(r) - dy * Math.sin(r)) / aspect, y: pivot.y + dx * Math.sin(r) + dy * Math.cos(r) };
 }
 
+// Root, middle, end, then the hand or foot points that ride along with the end.
 const LIMB_CHAINS = [
-  [L.leftShoulder, L.leftElbow, L.leftWrist],
-  [L.rightShoulder, L.rightElbow, L.rightWrist],
-  [L.leftHip, L.leftKnee, L.leftAnkle],
-  [L.rightHip, L.rightKnee, L.rightAnkle],
+  [L.leftShoulder, L.leftElbow, L.leftWrist, [17, 19, 21]],
+  [L.rightShoulder, L.rightElbow, L.rightWrist, [18, 20, 22]],
+  [L.leftHip, L.leftKnee, L.leftAnkle, [29, 31]],
+  [L.rightHip, L.rightKnee, L.rightAnkle, [30, 32]],
 ];
 
 /**
@@ -120,13 +128,15 @@ const LIMB_CHAINS = [
 export function perturbPose(pose, noiseDegrees, t, aspect = 1, seed = 1) {
   if (!noiseDegrees) return pose;
   const out = pose.map((lm) => ({ ...lm }));
-  LIMB_CHAINS.forEach(([root, middle, end], chainIndex) => {
+  LIMB_CHAINS.forEach(([root, middle, end, riders], chainIndex) => {
     const phase = seed * 1.7 + chainIndex * 2.3;
     const upper = noiseDegrees * Math.sin(t * 1.3 + phase);
     const lower = noiseDegrees * 0.8 * Math.sin(t * 1.9 + phase * 1.5);
     out[middle] = rotateAround(out[middle], out[root], upper, aspect);
     out[end] = rotateAround(out[end], out[root], upper, aspect);
+    for (const i of riders) out[i] = rotateAround(out[i], out[root], upper, aspect);
     out[end] = rotateAround(out[end], out[middle], lower, aspect);
+    for (const i of riders) out[i] = rotateAround(out[i], out[middle], lower, aspect);
   });
   return out;
 }

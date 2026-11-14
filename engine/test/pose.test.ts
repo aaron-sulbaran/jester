@@ -64,10 +64,18 @@ test("round: a player 300 ms late is found at the right lag and keeps full timin
   assert.ok(r.score !== null && r.score >= 97, `score ${r.score}`);
 });
 
-test("round: a player 700 ms late loses timing credit", () => {
+test("round: a player 700 ms late (a first-time player on a real webcam) keeps most timing credit", () => {
   const player = timeline(dance, { durationS: 20, transform: mirrorCopy, delayMs: 700 });
   const r = scorePoseRound(ref, player);
   assert.ok(Math.abs(r.lagMs - 700) <= 34, `lag ${r.lagMs}`);
+  assert.ok(r.timing > 0.85, `timing ${r.timing}`);
+  assert.ok(r.score !== null && r.score >= 95, `score ${r.score}`);
+});
+
+test("round: a player 1100 ms late is found and loses timing credit", () => {
+  const player = timeline(dance, { durationS: 20, transform: mirrorCopy, delayMs: 1100 });
+  const r = scorePoseRound(ref, player);
+  assert.ok(Math.abs(r.lagMs - 1100) <= 34, `lag ${r.lagMs}`);
   assert.ok(r.timing < 0.5, `timing ${r.timing}`);
   assert.ok(r.score !== null && r.score < 100);
 });
@@ -107,4 +115,23 @@ test("round: worst limb is named from the player's own side", () => {
   const r = scorePoseRound(ref, player);
   assert.equal(r.worstLimb?.limb, "leftForearm");
   assert.equal(r.worstLimb?.label, "right forearm");
+});
+
+test("hands and feet are scored: a perfect copy covers them", () => {
+  const r = scorePoseRound(ref, timeline(dance, { durationS: 20, transform: mirrorCopy }));
+  for (const limb of ["leftHand", "rightHand", "leftFoot", "rightFoot"]) {
+    assert.ok(r.perLimb[limb], `${limb} missing`);
+    assert.ok(r.perLimb[limb]!.credit > 0.99, `${limb} credit ${r.perLimb[limb]!.credit}`);
+  }
+});
+
+test("hands: a bent wrist is found and named from the player's own side", () => {
+  // Arms right, but the player's hand is bent 70 degrees off the performer's left hand.
+  const player = timeline(dance, { durationS: 20, transform: (p) => mirrorCopy({ ...p, lHand: p.lFore + 70 }) });
+  const r = scorePoseRound(ref, player);
+  assert.ok(r.perLimb.leftHand!.credit < 0.2, `leftHand ${r.perLimb.leftHand!.credit}`);
+  assert.ok(r.perLimb.leftForearm!.credit > 0.99, `leftForearm ${r.perLimb.leftForearm!.credit}`);
+  assert.equal(r.worstLimb?.limb, "leftHand");
+  assert.equal(r.worstLimb?.label, "right hand");
+  assert.ok(r.score !== null && r.score < 100 && r.score > 70, `score ${r.score}`);
 });
