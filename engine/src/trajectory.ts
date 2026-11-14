@@ -114,17 +114,24 @@ export interface PlayerSignals {
   validShare: number;
 }
 
-export function playerSignals(player: PoseTimeline, n: number, mirror: boolean): PlayerSignals {
+export function playerSignals(player: PoseTimeline, n: number, mirror: boolean, bodyPart: BodyPart = "body"): PlayerSignals {
   const aspect = player.source.width / player.source.height;
   const grid = resamplePoses(player.frames, n);
   const vis = (ids: readonly number[]) => grid.filter((l) => l && ids.every((i) => l[i]![2] >= 0.5)).length;
-  // Pick one anchor for the whole round so it never jumps between hips and shoulders.
+  // Pick one anchor for the whole round so it never jumps between hips and shoulders. A chosen body part
+  // (a hand, the head, a foot) is its own anchor; the body's height then plays no part.
+  const part = bodyPart === "body" ? null : BODY_PARTS[bodyPart].landmarks;
   const useHips = vis(MID.hip) >= 0.7 * Math.max(1, vis(MID.shoulder));
-  const anchor = useHips ? MID.hip : MID.shoulder;
-  const useAnkles = vis([LM.leftAnkle, LM.rightAnkle, LM.nose]) >= 0.7 * Math.max(1, vis(anchor));
+  const anchor = part ?? (useHips ? MID.hip : MID.shoulder);
+  const useAnkles = !part && vis([LM.leftAnkle, LM.rightAnkle, LM.nose]) >= 0.7 * Math.max(1, vis(anchor));
 
+  // Unit: torso length. A player at a desk often hides their hips, so fall back to shoulder width.
   const torso = grid.map((l) => (l ? torsoLength(l, aspect) ?? NaN : NaN));
-  const L = median(torso);
+  const shoulders = grid.map((l) => {
+    if (!l || l[LM.leftShoulder]![2] < 0.5 || l[LM.rightShoulder]![2] < 0.5) return NaN;
+    return Math.hypot((l[LM.leftShoulder]![0] - l[LM.rightShoulder]![0]) * aspect, l[LM.leftShoulder]![1] - l[LM.rightShoulder]![1]) * TRAJECTORY.torsoPerShoulderWidth;
+  });
+  const L = Number.isFinite(median(torso)) ? median(torso) : median(shoulders);
   const ax: Signal = [], ay: Signal = [], height: Signal = [];
   let valid = 0;
   for (const l of grid) {
@@ -146,7 +153,8 @@ export function playerSignals(player: PoseTimeline, n: number, mirror: boolean):
   const x = ax.map((v) => (sign * (v - x0)) / scale);
   const y = ay.map((v) => -(v - y0) / scale);
   // Without ankles, a drop of the anchor stands in for crouching: 0.3 torso lengths down reads as 0.85.
-  const h = useAnkles && Number.isFinite(h0) && h0 > 0 ? height.map((v) => v / h0) : y.map((v) => (Number.isFinite(v) ? 1 + Math.min(0, v) / 2 : NaN));
+  const h = part ? y.map(() => NaN)
+    : useAnkles && Number.isFinite(h0) && h0 > 0 ? height.map((v) => v / h0) : y.map((v) => (Number.isFinite(v) ? 1 + Math.min(0, v) / 2 : NaN));
   const bridge = (s: Signal) => bridgeGaps(s, TRAJECTORY.maxBridgeFrames);
   return { x: bridge(x), y: bridge(y), h: bridge(h), validShare: n > 0 ? valid / n : 0 };
 }
@@ -387,15 +395,33 @@ export function matchEvents(ref: readonly MotionEvent[], player: readonly Motion
 
 // ---------- round ----------
 
+/**
+ * What plays the object. "body" is the whole body (hips, or shoulders when hips are hidden). The others
+ * follow one body part; sides are the player's own (MediaPipe's left and right are the person's).
+ * `reach`: how far that part can travel to mirror the object's full range, in torso lengths.
+ */
+export const BODY_PARTS = {
+  body: { label: "Whole body", landmarks: MID.hip, reach: 1.5 },
+  rightHand: { label: "Right hand", landmarks: [LM.rightWrist, 18, 20], reach: 2.5 },
+  leftHand: { label: "Left hand", landmarks: [LM.leftWrist, 17, 19], reach: 2.5 },
+  head: { label: "Head", landmarks: [LM.nose], reach: 1.2 },
+  rightFoot: { label: "Right foot", landmarks: [LM.rightAnkle, 30, 32], reach: 1.5 },
+  leftFoot: { label: "Left foot", landmarks: [LM.leftAnkle, 29, 31], reach: 1.5 },
+} as const satisfies Record<string, { label: string; landmarks: readonly number[]; reach: number }>;
+export type BodyPart = keyof typeof BODY_PARTS;
+
 export interface TrajectoryRoundOptions {
   mirror?: boolean;
+  /** Which part of the player plays the object (default the whole body). */
+  bodyPart?: BodyPart;
 }
 
 export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, options: TrajectoryRoundOptions = {}): TrajectoryRoundResult {
   const lastRef = reference.frames.reduce((m, f) => (Number.isFinite(f.tMs) && f.tMs > m ? f.tMs : m), -1);
   const n = gridLength(lastRef);
   const ref = referenceSignals(reference, n);
-  const ply = playerSignals(player, n, options.mirror ?? true);
+  const bodyPart = options.bodyPart ?? "body";
+  const ply = playerSignals(player, n, options.mirror ?? true, bodyPart);
 
   const base = {
     channel: "trajectory" as const, scorerVersion: SCORER_VERSION, lagMs: 0, timing: 0,
@@ -414,7 +440,8 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
   const axes = {
     x: range(ref.x) >= TRAJECTORY.minRangeX,
     y: range(ref.y) >= TRAJECTORY.minRangeY,
-    h: range(ref.h) >= TRAJECTORY.minRangeY,
+    // A body part cannot get shorter like a ducking object; only the whole body copies height changes.
+    h: bodyPart === "body" && range(ref.h) >= TRAJECTORY.minRangeY,
   };
   const axisList: Axis[] = [];
   const keys = (["x", "y", "h"] as const).filter((k) => axes[k]);
@@ -428,7 +455,7 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
   }
 
   // Events on both sides.
-  const refEvents = detectEvents(ref, REFERENCE_THRESHOLDS);
+  const refEvents = detectEvents(ref, REFERENCE_THRESHOLDS).filter((e) => bodyPart === "body" || e.type !== "crouch");
   const plyEvents = detectEvents(ply, PLAYER_THRESHOLDS);
 
   if (axisList.length === 0 && refEvents.length === 0) return { ...base, axes, score: null, tier: null, failure: "nothing-to-mimic" };
@@ -473,7 +500,7 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
   // laptop, so a slow steady car asks for less than a bouncing ball.
   const refRange = Math.max(range(ref.x), range(ref.y), 1e-6);
   const refRel = rms(refV.x.map((v, i) => Math.hypot(v, refV.y[i]!))) / refRange;
-  const target = Math.min(TRAJECTORY.activityTarget, Math.max(TRAJECTORY.activityTargetMin, refRel * TRAJECTORY.playerReachTorsos));
+  const target = Math.min(TRAJECTORY.activityTarget, Math.max(TRAJECTORY.activityTargetMin, refRel * BODY_PARTS[bodyPart].reach));
   const activityMin = Math.min(TRAJECTORY.activityMin, 0.4 * target);
   const activity = clamp01((playerSpeed - activityMin) / (target - activityMin));
 

@@ -1,12 +1,13 @@
 // Jester app shell, Version 1: one clip, one player, one score.
 // Clip side: ./clip.ts (stand-in). Player side: Lisa's tracker. Score: ../engine.
 
-import { comparePoses, LIMBS, type Landmarks, type LandmarkObject, type PoseRoundResult, type TrajectoryRoundResult } from "../../engine/src/index.ts";
+import { BODY_PARTS, comparePoses, LIMBS, type BodyPart, type Landmarks, type LandmarkObject, type PoseRoundResult, type TrajectoryRoundResult } from "../../engine/src/index.ts";
 import { sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { analyzeVideo, starterClip, type Clip } from "./clip.ts";
 import { cameraPlayer, playObjectRound, playRound, simulatedPlayer, type Player } from "./round.ts";
 import { drawFrame, drawObject, fitCanvas } from "./draw.ts";
 import { OBJECT_NAMES, objectClip, simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
+import { cutFrame, recordReveal, type Cutout } from "./cutout.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clipVideo = $<HTMLVideoElement>("clip");
@@ -48,6 +49,7 @@ function clipPoseAt(ms: number): LandmarkObject[] | null {
 function clipReady(c: Clip, label: string) {
   clip = c;
   objClip = null;
+  $("partRow").classList.add("hidden");
   fitCanvas(clipCanvas, c.width / c.height);
   const found = c.samples.filter((s) => s.landmarks).length;
   setStatus(`${label}: ${(c.durationMs / 1000).toFixed(1)} s, person found in ${found} of ${c.samples.length} samples.`);
@@ -61,6 +63,15 @@ $("demoClip").addEventListener("click", () => {
   clipReady(starterClip(), "Starter clip");
 });
 
+// The body-part picker: chosen before the round starts, shown only for object clips.
+for (const [key, part] of Object.entries(BODY_PARTS)) {
+  const opt = document.createElement("option");
+  opt.value = key;
+  opt.textContent = part.label.toLowerCase() + (key.endsWith("Foot") ? " (keep your feet in view)" : "");
+  $("bodyPart").appendChild(opt);
+}
+const chosenPart = () => $<HTMLSelectElement>("bodyPart").value as BodyPart;
+
 for (const name of OBJECT_NAMES) {
   const b = document.createElement("button");
   b.textContent = name[0]!.toUpperCase() + name.slice(1);
@@ -70,7 +81,8 @@ for (const name of OBJECT_NAMES) {
     clipVideo.removeAttribute("src");
     fitCanvas(clipCanvas, objClip.width / objClip.height);
     $<HTMLProgressElement>("progress").value = 1;
-    setStatus(`Object clip: ${name}, ${objClip.durationMs / 1000} s. ${objClip.hint}`);
+    $("partRow").classList.remove("hidden");
+    setStatus(`Object clip: ${name}, ${objClip.durationMs / 1000} s. Pick what plays the ${name}, then start.`);
     $<HTMLButtonElement>("start").disabled = false;
   });
   $("objectButtons").appendChild(b);
@@ -115,23 +127,71 @@ async function startObjectRound(o: ObjectClip) {
   let player: Player;
   try {
     // In simulated mode the wobble slider stands for effort: 0 is a full copy, 40 is a fifth of the movement.
-    player = simMode() ? simulatedObjectPlayer(o, () => 1 - noise() / 50) : await getCamera();
+    player = simMode() ? simulatedObjectPlayer(o, () => 1 - noise() / 50, chosenPart()) : await getCamera();
   } catch (err) {
     setStatus("Camera did not start: " + (err as Error).message + ". Tick 'Simulated player' to try without one.");
     $<HTMLButtonElement>("start").disabled = false;
     return;
   }
-  setStatus(o.hint);
+  const part = chosenPart();
+  const partName = BODY_PARTS[part].label.toLowerCase();
+  setStatus(part === "body" ? o.hint : `Move your ${partName} like the ${o.name}.`);
   await countdown(3);
   playing = true;
+  // Keep a cutout of the chosen part from every frame, for the replay.
+  const cutouts: Cutout[] = [];
+  player.setCapture?.((f) => {
+    const image = cutFrame(f.source, f.width, f.height, f.landmarks, part, f.mask);
+    if (image) cutouts.push({ clipMs: f.clipMs, image });
+  });
   const round = await playObjectRound(o, player, (f) => {
     lastPlayer = { pose: f.player, aspect: f.playerAspect };
     clipNowMs = Math.max(0, f.clipMs);
-  });
+  }, part);
+  player.setCapture?.(null);
   playing = false;
-  (window as any).__jesterLastRound = { result: round.result, frameCount: round.frames.length };
+  (window as any).__jesterLastRound = { result: round.result, frameCount: round.frames.length, cutouts: cutouts.length };
   showObjectResults(round.result, o);
+  await showReveal(o, cutouts, round.result.lagMs, partName);
   $<HTMLButtonElement>("start").disabled = false;
+}
+
+/** Replay the clip with the player's cutout where the object was, recorded to a downloadable video. */
+async function showReveal(o: ObjectClip, cutouts: Cutout[], lagMs: number, partName: string) {
+  const canvas = $<HTMLCanvasElement>("revealCanvas");
+  const video = $<HTMLVideoElement>("revealVideo");
+  const link = $<HTMLAnchorElement>("revealDownload");
+  if (cutouts.length === 0) { $("reveal").classList.add("hidden"); return; }
+  $("reveal").classList.remove("hidden");
+  $("revealTitle").textContent = `Replay: your ${partName} as the ${o.name}`;
+  canvas.height = Math.round(canvas.width * (o.height / o.width));
+  canvas.classList.remove("hidden"); video.classList.add("hidden"); link.classList.add("hidden");
+  setStatus("Making your replay...");
+  const ctx = canvas.getContext("2d")!;
+  const url = await recordReveal({
+    canvas, durationMs: o.durationMs, lagMs, cutouts, boxAt: o.boxAt,
+    // The clip without the player: here a drawn scene with a faint ghost of the object so the match shows.
+    drawBackground: (_ctx, ms) => {
+      ctx.globalAlpha = 1; drawObject(canvas, null, o.name);
+      ctx.globalAlpha = 0.3; drawObject(canvas, o.boxAt(ms), o.name);
+      ctx.globalAlpha = 1;
+    },
+  });
+  (window as any).__jesterLastReveal = url;
+  if (url) {
+    video.src = url; video.classList.remove("hidden"); canvas.classList.add("hidden");
+    // Recorded WebM has no length in its header, so the seek bar is dead until the browser scans to the
+    // end once. Jump far ahead, then back to the start.
+    video.addEventListener("loadedmetadata", () => {
+      if (video.duration !== Infinity) return;
+      video.currentTime = 1e9;
+      video.addEventListener("timeupdate", () => { video.currentTime = 0; }, { once: true });
+    }, { once: true });
+    link.href = url; link.classList.remove("hidden");
+    setStatus("Replay ready.");
+  } else {
+    setStatus("Replay shown; this browser cannot record it to a file.");
+  }
 }
 
 async function getCamera(): Promise<Player> {
@@ -240,6 +300,7 @@ function showObjectResults(r: TrajectoryRoundResult, o: ObjectClip) {
 }
 
 function showResults(r: PoseRoundResult) {
+  $("reveal").classList.add("hidden");
   $("results").classList.remove("hidden");
   $("live").textContent = "";
   if (r.score == null) {

@@ -4,11 +4,12 @@
 // arrived. The engine's webcam adapter prefers that over `trackerTimeAtClipStartMs`, and it stays right
 // even if the video stalls. Frames before the clip starts are tagged -1 and dropped by the adapter.
 
-import { fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, type PoseRoundResult, type TrajectoryRoundResult, type WebcamFrame, type LandmarkObject } from "../../engine/src/index.ts";
+import { fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, type BodyPart, type PoseRoundResult, type TrajectoryRoundResult, type WebcamFrame, type LandmarkObject } from "../../engine/src/index.ts";
 import { createWebcamTracker as createTrackerJs } from "../../spikes/pose-match/webcam.mjs";
 import { simulatedPlayerPose } from "../../spikes/pose-match/synthetic.mjs";
 import type { Clip } from "./clip.ts";
 import type { ObjectClip } from "./objectClips.ts";
+import type { PersonMask } from "./cutout.ts";
 
 // webcam.mjs is plain JS; TypeScript infers its options from the `= {}` default, so give it the real shape.
 interface Tracker { start(): void; stop(): void; stats: { fps: number; model: string; delegate: string } }
@@ -20,10 +21,15 @@ export interface LiveFrame {
   playerAspect: number;
 }
 
+/** Gets each frame's image, landmarks and person mask, for cutouts. `source` is null for a simulated player. */
+export type CaptureFn = (f: { landmarks: LandmarkObject[]; mask: PersonMask | null; source: CanvasImageSource | null; width: number; height: number; clipMs: number }) => void;
+
 export interface Player {
   /** Starts sending frames; each one goes to `onFrame`. */
   start(onFrame: (f: WebcamFrame) => void, clipClockMs: () => number): void;
   stop(): void;
+  /** Optional: also hand each frame's image and mask to `fn` while a round runs (null turns it off). */
+  setCapture?(fn: CaptureFn | null): void;
 }
 
 /** The real camera, through Lisa's tracker (smoothed pose). */
@@ -33,16 +39,24 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
   await cam.play();
   let sink: ((f: WebcamFrame) => void) | null = null;
   let clock: () => number = () => -1;
+  let capture: CaptureFn | null = null;
   const tracker = await createWebcamTracker({
     video: cam,
     model: "full",
     // Drop the mask and outline: the pose channel does not use them, and a minute of masks is a lot of memory.
-    onFrame: (f: any) => sink?.({ t: f.t, landmarks: f.landmarks, aspect: f.aspect, mirrored: f.mirrored, clipTimeMs: clock() }),
+    onFrame: (f: any) => {
+      if (!sink) return;
+      const clipMs = clock();
+      sink({ t: f.t, landmarks: f.landmarks, aspect: f.aspect, mirrored: f.mirrored, clipTimeMs: clipMs });
+      // The camera element still shows the frame just tracked, so the crop matches these landmarks.
+      if (capture && f.landmarks && clipMs >= 0) capture({ landmarks: f.landmarks, mask: f.mask ?? null, source: cam, width: cam.videoWidth, height: cam.videoHeight, clipMs });
+    },
   });
   tracker.start();
   return {
     start(onFrame, clipClockMs) { sink = onFrame; clock = clipClockMs; },
-    stop() { sink = null; },
+    stop() { sink = null; capture = null; },
+    setCapture(fn) { capture = fn; },
   };
 }
 
@@ -112,7 +126,7 @@ export async function playRound(clip: Clip, video: HTMLVideoElement | null, play
 }
 
 /** An object clip: the player copies the object's movement with their whole body (trajectory channel). */
-export async function playObjectRound(clip: ObjectClip, player: Player, onLive: (f: LiveFrame) => void): Promise<RoundResult<TrajectoryRoundResult>> {
+export async function playObjectRound(clip: ObjectClip, player: Player, onLive: (f: LiveFrame) => void, bodyPart: BodyPart = "body"): Promise<RoundResult<TrajectoryRoundResult>> {
   const frames = await collectFrames(clip.durationMs, null, player, onLive);
-  return { result: scoreTrajectoryRound(clip.track, fromWebcamFrames(frames)), frames };
+  return { result: scoreTrajectoryRound(clip.track, fromWebcamFrames(frames), { bodyPart }), frames };
 }

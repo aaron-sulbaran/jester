@@ -2,9 +2,9 @@
 // (`box-track/1`). The engine scores them with its trajectory channel: the player copies the object
 // with their whole body. These starter objects stand in until the clip side extracts real ones.
 
-import type { BoxTrack, LandmarkObject } from "../../engine/src/index.ts";
+import type { BodyPart, BoxTrack, LandmarkObject } from "../../engine/src/index.ts";
 import { makeStickPose, POSES } from "../../spikes/pose-match/synthetic.mjs";
-import type { Player } from "./round.ts";
+import type { CaptureFn, Player } from "./round.ts";
 
 type Box = { cx: number; cy: number; w: number; h: number };
 
@@ -64,8 +64,15 @@ export function objectClip(name: string): ObjectClip {
  * (smaller steps, as a person in front of a laptop would) and rises when it rises. Emits raw camera
  * coordinates, so it moves the opposite way on x, like a real person seen by an unmirrored camera.
  */
-export function simulatedObjectPlayer(clip: ObjectClip, effort: () => number, lagMs = 150): Player {
+/** Landmarks that move with each body part in the simulated player. */
+const PART_POINTS: Record<Exclude<BodyPart, "body">, number[]> = {
+  rightHand: [16, 18, 20, 22], leftHand: [15, 17, 19, 21], head: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  rightFoot: [28, 30, 32], leftFoot: [27, 29, 31],
+};
+
+export function simulatedObjectPlayer(clip: ObjectClip, effort: () => number, part: BodyPart = "body", lagMs = 150): Player {
   let timer = 0;
+  let capture: CaptureFn | null = null;
   const aspect = 4 / 3;
   let mx = 0, my = 0, count = 0;
   for (let ms = 0; ms <= clip.durationMs; ms += 100) { const b = clip.boxAt(ms); if (b) { mx += b.cx; my += b.cy; count++; } }
@@ -77,12 +84,21 @@ export function simulatedObjectPlayer(clip: ObjectClip, effort: () => number, la
         const b = ms >= 0 ? clip.boxAt(Math.max(0, ms - lagMs)) : null;
         const k = effort();
         let landmarks: LandmarkObject[] | null = null;
-        if (b) landmarks = makeStickPose(POSES.rest, { centerX: 0.5 - (b.cx - mx) * 0.5 * k, groundY: 0.92 + 0.6 * (b.cy - my) * k, aspect }) as LandmarkObject[];
-        else if (ms >= 0) landmarks = makeStickPose(POSES.rest, { aspect }) as LandmarkObject[];
+        if (b && part === "body") {
+          landmarks = makeStickPose(POSES.rest, { centerX: 0.5 - (b.cx - mx) * 0.5 * k, groundY: 0.92 + 0.6 * (b.cy - my) * k, aspect }) as LandmarkObject[];
+        } else if (b) {
+          // Arms up so the hands are free; only the chosen part moves (a hand travels further than a body).
+          const pose = makeStickPose(POSES.armsUp, { aspect }) as LandmarkObject[];
+          const ids = new Set(PART_POINTS[part as Exclude<BodyPart, "body">]);
+          const dx = -(b.cx - mx) * 0.6 * k, dy = (b.cy - my) * 0.6 * k;
+          landmarks = pose.map((l, i) => (ids.has(i) ? { ...l, x: l.x + dx, y: l.y + dy } : l));
+        } else if (ms >= 0) landmarks = makeStickPose(POSES.rest, { aspect }) as LandmarkObject[];
         onFrame({ t: performance.now(), landmarks, aspect, mirrored: false, clipTimeMs: ms });
+        if (capture && landmarks && ms >= 0) capture({ landmarks, mask: null, source: null, width: 640, height: 480, clipMs: ms });
       };
       timer = window.setInterval(loop, 1000 / 30);
     },
-    stop() { clearInterval(timer); },
+    stop() { clearInterval(timer); capture = null; },
+    setCapture(fn) { capture = fn; },
   };
 }
