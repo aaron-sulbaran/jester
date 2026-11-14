@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jester pose-match spike</title>
+<style>
+  :root { --bg: #111318; --panel: #1b1e26; --text: #e8e9ee; --muted: #9aa0ad; --accent: #ffcc33;
+          --perfect: #5cf29a; --great: #59c3ff; --ok: #ffcc33; --miss: #ff5a6a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 12px 20px; background: var(--panel); }
+  header h1 { font-size: 20px; margin: 0 12px 0 0; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 0; background: var(--accent); color: #111; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  label { color: var(--muted); }
+  #status { color: var(--muted); flex: 1; min-width: 240px; }
+  #progress { width: 220px; height: 10px; }
+  main { padding: 16px 20px; }
+  #strip { display: flex; gap: 8px; min-height: 104px; margin-bottom: 12px; }
+  .thumb { background: var(--panel); border-radius: 8px; padding: 4px; text-align: center; font-size: 12px; color: var(--muted); border: 2px solid transparent; }
+  .thumb.next { border-color: var(--accent); }
+  .thumb.Perfect { border-color: var(--perfect); } .thumb.Great { border-color: var(--great); }
+  .thumb.OK { border-color: var(--ok); } .thumb.Miss { border-color: var(--miss); }
+  #stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .view { position: relative; background: #000; border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; }
+  .view video, .view canvas { max-width: 100%; max-height: 100%; display: block; }
+  .tag { position: absolute; top: 8px; left: 10px; font-size: 13px; color: var(--muted); background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 6px; }
+  #rating { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 96px; font-weight: 800; pointer-events: none; text-shadow: 0 4px 24px rgba(0,0,0,0.8); opacity: 0; }
+  #rating.show { animation: pop 0.9s ease-out; }
+  #rating.hold { opacity: 1; }
+  @keyframes pop { 0% { opacity: 0; transform: scale(0.6); } 15% { opacity: 1; transform: scale(1.1); } 70% { opacity: 1; transform: scale(1); } 100% { opacity: 0; } }
+  .Perfect { color: var(--perfect); } .Great { color: var(--great); } .OK { color: var(--ok); } .Miss { color: var(--miss); }
+  #hud { display: flex; gap: 32px; margin-top: 12px; font-size: 22px; }
+  #hud b { font-size: 34px; }
+  #results { margin-top: 16px; background: var(--panel); border-radius: 10px; padding: 16px 20px; }
+  #results h2 { margin: 0 0 8px; font-size: 40px; }
+  #results ol { columns: 2; font-size: 20px; }
+  #feedback { font-size: 22px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Jester: pose-match spike</h1>
+  <label id="fileLabel">Reference clip <input type="file" id="file" accept="video/*"></label>
+  <progress id="progress" max="1" value="0"></progress>
+  <label id="noiseLabel" class="hidden">Simulated player noise <input type="range" id="noise" min="0" max="90" step="1" value="0"> <span id="noiseValue">0</span> deg</label>
+  <label><input type="checkbox" id="mirror" checked> Mirror player</label>
+  <button id="start" type="button" disabled>Start round</button>
+  <div id="status">Pick a video clip of a person moving.</div>
+</header>
+<main>
+  <div id="strip"></div>
+  <div id="stage">
+    <div class="view" id="clipView">
+      <video id="clip" playsinline preload="auto"></video>
+      <canvas id="clipCanvas" class="hidden" width="640" height="480"></canvas>
+      <span class="tag" id="clipTag">Reference clip</span>
+    </div>
+    <div class="view" id="playerViewBox">
+      <canvas id="playerView" width="640" height="480"></canvas>
+      <video id="cam" class="hidden" playsinline muted></video>
+      <span class="tag" id="playerTag">You (mirrored)</span>
+      <div id="rating"></div>
+    </div>
+  </div>
+  <div id="hud">
+    <div>Score <b id="runningScore">0</b></div>
+    <div>Live match <b id="liveMatch">-</b></div>
+    <div>Moment <b id="momentCounter">0 / 0</b></div>
+  </div>
+  <section id="results" class="hidden">
+    <h2 id="total"></h2>
+    <div id="feedback"></div>
+    <ol id="perMoment"></ol>
+    <button id="again" type="button">Play again</button>
+  </section>
+</main>
+
+<script type="module">
+import { comparePoses, mirrorPose, rate, totalScore, feedbackLine, RATING_POINTS } from "./score.mjs";
+import { buildLevel } from "./level.mjs";
+import { makeSequenceTimeline, simulatedPlayerPose, sampleAt, DEMO_SEQUENCE } from "./synthetic.mjs";
+
+// ---- Configuration ----
+const params = new URLSearchParams(location.search);
+const DEMO = params.get("demo") === "1";
+const NOCAM = params.get("nocam") === "1";
+const NUM_POSES = 1; // two players later: set to 2 and score result.landmarks[1] too
+const MP_VERSION = "1.2.3";
+const MP_BUNDLE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@" + MP_VERSION + "/vision_bundle.mjs";
+const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@" + MP_VERSION + "/wasm";
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const ANALYSIS_STEP_SECONDS = 1 / 12;
+const MAX_ANALYSIS_SECONDS = 30;
+const MATCH_WINDOW_SECONDS = 0.4;
+const GHOST_LEAD_SECONDS = 1.5;
+const COUNTDOWN_SECONDS = 3;
+const SIMULATED_LAG_SECONDS = 0.15;
+const DEMO_ASPECT = 4 / 3;
+
+const $ = (id) => document.getElementById(id);
+const clip = $("clip"), clipCanvas = $("clipCanvas"), cam = $("cam"), playerView = $("playerView");
+const clipCtx = clipCanvas.getContext("2d"), playerCtx = playerView.getContext("2d");
+
+// ---- State ----
+let timeline = [];
+let referenceAspect = 1;
+let clipEndSeconds = 0;
+let moments = [];
+let round = null;
+let landmarker = null;
+let delegateInUse = "none";
+let lastDetectTimestamp = 0;
+let cameraAspect = 4 / 3;
+let cameraReady = false;
+let lastCameraTime = -1;
+let lastCameraPose = null;
+
+function setStatus(text) { $("status").textContent = text; }
+
+// ---- MediaPipe, loaded only when a real video or camera needs it ----
+async function ensureLandmarker() {
+  if (landmarker) return landmarker;
+  setStatus("Loading MediaPipe Pose Landmarker...");
+  const mp = await import(MP_BUNDLE);
+  const vision = await mp.FilesetResolver.forVisionTasks(MP_WASM);
+  const options = (delegate) => ({
+    baseOptions: { modelAssetPath: MODEL_URL, delegate },
+    runningMode: "VIDEO",
+    numPoses: NUM_POSES,
+    outputSegmentationMasks: false,
+  });
+  try {
+    landmarker = await mp.PoseLandmarker.createFromOptions(vision, options("GPU"));
+    delegateInUse = "GPU";
+  } catch (gpuError) {
+    console.warn("GPU delegate failed, using CPU", gpuError);
+    landmarker = await mp.PoseLandmarker.createFromOptions(vision, options("CPU"));
+    delegateInUse = "CPU";
+  }
+  return landmarker;
+}
+
+// VIDEO mode needs strictly increasing timestamps across every call on one landmarker.
+function detectPose(source) {
+  const timestamp = Math.max(lastDetectTimestamp + 1, performance.now());
+  lastDetectTimestamp = timestamp;
+  const result = landmarker.detectForVideo(source, timestamp);
+  const first = result.landmarks && result.landmarks[0];
+  return first ? first.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z, visibility: lm.visibility ?? 1 })) : null;
+}
+
+// ---- Drawing ----
+const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
+const VISIBLE = 0.5;
+
+function drawFigure(ctx, pose, width, height, { color, lineWidth, headRadius }) {
+  if (!pose) return;
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lineWidth; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  for (const [a, b] of BONES) {
+    if ((pose[a].visibility ?? 1) < VISIBLE || (pose[b].visibility ?? 1) < VISIBLE) continue;
+    ctx.moveTo(pose[a].x * width, pose[a].y * height);
+    ctx.lineTo(pose[b].x * width, pose[b].y * height);
+  }
+  ctx.stroke();
+  if ((pose[0].visibility ?? 1) >= VISIBLE) {
+    ctx.beginPath(); ctx.arc(pose[0].x * width, pose[0].y * height, headRadius, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+const flipX = (pose) => pose && pose.map((lm) => ({ ...lm, x: 1 - lm.x }));
+const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+function torsoFrame(pose, aspect) {
+  const unit = (lm) => ({ x: lm.x * aspect, y: lm.y });
+  const hip = midpoint(unit(pose[23]), unit(pose[24]));
+  const shoulder = midpoint(unit(pose[11]), unit(pose[12]));
+  const visible = Math.min(pose[11].visibility, pose[12].visibility, pose[23].visibility, pose[24].visibility) >= VISIBLE;
+  return { hip, length: Math.hypot(shoulder.x - hip.x, shoulder.y - hip.y), visible };
+}
+
+// Move and scale the reference pose so its torso sits on the player's torso in the view.
+function alignGhost(referencePose, displayedPlayer, viewAspect) {
+  const ref = torsoFrame(referencePose, referenceAspect);
+  let target = { hip: { x: 0.5 * viewAspect, y: 0.62 }, length: 0.26 };
+  if (displayedPlayer) {
+    const player = torsoFrame(displayedPlayer, viewAspect);
+    if (player.visible && player.length > 0.02) target = player;
+  }
+  const k = target.length / (ref.length || 1);
+  return referencePose.map((lm) => ({
+    ...lm,
+    x: (target.hip.x + (lm.x * referenceAspect - ref.hip.x) * k) / viewAspect,
+    y: target.hip.y + (lm.y - ref.hip.y) * k,
+  }));
+}
+
+function drawThumbnail(canvas, pose) {
+  const ctx = canvas.getContext("2d");
+  const size = canvas.width;
+  const points = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].map((i) => ({ x: pose[i].x * referenceAspect, y: pose[i].y }));
+  const minX = Math.min(...points.map((p) => p.x)), maxX = Math.max(...points.map((p) => p.x));
+  const minY = Math.min(...points.map((p) => p.y)), maxY = Math.max(...points.map((p) => p.y));
+  const k = (size * 0.8) / Math.max(maxX - minX, maxY - minY, 1e-6);
+  const fitted = pose.map((lm) => ({ ...lm, x: (size / 2 + (lm.x * referenceAspect - (minX + maxX) / 2) * k) / size, y: (size / 2 + (lm.y - (minY + maxY) / 2) * k) / size }));
+  ctx.clearRect(0, 0, size, size);
+  drawFigure(ctx, fitted, size, size, { color: "#e8e9ee", lineWidth: 3, headRadius: 5 });
+}
+
+// ---- Reference clip to timeline ----
+function waitFor(element, eventName, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const done = () => { clearTimeout(timer); element.removeEventListener(eventName, done); resolve(); };
+    const timer = setTimeout(done, timeoutMs);
+    element.addEventListener(eventName, done);
+  });
+}
+
+async function analyzeVideoFile(file) {
+  $("start").disabled = true;
+  $("results").classList.add("hidden");
+  clip.src = URL.createObjectURL(file);
+  await waitFor(clip, "loadeddata", 10000);
+  referenceAspect = clip.videoWidth / clip.videoHeight || 16 / 9;
+  clipEndSeconds = Math.min(clip.duration || 0, MAX_ANALYSIS_SECONDS);
+  try { await ensureLandmarker(); }
+  catch (error) { setStatus("Could not load MediaPipe (needs network): " + error.message); return; }
+  timeline = [];
+  const started = performance.now();
+  for (let t = 0; t < clipEndSeconds; t += ANALYSIS_STEP_SECONDS) {
+    clip.currentTime = t;
+    await waitFor(clip, "seeked");
+    timeline.push({ t, landmarks: detectPose(clip) });
+    $("progress").value = t / clipEndSeconds;
+    setStatus("Analyzing clip: " + t.toFixed(1) + " / " + clipEndSeconds.toFixed(1) + " s (" + delegateInUse + ")");
+  }
+  $("progress").value = 1;
+  const found = timeline.filter((s) => s.landmarks).length;
+  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  setStatus("Analyzed " + timeline.length + " frames in " + seconds + " s, person found in " + found + ". Delegate " + delegateInUse + ".");
+  clip.currentTime = 0;
+  finishLevel();
+}
+
+function buildDemoTimeline() {
+  referenceAspect = DEMO_ASPECT;
+  timeline = makeSequenceTimeline(DEMO_SEQUENCE, { idleDegrees: 2, aspect: DEMO_ASPECT });
+  clipEndSeconds = timeline[timeline.length - 1].t;
+  $("progress").value = 1;
+  setStatus("Demo clip: synthetic figure, " + timeline.length + " samples over " + clipEndSeconds.toFixed(1) + " s.");
+  finishLevel();
+}
+
+function finishLevel() {
+  const level = buildLevel(timeline, { aspect: referenceAspect });
+  moments = level.moments;
+  const strip = $("strip");
+  strip.innerHTML = "";
+  moments.forEach((moment, i) => {
+    const box = document.createElement("div");
+    box.className = "thumb"; box.id = "thumb" + i;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 80;
+    drawThumbnail(canvas, moment.landmarks);
+    box.append(canvas, document.createElement("br"), moment.t.toFixed(1) + " s");
+    strip.append(box);
+  });
+  $("momentCounter").textContent = "0 / " + moments.length;
+  $("status").textContent += " Level: " + moments.length + " key moments" + (level.usedFallback ? " (evenly spaced fallback)." : ".");
+  $("start").disabled = moments.length === 0;
+  drawIdle();
+}
+
+// ---- Camera ----
+async function startCamera() {
+  if (cameraReady) return;
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: "user" }, audio: false });
+  cam.srcObject = stream;
+  await cam.play();
+  cameraAspect = cam.videoWidth / cam.videoHeight || 16 / 9;
+  cameraReady = true;
+}
+
+function playerAspect() { return NOCAM ? referenceAspect : cameraAspect; }
+
+function sizePlayerView() {
+  playerView.width = 640;
+  playerView.height = Math.round(640 / playerAspect());
+}
+
+// ---- Round ----
+async function startRound() {
+  $("start").disabled = true;
+  $("results").classList.add("hidden");
+  if (!NOCAM) {
+    try {
+      await ensureLandmarker();
+      await startCamera();
+    } catch (error) {
+      setStatus("Camera or model failed: " + error.message + ". Try ?nocam=1.");
+      $("start").disabled = false;
+      return;
+    }
+  }
+  sizePlayerView();
+  if (!DEMO) { clip.pause(); clip.currentTime = 0; }
+  round = {
+    clipStartPerf: performance.now() + COUNTDOWN_SECONDS * 1000,
+    clipStarted: false,
+    results: moments.map(() => ({ best: null, rating: null })),
+    finished: false,
+  };
+  moments.forEach((_, i) => { $("thumb" + i).className = "thumb"; });
+  $("runningScore").textContent = "0";
+  requestAnimationFrame(frame);
+}
+
+function clipTime() {
+  if (!round) return 0;
+  if (DEMO || !round.clipStarted) return (performance.now() - round.clipStartPerf) / 1000;
+  return clip.currentTime;
+}
+
+function currentPlayerPose(now) {
+  if (NOCAM) {
+    const noiseDegrees = Number($("noise").value);
+    return simulatedPlayerPose(timeline, now, { lagSeconds: SIMULATED_LAG_SECONDS, noiseDegrees, aspect: referenceAspect });
+  }
+  if (cameraReady && cam.readyState >= 2 && cam.currentTime !== lastCameraTime) {
+    lastCameraTime = cam.currentTime;
+    lastCameraPose = detectPose(cam);
+  }
+  return lastCameraPose;
+}
+
+function showRating(text, hold = false) {
+  const el = $("rating");
+  el.textContent = text;
+  el.className = "";
+  void el.offsetWidth; // restart the animation
+  el.className = (hold ? "hold " : "show ") + (RATING_POINTS[text] !== undefined ? text : "");
+}
+
+function frame() {
+  if (!round || round.finished) return;
+  const now = clipTime();
+  if (now >= 0 && !round.clipStarted) {
+    round.clipStarted = true;
+    if (!DEMO) clip.play().catch(() => { clip.muted = true; clip.play(); });
+  }
+  if (now < 0) showRating(String(Math.ceil(-now)), true);
+  else if ($("rating").classList.contains("hold")) $("rating").className = "";
+
+  const rawPlayer = now >= -1 ? currentPlayerPose(Math.max(now, 0)) : null;
+  const options = { mirror: $("mirror").checked, referenceAspect, playerAspect: playerAspect() };
+  let live = null;
+  let nextIndex = -1;
+  moments.forEach((moment, i) => {
+    const result = round.results[i];
+    if (result.rating) return;
+    if (nextIndex < 0) nextIndex = i;
+    if (rawPlayer && Math.abs(now - moment.t) <= MATCH_WINDOW_SECONDS) {
+      const comparison = comparePoses(moment.landmarks, rawPlayer, options);
+      live = comparison.score;
+      if (comparison.score != null && (!result.best || comparison.score > result.best.score)) result.best = comparison;
+    }
+    if (now > moment.t + MATCH_WINDOW_SECONDS) {
+      result.rating = rate(result.best && result.best.score);
+      showRating(result.rating);
+      $("thumb" + i).className = "thumb " + result.rating;
+      const done = round.results.filter((r) => r.rating).map((r) => r.rating);
+      $("runningScore").textContent = String(totalScore(done));
+      $("momentCounter").textContent = done.length + " / " + moments.length;
+    }
+  });
+  if (nextIndex >= 0) {
+    const thumb = $("thumb" + nextIndex);
+    if (thumb && !thumb.classList.contains("next")) thumb.classList.add("next");
+  }
+  $("liveMatch").textContent = live == null ? "-" : Math.round(live * 100) + "%";
+
+  drawClip(now);
+  drawPlayerView(now, rawPlayer, nextIndex);
+
+  const allRated = round.results.every((r) => r.rating);
+  if (allRated || now > clipEndSeconds + 1) { finishRound(); return; }
+  requestAnimationFrame(frame);
+}
+
+function drawClip(now) {
+  if (!DEMO) {
+    if (now > clipEndSeconds && !clip.paused) clip.pause();
+    return;
+  }
+  const w = clipCanvas.width, h = clipCanvas.height;
+  clipCtx.fillStyle = "#20242e"; clipCtx.fillRect(0, 0, w, h);
+  clipCtx.fillStyle = "#2c3240"; clipCtx.fillRect(0, h * 0.9, w, h * 0.1);
+  const sample = sampleAt(timeline, Math.max(0, Math.min(now, clipEndSeconds)));
+  drawFigure(clipCtx, sample && sample.landmarks, w, h, { color: "#ffcc33", lineWidth: 10, headRadius: 22 });
+  clipCtx.fillStyle = "#9aa0ad"; clipCtx.font = "16px system-ui";
+  clipCtx.fillText("t = " + Math.max(0, now).toFixed(2) + " s", 12, h - 14);
+}
+
+function drawPlayerView(now, rawPlayer, nextIndex) {
+  const w = playerView.width, h = playerView.height;
+  const ctx = playerCtx;
+  if (!NOCAM && cameraReady) {
+    ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1); ctx.drawImage(cam, 0, 0, w, h); ctx.restore();
+    ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(0, 0, w, h);
+  } else {
+    ctx.fillStyle = "#15181f"; ctx.fillRect(0, 0, w, h);
+  }
+  const displayedPlayer = flipX(rawPlayer); // the view is a mirror, so flip the raw landmarks to match it
+  if (nextIndex >= 0) {
+    const moment = moments[nextIndex];
+    const untilHit = moment.t - now;
+    if (untilHit <= GHOST_LEAD_SECONDS && untilHit >= -MATCH_WINDOW_SECONDS) {
+      const ghostSource = $("mirror").checked ? moment.landmarks : mirrorPose(moment.landmarks);
+      const ghost = alignGhost(ghostSource, displayedPlayer, playerAspect());
+      const inWindow = Math.abs(untilHit) <= MATCH_WINDOW_SECONDS;
+      drawFigure(ctx, ghost, w, h, { color: inWindow ? "rgba(92,242,154,0.45)" : "rgba(255,255,255,0.32)", lineWidth: 26, headRadius: 30 });
+      const torso = torsoFrame(ghost, 1);
+      const center = { x: torso.hip.x * w, y: (torso.hip.y - torso.length * 0.5) * h };
+      const progress = Math.max(0, untilHit) / GHOST_LEAD_SECONDS;
+      ctx.strokeStyle = inWindow ? "#5cf29a" : "#ffcc33"; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(center.x, center.y, torso.length * h * 0.9 + progress * h * 0.6, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#ffcc33"; ctx.fillRect(0, h - 8, w * progress, 8);
+    }
+  }
+  drawFigure(ctx, displayedPlayer, w, h, { color: "#59c3ff", lineWidth: 5, headRadius: 10 });
+}
+
+function finishRound() {
+  round.finished = true;
+  if (!DEMO) clip.pause();
+  const ratings = round.results.map((r) => r.rating || "Miss");
+  $("total").textContent = "Total " + totalScore(ratings) + " / 100";
+  $("feedback").textContent = feedbackLine(round.results.map((r) => r.best));
+  const list = $("perMoment");
+  list.innerHTML = "";
+  ratings.forEach((rating, i) => {
+    const item = document.createElement("li");
+    const best = round.results[i].best;
+    item.innerHTML = '<span class="' + rating + '">' + rating + "</span> at " + moments[i].t.toFixed(1) + " s" + (best ? " (" + Math.round(best.score * 100) + "%)" : " (no body seen)");
+    list.append(item);
+  });
+  $("results").classList.remove("hidden");
+  $("start").disabled = false;
+  window.lastRound = { ratings, total: totalScore(ratings) }; // handy for automated checks
+}
+
+function drawIdle() {
+  sizePlayerView();
+  drawClip(0);
+  drawPlayerView(0, NOCAM ? simulatedPlayerPose(timeline, 0, { aspect: referenceAspect }) : null, -1);
+}
+
+// ---- Wiring ----
+$("file").addEventListener("change", (event) => { const file = event.target.files[0]; if (file) analyzeVideoFile(file); });
+$("start").addEventListener("click", startRound);
+$("again").addEventListener("click", startRound);
+$("noise").addEventListener("input", () => { $("noiseValue").textContent = $("noise").value; });
+if (NOCAM) { $("noiseLabel").classList.remove("hidden"); $("playerTag").textContent = "Simulated player (mirrored)"; }
+if (DEMO) {
+  $("fileLabel").classList.add("hidden");
+  clip.classList.add("hidden");
+  clipCanvas.classList.remove("hidden");
+  $("clipTag").textContent = "Demo clip (synthetic)";
+  buildDemoTimeline();
+}
+</script>
+</body>
+</html>

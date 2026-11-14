@@ -1,0 +1,3 @@
+// Lets `node --test spikes/pose-match/` work: Node resolves the folder to this file.
+import "./score.test.mjs";
+import "./level.test.mjs";
