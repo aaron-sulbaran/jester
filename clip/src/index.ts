@@ -10,3 +10,10 @@ export { checkClip, checkSubject } from "./rules.ts";
 export type { Verdict } from "./rules.ts";
 export { keyMoments, paceOf } from "./moments.ts";
 export { buildGuide } from "./guide.ts";
+export {
+  linkThings, withoutPeople, rankThings, thingMotionPerFrame, thingMoves, thingName, thingPace,
+  boxPolygon, buildThingGuide, thingGuides, THING_STILL,
+} from "./things.ts";
+export type {
+  ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingOutlineFrame, ThingGuide, ThingLinkOptions,
+} from "./things.ts";
