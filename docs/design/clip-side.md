@@ -1,6 +1,6 @@
 # Clip side design: the tracker measures, an AI model directs
 
-Status: proposed Saturday Nov 14, 5:30 PM Eastern. Waiting on Aaron's approval. Owner: Aaron.
+Status: Aaron said to start the build of the extraction (stages 0 to 5 for people) on Saturday Nov 14 at 6:20 PM Eastern. The AI check and the path for non-people wait. Owner: Aaron.
 
 ## Why
 
@@ -90,7 +90,8 @@ interface ClipCheck {
 
 ## Where the code lives (my calls)
 
-- `clip/` beside `engine/`, same habits: TypeScript, pure modules with tests run by Node (linking boxes into tracks, cut detection, ranking, refusal rules, key moments, pace), and a `browser/` folder for decoding, the detectors, and the worker.
+- `clip/` beside `engine/`, same habits: TypeScript, pure modules with tests run by Node (linking boxes into tracks, cut detection, ranking, refusal rules, key moments, pace). Browser work (hashing, saving, decoding, the detectors) lives in `app/src/clipside/`, where the app's packages resolve.
+- Version 1 runs on the page and yields between frames. The worker and the 30 per second second pass come after it. The build plan is `docs/design/clip-side-plan.md`.
 - `app/src/clip.ts` becomes a thin caller. `Clip` keeps `samples`, `videoUrl` and `timeline`, and gains `guide`, so Alex's shell keeps working. For a subject that is not a person, `timeline` is empty and the round picks the scorer from `guide.channel`; that is a small change in `app/src/round.ts` in version 2, pulsed to Alex first.
 - `app/api/clip-check.ts`: the one server function, a Vercel function beside the static build (the app has no server today). It holds the API key, which Aaron sets in the host's settings with a spend limit and which never enters the repo. It accepts at most 16 images of 200 KB each, checks the page's origin, and limits calls per address and per day.
 - AI provider: open, Aaron's call before version 2. Claude through the official SDK needs an API key with credits. Gemini has a free tier, takes the video itself, and counts for the MLH prize. Either way the answer is forced into the form's shape and the function hides the provider.
