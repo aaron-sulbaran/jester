@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.6.0";
+export const SCORER_VERSION = "jester-engine/0.7.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -143,13 +143,13 @@ export const TRAJECTORY = {
   activityMin: 0.3,
   /**
    * ... and full credit at a target speed: the object's speed across its own range of travel (per second)
-   * times playerReachTorsos, kept between activityTargetMin and activityTarget. 0.6.0: was half the
+   * times the body part's reach (BODY_PARTS in trajectory.ts), kept between activityTargetMin and activityTarget. 0.6.0: was half the
    * object's speed in its own box heights, which a small fast object made impossible.
    */
   activityTarget: 0.8,
   activityTargetMin: 0.25,
-  /** How far a player in front of a laptop can travel to mirror an object's full range, in torso lengths. */
-  playerReachTorsos: 1.5,
+  /** 0.7.0: when hips are hidden (at a desk), torso length is estimated as shoulder width times this. */
+  torsoPerShoulderWidth: 1.4,
   /** 0.6.0: the reference unit is the box height, but never under this share of the frame height (a small ball). */
   minReferenceUnit: 0.25,
   /** Event matching window (ms) after the global lag. */

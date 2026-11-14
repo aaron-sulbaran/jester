@@ -101,3 +101,48 @@ test("objects: chance does not reward any rhythm on a rhythmic clip", () => {
   const wrongTempo = (t: number) => ({ ...STAND, cy: STAND.cy - 0.15 * Math.abs(Math.sin((Math.PI * t) / 0.7)) });
   assert.ok(score(ball, wrongTempo) <= 40, `wrong tempo ${score(ball, wrongTempo)}`);
 });
+
+// ---- A body part plays the object (0.7.0) ----
+
+/** Move the given landmark indices by the object's motion (raw camera: x opposite), leave the rest still. */
+function partFollows(obj: (t: number) => Box, ids: readonly number[], { hide = [] as readonly number[] } = {}) {
+  let mx = 0, my = 0;
+  for (let t = 0; t < 20; t += 0.1) { mx += obj(t).cx; my += obj(t).cy; }
+  mx /= 200; my /= 200;
+  const raised = { ...STAND, rUpper: -150, rFore: -170, lUpper: 150, lFore: 170 }; // arms up, hands free to move
+  const tl = timeline(() => raised, { durationS: 20 });
+  return {
+    ...tl,
+    frames: tl.frames.map((f) => {
+      const b = obj(f.tMs / 1000);
+      const dx = -(b.cx - mx) * 0.6, dy = (b.cy - my) * 0.6;
+      return { ...f, landmarks: f.landmarks!.map((l, k) => (hide.includes(k) ? ([l[0], l[1], 0] as const) : ids.includes(k) ? ([l[0] + dx, l[1] + dy, l[2]] as const) : l)) };
+    }),
+  };
+}
+const RIGHT_HAND = [16, 18, 20, 22], LEFT_HAND = [15, 17, 19, 21];
+
+test("body part: a right hand bouncing with the ball scores well as the right hand, not as the body", () => {
+  const player = partFollows(ball, RIGHT_HAND);
+  const asHand = scoreTrajectoryRound(boxTrack(ball, 20), player, { bodyPart: "rightHand" });
+  const asBody = scoreTrajectoryRound(boxTrack(ball, 20), player, { bodyPart: "body" });
+  assert.ok(asHand.score !== null && asHand.score >= 85, `hand ${asHand.score}`);
+  assert.ok(asBody.score !== null && asBody.score <= 10, `body ${asBody.score}`);
+});
+
+test("body part: moving the other hand does not count", () => {
+  const r = scoreTrajectoryRound(boxTrack(car, 20), partFollows(car, LEFT_HAND), { bodyPart: "rightHand" });
+  assert.ok(r.score !== null && r.score <= 10, `wrong hand ${r.score}`);
+});
+
+test("body part: works seated, with hips and legs out of view", () => {
+  const hidden = [23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+  const r = scoreTrajectoryRound(boxTrack(pendulum, 20), partFollows(pendulum, RIGHT_HAND, { hide: hidden }), { bodyPart: "rightHand" });
+  assert.equal(r.failure, null);
+  assert.ok(r.score !== null && r.score >= 85, `seated hand ${r.score}`);
+});
+
+test("body part: the head follows a car when the whole body steps", () => {
+  const r = scoreTrajectoryRound(boxTrack(car, 20), timeline(follow(car), { durationS: 20 }), { bodyPart: "head" });
+  assert.ok(r.score !== null && r.score >= 85, `head ${r.score}`);
+});

@@ -18,3 +18,6 @@ figcaption { position: absolute; top: 8px; left: 10px; font-size: 0.9rem; backgr
 table { border-collapse: collapse; margin: 8px 0 16px; }
 td { padding: 2px 12px 2px 0; }
 .bar { display: inline-block; height: 8px; background: #f5c542; border-radius: 4px; }
+#revealCanvas, #revealVideo { width: 100%; max-width: 640px; display: block; border-radius: 10px; background: #000; }
+#revealDownload { color: #f5c542; }
+select { background: #15131a; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 4px 8px; }
