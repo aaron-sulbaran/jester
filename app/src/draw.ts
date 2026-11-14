@@ -44,3 +44,22 @@ export function drawFrame(
   }
   ctx.restore();
 }
+
+/** An object clip's subject: a filled shape at its box, on a plain background. */
+export function drawObject(canvas: HTMLCanvasElement, box: { cx: number; cy: number; w: number; h: number } | null, name: string) {
+  const ctx = canvas.getContext("2d")!;
+  const { width: w, height: h } = canvas;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "#333";
+  ctx.beginPath(); ctx.moveTo(0, h * 0.8); ctx.lineTo(w, h * 0.8); ctx.stroke();
+  if (!box) return;
+  ctx.fillStyle = "#f5c542";
+  const x = box.cx * w, y = box.cy * h, bw = box.w * w, bh = box.h * h;
+  if (name === "car") {
+    ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh * 0.7);
+    ctx.beginPath(); ctx.arc(x - bw * 0.3, y + bh * 0.3, bh * 0.2, 0, Math.PI * 2); ctx.arc(x + bw * 0.3, y + bh * 0.3, bh * 0.2, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.ellipse(x, y, bw / 2, bh / 2, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}

@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.5.0";
+export const SCORER_VERSION = "jester-engine/0.6.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -139,8 +139,19 @@ export const TRAJECTORY = {
   continuousWeight: 0.6,
   shortClipFrames: 500,
   continuousWeightShort: 0.4,
-  /** Activity: player RMS speed (body units / s) below `activityMin` gives no continuous credit. */
+  /** Activity: player RMS speed (torso lengths / s) below `activityMin` gives no continuous credit... */
   activityMin: 0.3,
+  /**
+   * ... and full credit at a target speed: the object's speed across its own range of travel (per second)
+   * times playerReachTorsos, kept between activityTargetMin and activityTarget. 0.6.0: was half the
+   * object's speed in its own box heights, which a small fast object made impossible.
+   */
+  activityTarget: 0.8,
+  activityTargetMin: 0.25,
+  /** How far a player in front of a laptop can travel to mirror an object's full range, in torso lengths. */
+  playerReachTorsos: 1.5,
+  /** 0.6.0: the reference unit is the box height, but never under this share of the frame height (a small ball). */
+  minReferenceUnit: 0.25,
   /** Event matching window (ms) after the global lag. */
   matchWindowMs: 250,
   /** Same-type events closer than this are merged (ms). */
@@ -158,6 +169,7 @@ export const EVENTS = {
   refJumpMinApex: 0.3,
   jumpLandMargin: 0.05,
   jumpMinMs: 150,
+  /** 0.6.0: the longest a jump may stay in the upper half of its rise (standing up and staying up is longer). */
   jumpMaxMs: 1200,
   playerCrouchEnter: 0.85,
   playerCrouchExit: 0.92,

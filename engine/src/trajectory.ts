@@ -164,13 +164,16 @@ export function referenceSignals(track: BoxTrack, n: number): ReferenceSignals {
   const H = median(boxes.map((b) => (b ? b.h : NaN)));
   const cx = boxes.map((b) => (b ? b.cx * aspect : NaN));
   const cy = boxes.map((b) => (b ? b.cy : NaN));
-  const scale = Number.isFinite(H) && H > 0 ? H : 1;
+  // A small object (a ball) crossing the frame would be dozens of its own heights; floor the unit so its
+  // motion stays on the scale a person can match with their body.
+  const scale = Math.max(Number.isFinite(H) && H > 0 ? H : 1, TRAJECTORY.minReferenceUnit);
   const x0 = median(cx), y0 = median(cy);
   const bridge = (s: Signal) => bridgeGaps(s, TRAJECTORY.maxBridgeFrames);
   return {
     x: bridge(cx.map((v) => (v - x0) / scale)),
     y: bridge(cy.map((v) => -(v - y0) / scale)),
-    h: bridge(boxes.map((b) => (b ? b.h / scale : NaN))),
+    // Height ratio stays relative to the box's own usual height (a duck is the box getting shorter).
+    h: bridge(boxes.map((b) => (b ? b.h / (Number.isFinite(H) && H > 0 ? H : 1) : NaN))),
     validShare: n > 0 ? boxes.filter((b) => b).length / n : 0,
   };
 }
@@ -232,10 +235,6 @@ function circularShift(s: Signal, k: number): Signal {
 
 // ---------- events ----------
 
-function runningBaseline(s: Signal, half: number): Signal {
-  return s.map((_, i) => median(s.slice(Math.max(0, i - half), Math.min(s.length, i + half + 1))));
-}
-
 function msToFrames(ms: number): number {
   return Math.round(ms / GRID_MS);
 }
@@ -263,25 +262,53 @@ export function detectEvents(sig: { x: Signal; y: Signal; h: Signal }, t: EventT
   const y = smooth(sig.y, TRAJECTORY.smoothFrames);
   const h = smooth(sig.h, TRAJECTORY.smoothFrames);
   const vx = velocity(x), vy = velocity(y);
-  const base = runningBaseline(y, EVENTS.baselineFrames);
   const events: MotionEvent[] = [];
   const n = y.length;
 
-  // Jumps: start on fast rise above baseline, apex at the highest point, end on landing.
-  for (let i = 0; i < n; i++) {
-    const yi = y[i]!, bi = base[i]!, v = vy[i]!;
-    if (!Number.isFinite(yi) || !Number.isFinite(bi) || !Number.isFinite(v)) continue;
-    if (v > EVENTS.jumpStartSpeed && yi - bi > t.jumpStart) {
-      const b0 = bi;
-      let apex = i, j = i;
-      while (j < n && Number.isFinite(y[j]!) && y[j]! - b0 >= EVENTS.jumpLandMargin) {
-        if (y[j]! > y[apex]!) apex = j;
-        j++;
+  // Jumps: an up-then-down excursion. Turning points come from a zigzag with a minimum swing, so the
+  // shape decides, not a ground level (a ball is mostly in the air; a player who also ducks has two floors).
+  // A jump is a high point at least jumpMinApex above the low before it, falling back at least half that,
+  // with the two lows within the allowed duration and a fast enough rise.
+  const turns: { i: number; high: boolean }[] = [];
+  {
+    const swing = t.jumpMinApex * 0.5;
+    let dir = 0, ext = -1, lo = -1, hi = -1;
+    for (let i = 0; i < n; i++) {
+      const yi = y[i]!;
+      if (!Number.isFinite(yi)) { dir = 0; ext = lo = hi = -1; continue; }
+      if (lo < 0) { lo = hi = ext = i; continue; }
+      if (dir === 0) {
+        if (yi > y[hi]!) hi = i;
+        if (yi < y[lo]!) lo = i;
+        if (y[hi]! - yi >= swing) { turns.push({ i: hi, high: true }); dir = -1; ext = i; }
+        else if (yi - y[lo]! >= swing) { turns.push({ i: lo, high: false }); dir = 1; ext = i; }
+      } else if (dir === 1) {
+        if (yi > y[ext]!) ext = i;
+        else if (y[ext]! - yi >= swing) { turns.push({ i: ext, high: true }); dir = -1; ext = i; }
+      } else {
+        if (yi < y[ext]!) ext = i;
+        else if (yi - y[ext]! >= swing) { turns.push({ i: ext, high: false }); dir = 1; ext = i; }
       }
-      const dur = (j - i) * GRID_MS;
-      if (y[apex]! - b0 >= t.jumpMinApex && dur >= EVENTS.jumpMinMs && dur <= EVENTS.jumpMaxMs) events.push({ type: "jump", frame: apex });
-      i = j;
     }
+    if (dir !== 0) turns.push({ i: ext, high: dir === 1 });
+  }
+  for (let k = 1; k + 1 < turns.length; k++) {
+    const a = turns[k - 1]!, m = turns[k]!, b = turns[k + 1]!;
+    if (!m.high || a.high || b.high) continue;
+    const base = Math.max(y[a.i]!, y[b.i]!);
+    const rise = y[m.i]! - base;
+    if (rise < t.jumpMinApex) continue;
+    // Air time: how long the excursion stays in its upper half around the apex. Lows on either side can be
+    // far away (a player who ducks between jumps), so they do not set the duration.
+    const half = y[m.i]! - 0.5 * rise;
+    let s0 = m.i, s1 = m.i;
+    while (s0 > a.i && y[s0 - 1]! >= half) s0--;
+    while (s1 < b.i && y[s1 + 1]! >= half) s1++;
+    const dur = (s1 - s0 + 1) * GRID_MS;
+    if (dur < EVENTS.jumpMinMs / 2 || dur > EVENTS.jumpMaxMs) continue;
+    let vmax = 0;
+    for (let i = a.i; i <= m.i; i++) if (Number.isFinite(vy[i]!) && vy[i]! > vmax) vmax = vy[i]!;
+    if (vmax >= EVENTS.jumpStartSpeed) events.push({ type: "jump", frame: m.i });
   }
 
   // Crouches: hysteresis on the height ratio.
@@ -308,7 +335,8 @@ export function detectEvents(sig: { x: Signal; y: Signal; h: Signal }, t: EventT
     const startX = x[Math.max(0, i - 1)]!, endX = x[Math.min(n - 1, j)]!;
     const disp = endX - startX;
     if (Number.isFinite(disp) && Math.abs(disp) >= t.moveMin && (j - i) * GRID_MS >= EVENTS.moveMinMs) {
-      events.push({ type: disp > 0 ? "moveRight" : "moveLeft", frame: peak });
+      // Timed at the start of the move: a long steady move (a car) has no clear peak to line up.
+      events.push({ type: disp > 0 ? "moveRight" : "moveLeft", frame: i });
     }
     i = j;
   }
@@ -418,9 +446,15 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
       for (let k = 1; k <= TRAJECTORY.surrogateCount; k++) {
         const shift = Math.round((k * n) / (TRAJECTORY.surrogateCount + 1));
         if (shift < TRAJECTORY.minSurrogateShiftFrames || n - shift < TRAJECTORY.minSurrogateShiftFrames) continue;
+        // Score the shifted player at the lag already found (plus the usual slack). Searching lags again
+        // would let any rhythmic motion (a ball, a pendulum) line back up and look like a real copy.
         const shifted = axisList.map((a) => circularShift(a.player, shift));
-        const s = bestLag((l) => combinedZ(axisList, l, n, shifted));
-        if (s) { rsum += Math.tanh(s.value); rc++; }
+        let bestZ: number | null = null;
+        for (let d = -LAG.slackFrames; d <= LAG.slackFrames; d++) {
+          const z = combinedZ(axisList, lag + d, n, shifted);
+          if (z !== null && (bestZ === null || z > bestZ)) bestZ = z;
+        }
+        if (bestZ !== null) { rsum += Math.tanh(bestZ); rc++; }
       }
       chance = rc > 0 ? rsum / rc : 0;
       const denom = TRAJECTORY.goodCorrelation - chance;
@@ -433,9 +467,15 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
 
   // Activity: a player who barely moves earns no continuous credit.
   const playerSpeed = rms(plyV.x.map((v, i) => Math.hypot(v, plyV.y[i]!)));
-  const refSpeed = rms(refV.x.map((v, i) => Math.hypot(v, refV.y[i]!)));
-  const target = Math.max(0.5 * refSpeed, TRAJECTORY.activityMin + 0.2);
-  const activity = clamp01((playerSpeed - TRAJECTORY.activityMin) / (target - TRAJECTORY.activityMin));
+  // Effort is judged in the player's own units (torso lengths per second), never against the object's
+  // speed in its own sizes: a small fast object would ask for more than any body can do. The target follows
+  // how quickly the object crosses its own range of travel, applied to the room a player has in front of a
+  // laptop, so a slow steady car asks for less than a bouncing ball.
+  const refRange = Math.max(range(ref.x), range(ref.y), 1e-6);
+  const refRel = rms(refV.x.map((v, i) => Math.hypot(v, refV.y[i]!))) / refRange;
+  const target = Math.min(TRAJECTORY.activityTarget, Math.max(TRAJECTORY.activityTargetMin, refRel * TRAJECTORY.playerReachTorsos));
+  const activityMin = Math.min(TRAJECTORY.activityMin, 0.4 * target);
+  const activity = clamp01((playerSpeed - activityMin) / (target - activityMin));
 
   const { matches, extras, f1 } = matchEvents(refEvents, plyEvents, lag);
   const lagMs = Math.round(lag * GRID_MS);

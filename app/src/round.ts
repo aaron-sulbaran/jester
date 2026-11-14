@@ -4,10 +4,11 @@
 // arrived. The engine's webcam adapter prefers that over `trackerTimeAtClipStartMs`, and it stays right
 // even if the video stalls. Frames before the clip starts are tagged -1 and dropped by the adapter.
 
-import { fromWebcamFrames, scorePoseRound, type PoseRoundResult, type WebcamFrame, type LandmarkObject } from "../../engine/src/index.ts";
+import { fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, type PoseRoundResult, type TrajectoryRoundResult, type WebcamFrame, type LandmarkObject } from "../../engine/src/index.ts";
 import { createWebcamTracker as createTrackerJs } from "../../spikes/pose-match/webcam.mjs";
 import { simulatedPlayerPose } from "../../spikes/pose-match/synthetic.mjs";
 import type { Clip } from "./clip.ts";
+import type { ObjectClip } from "./objectClips.ts";
 
 // webcam.mjs is plain JS; TypeScript infers its options from the `= {}` default, so give it the real shape.
 interface Tracker { start(): void; stop(): void; stats: { fps: number; model: string; delegate: string } }
@@ -67,39 +68,51 @@ export function simulatedPlayer(clip: Clip, noiseDegrees: () => number, seated =
   };
 }
 
-export interface RoundResult {
-  result: PoseRoundResult;
+export interface RoundResult<R = PoseRoundResult> {
+  result: R;
   frames: WebcamFrame[];
 }
 
 /**
- * Play the clip once while collecting frames. `video` is the clip's video element, or null for the
- * starter clip (then the clock is wall time from the start).
+ * Collect the player's frames for one play of a clip. `video` is the clip's video element, or null for a
+ * clip with no video (then the clock is wall time from the start and the round lasts `durationMs`).
  */
-export function playRound(clip: Clip, video: HTMLVideoElement | null, player: Player, onLive: (f: LiveFrame) => void): Promise<RoundResult> {
+function collectFrames(durationMs: number, video: HTMLVideoElement | null, player: Player, onLive: (f: LiveFrame) => void): Promise<WebcamFrame[]> {
   return new Promise((resolve) => {
     const frames: WebcamFrame[] = [];
     const started = performance.now();
     const clock = video
       ? () => (video.paused && video.currentTime === 0 ? -1 : video.currentTime * 1000)
       : () => performance.now() - started;
-
+    let done = false;
     const finish = () => {
+      if (done) return;
+      done = true;
       player.stop();
-      const playerTimeline = fromWebcamFrames(frames);
-      resolve({ result: scorePoseRound(clip.timeline, playerTimeline), frames });
+      resolve(frames);
     };
-
     player.start((f) => {
+      if (done) return;
       frames.push(f);
       onLive({ clipMs: f.clipTimeMs ?? -1, player: (f.landmarks as LandmarkObject[] | null) ?? null, playerAspect: f.aspect });
-      if (!video && (f.clipTimeMs ?? 0) >= clip.durationMs) finish();
+      if (!video && (f.clipTimeMs ?? 0) >= durationMs) finish();
     }, clock);
-
     if (video) {
       video.currentTime = 0;
       video.addEventListener("ended", finish, { once: true });
       void video.play();
     }
   });
+}
+
+/** A person clip: limb-by-limb pose scoring. */
+export async function playRound(clip: Clip, video: HTMLVideoElement | null, player: Player, onLive: (f: LiveFrame) => void): Promise<RoundResult> {
+  const frames = await collectFrames(clip.durationMs, video, player, onLive);
+  return { result: scorePoseRound(clip.timeline, fromWebcamFrames(frames)), frames };
+}
+
+/** An object clip: the player copies the object's movement with their whole body (trajectory channel). */
+export async function playObjectRound(clip: ObjectClip, player: Player, onLive: (f: LiveFrame) => void): Promise<RoundResult<TrajectoryRoundResult>> {
+  const frames = await collectFrames(clip.durationMs, null, player, onLive);
+  return { result: scoreTrajectoryRound(clip.track, fromWebcamFrames(frames)), frames };
 }
