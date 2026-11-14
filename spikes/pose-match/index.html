@@ -81,6 +81,7 @@
 <script type="module">
 import { comparePoses, mirrorPose, rate, totalScore, feedbackLine, RATING_POINTS } from "./score.mjs";
 import { buildLevel } from "./level.mjs";
+import { PoseSmoother } from "./webcam.mjs";
 import { makeSequenceTimeline, simulatedPlayerPose, sampleAt, DEMO_SEQUENCE } from "./synthetic.mjs";
 
 // ---- Configuration ----
@@ -117,6 +118,7 @@ let cameraAspect = 4 / 3;
 let cameraReady = false;
 let lastCameraTime = -1;
 let lastCameraPose = null;
+const cameraSmoother = new PoseSmoother(); // One Euro smoothing of the live player only
 
 function setStatus(text) { $("status").textContent = text; }
 
@@ -331,7 +333,7 @@ function currentPlayerPose(now) {
   }
   if (cameraReady && cam.readyState >= 2 && cam.currentTime !== lastCameraTime) {
     lastCameraTime = cam.currentTime;
-    lastCameraPose = detectPose(cam);
+    lastCameraPose = cameraSmoother.smooth(detectPose(cam), performance.now());
   }
   return lastCameraPose;
 }

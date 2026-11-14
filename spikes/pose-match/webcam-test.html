@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jester webcam test</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:16px}
+#stage{position:relative;display:inline-block}
+video,canvas{width:640px;max-width:100%;display:block}
+canvas{position:absolute;left:0;top:0}
+video{transform:scaleX(-1)}
+#hud{margin:8px 0;font-family:monospace}
+button{padding:8px 14px;font-size:15px}
+.hint{color:#aaa;font-size:13px}
+</style></head><body>
+<h1>Webcam extraction test</h1>
+<p><button id="go">Start camera</button> <label><input type="checkbox" id="showMask" checked> mask</label> <label><input type="checkbox" id="showOutline" checked> outline</label> <label><input type="checkbox" id="showBones" checked> skeleton</label></p>
+<div id="hud">idle</div>
+<div id="stage"><video id="cam" playsinline muted></video><canvas id="out" width="640" height="480"></canvas></div>
+<p class="hint">Stand back so your whole body is in frame. Frames are not mirrored in the data; this page flips only the view. Outputs: landmarks, mask, outline (see webcam.mjs).</p>
+<script type="module">
+import { createWebcamTracker } from "./webcam.mjs";
+const $ = (id) => document.getElementById(id);
+const cam = $("cam"), cv = $("out"), ctx = cv.getContext("2d"), hud = $("hud");
+const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+let tracker = null, latest = null, frames = 0, missing = 0;
+const off = document.createElement("canvas");
+
+function draw(f) {
+  const w = cv.width = 640, h = cv.height = Math.round(640 / (f.aspect || 4 / 3));
+  ctx.setTransform(-1, 0, 0, 1, w, 0); // mirror the view only
+  ctx.clearRect(0, 0, w, h);
+  if (f.mask && $("showMask").checked) {
+    off.width = f.mask.width; off.height = f.mask.height;
+    const octx = off.getContext("2d"), img = octx.createImageData(off.width, off.height);
+    for (let i = 0; i < f.mask.data.length; i++) if (f.mask.data[i]) { img.data[i*4] = 60; img.data[i*4+1] = 200; img.data[i*4+2] = 120; img.data[i*4+3] = 110; }
+    octx.putImageData(img, 0, 0); ctx.drawImage(off, 0, 0, w, h);
+  }
+  if (f.outline && $("showOutline").checked) {
+    ctx.strokeStyle = "#ffd54a"; ctx.lineWidth = 3; ctx.beginPath();
+    f.outline.forEach(([x, y], i) => i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)); ctx.closePath(); ctx.stroke();
+  }
+  const p = f.landmarks;
+  if (p && $("showBones").checked) {
+    ctx.strokeStyle = "#ff5c8a"; ctx.lineWidth = 4; ctx.beginPath();
+    for (const [a, b] of BONES) { if (p[a].visibility < .5 || p[b].visibility < .5) continue; ctx.moveTo(p[a].x * w, p[a].y * h); ctx.lineTo(p[b].x * w, p[b].y * h); }
+    ctx.stroke();
+  }
+}
+
+$("go").onclick = async () => {
+  $("go").disabled = true; hud.textContent = "Asking for camera...";
+  try {
+    cam.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: "user" }, audio: false });
+    await cam.play();
+  } catch (e) { hud.textContent = "Camera blocked or missing (" + e.name + "). Allow camera access for this site and reload."; $("go").disabled = false; return; }
+  hud.textContent = "Loading model...";
+  tracker = await createWebcamTracker({ video: cam, onFrame: (f) => { latest = f; frames++; if (!f.landmarks) missing++; draw(f); } });
+  window.tracker = tracker; tracker.start();
+  setInterval(() => {
+    const p = latest && latest.landmarks;
+    const hidden = p ? [11,12,23,24,25,26,27,28].filter((i) => p[i].visibility < .5).length : 8;
+    hud.textContent = "fps " + tracker.stats.fps.toFixed(1) + " | " + tracker.stats.model + " " + tracker.stats.delegate +
+      " | body " + (p ? "found" : "NOT FOUND") + " | hidden key joints " + hidden + " | mask " + (latest && latest.mask ? latest.mask.width + "x" + latest.mask.height : "none") +
+      " | outline pts " + (latest && latest.outline ? latest.outline.length : 0);
+  }, 500);
+};
+</script></body></html>
