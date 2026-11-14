@@ -1,7 +1,7 @@
 // Synthetic people for tests: 33 landmarks laid out so their extremes sit exactly on a box.
 
 import type { Landmark } from "../../engine/src/index.ts";
-import type { Box, Detection, FrameDetections } from "../src/types.ts";
+import type { Box, Detection, FrameDetections, Track } from "../src/types.ts";
 
 export function landmarksInBox(box: Box): Landmark[] {
   return Array.from({ length: 33 }, (_, i): Landmark => [
@@ -17,4 +17,21 @@ export function person(box: Box): Detection {
 
 export function frame(index: number, people: Detection[]): FrameDetections {
   return { tMs: index * 100, people, signature: [] };
+}
+
+/** A track with one point per listed frame, 100 ms apart, the box given by `boxAt(frame)`. */
+export function trackOf(id: number, frames: readonly number[], boxAt: (frame: number) => Box, shot = 0): Track {
+  return {
+    id,
+    shot,
+    points: frames.map((f) => {
+      const box = boxAt(f);
+      return { frame: f, tMs: f * 100, box, landmarks: landmarksInBox(box) };
+    }),
+  };
+}
+
+/** Consecutive frame numbers from `start` for `count` frames. */
+export function range(start: number, count: number): number[] {
+  return Array.from({ length: count }, (_, i) => start + i);
 }
