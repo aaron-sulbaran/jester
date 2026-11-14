@@ -2,3 +2,4 @@
 import "./score.test.mjs";
 import "./level.test.mjs";
 import "./webcam.test.mjs";
+import "./calibration.test.mjs";
