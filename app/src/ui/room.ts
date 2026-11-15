@@ -12,7 +12,7 @@ import { listBank, type BankClip } from "../bank.ts";
 import { videoScene, type Scene } from "../blind.ts";
 import { bankSceneId, packScene, sceneFromBank, setHostUpload, UPLOAD_ID } from "../onlineClip.ts";
 import { packFace, unpackFace } from "../packMedia.ts";
-import { LOBBY_FACE_MAX_SIDE, LobbyFaceGate } from "../lobbyFace.ts";
+import { LOBBY_FACE_MAX_SIDE, LobbyFaceChoice, LobbyFaceGate } from "../lobbyFace.ts";
 import { addressWithRoom, joinLink, linkShown, roomCodeFromSearch } from "../roomLink.ts";
 import { FaceJester, variantFor, type JesterAnim } from "./faceJester.ts";
 import { playersFor } from "../castWords.ts";
@@ -228,9 +228,10 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   let boothTurn = 0; // bumps on every start and stop, so a camera that answers late is let go
   let snapping = false;
   let myFaceText: string | null = null;
-  const faces = new Map<string, HTMLCanvasElement>();
   const gate = new LobbyFaceGate();
-  const photoOff = new Set<string>(); // players who took their photo off: their jester wears the grey face
+  const choice = new LobbyFaceChoice();
+  const decoded = new Map<string, { text: string; canvas: HTMLCanvasElement }>(); // each player's last decoded face
+  const shown = new Map<string, string | null>(); // the face text each jester wears now (null: the grey face)
   let knownIds = new Set<string>();
   let resendTimer = 0;
   const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -353,23 +354,31 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     $("roomPhotoOff").hidden = true;
     if (room) void room.sendMedia("lobbyface", "", { delayMs: 0 }).catch(() => {});
   }
-  /** Puts each player's newest face on their jester: the face from their last round, else their lobby photo. */
+  /** A decode that has not finished in DECODE_MS is given up: the gate is released and the picture dropped. */
+  const DECODE_MS = 4000;
+  const decodeWithin = (text: string) => Promise.race([
+    unpackFace(text, LOBBY_FACE_MAX_SIDE),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), DECODE_MS)),
+  ]);
+  /** Puts the right face on each jester: see LobbyFaceChoice for which, and LobbyFaceGate for when it is decoded. */
   function syncFaces(roster: Member[]) {
     if (!room) return;
     for (const p of roster) {
-      const media = (room.media.get(p.id) ?? {}) as Record<string, string>;
-      if (media.lobbyface === "" && !media.face) {
-        if (!photoOff.has(p.id)) { photoOff.add(p.id); faces.delete(p.id); gate.forget(p.id); seats.get(p.id)?.jester.setFace(null); }
+      const want = choice.pick(p.id, (room.media.get(p.id) ?? {}) as { lobbyface?: string; face?: string });
+      const seat = seats.get(p.id);
+      if (want === null) {
+        if (shown.get(p.id) !== null) { shown.set(p.id, null); seat?.jester.setFace(null); }
         continue;
       }
-      const text = media.face ?? media.lobbyface;
-      if (!gate.take(p.id, text, true)) continue; // too long, too soon after the last, unchanged, or still decoding
-      photoOff.delete(p.id);
-      void unpackFace(text, LOBBY_FACE_MAX_SIDE).then((c) => {
+      if (shown.get(p.id) === want) continue;
+      const ready = decoded.get(p.id);
+      if (ready?.text === want) { shown.set(p.id, want); seat?.jester.setFace(ready.canvas); continue; }
+      if (!gate.take(p.id, want, true)) continue; // too long, too soon after the last, or still decoding
+      void decodeWithin(want).then((canvas) => {
         gate.done(p.id);
-        if (!c || gate.current(p.id) !== text || !seats.has(p.id)) return;
-        faces.set(p.id, c);
-        seats.get(p.id)?.jester.setFace(c);
+        if (!canvas || !room) return;
+        decoded.set(p.id, { text: want, canvas });
+        syncFaces(room.roster() as Member[]); // puts it on if it is still what this player should wear
       });
     }
   }
@@ -391,9 +400,11 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     return { li, jester, variant, anim: null, name, says };
   }
   function dropSeat(id: string) {
-    faces.delete(id);
+    // They left the room: only now are their cooldown and choice forgotten.
     gate.forget(id);
-    photoOff.delete(id);
+    choice.forget(id);
+    decoded.delete(id);
+    shown.delete(id);
     const s = seats.get(id);
     if (!s) return;
     s.jester.stop();
@@ -408,7 +419,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       const variant = variantFor(i);
       let s = seats.get(p.id);
       if (s && s.variant !== variant) { dropSeat(p.id); s = undefined; }
-      if (!s) { s = makeSeat(variant); seats.set(p.id, s); s.jester.setFace(faces.get(p.id) ?? null); }
+      if (!s) { s = makeSeat(variant); seats.set(p.id, s); shown.delete(p.id); } // syncFaces puts its face on
       if (rosterList.children[i] !== s.li) rosterList.insertBefore(s.li, rosterList.children[i] ?? null);
       s.li.style.setProperty("--who", `var(--p${(i % 4) + 1})`);
       s.name.textContent = shownName(p.name);
@@ -553,9 +564,10 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
 
   function leave() {
     noPhoto("No photo yet. You can join without one.");
-    faces.clear();
     gate.clear();
-    photoOff.clear();
+    choice.clear();
+    decoded.clear();
+    shown.clear();
     $("roomPhotoOff").hidden = true;
     knownIds = new Set();
     clearTimeout(resendTimer);
@@ -579,6 +591,12 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   boothGo.addEventListener("click", () => { if (boothVideo) void snap(); else void startBooth(); });
   $("roomNoPhoto").addEventListener("click", () => noPhoto("No photo. Your jester keeps a grey face."));
   $("roomPhotoOff").addEventListener("click", takePhotoOff);
+  // The camera never stays on behind the player's back: it stops when the page is hidden, and when the room screen
+  // is left by any route (Back, Home, a round starting, anything else that hides it).
+  const cameraOn = () => boothStream !== null || $("roomBoothCol").dataset.state === "starting";
+  const stopCamera = () => { if (cameraOn()) noPhoto("No photo yet. You can join without one."); };
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stopCamera(); });
+  new MutationObserver(() => { if ($("screen-room").hidden) stopCamera(); }).observe($("screen-room"), { attributes: true, attributeFilter: ["hidden"] });
   noPhoto("No photo yet. You can join without one.");
   // Enter in a field does what its main button does.
   $("roomName").addEventListener("keydown", (e) => { if (e.key === "Enter") (joinBox.hasAttribute("data-invite") ? $("roomEnter") : $("roomCreate")).click(); });
