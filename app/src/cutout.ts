@@ -22,7 +22,7 @@ export interface Cutout {
   image: HTMLCanvasElement;
 }
 
-const SIDE = 160; // pixels of the stored square crop
+const SIDE = 256; // pixels of the stored square crop (was 160: a tall reveal upscaled it about 7x and looked blurred)
 
 type P = { x: number; y: number };
 const pt = (l: LandmarkObject | undefined, aspect: number): P | null => (l && (l.visibility ?? 1) >= 0.5 ? { x: l.x * aspect, y: l.y } : null);

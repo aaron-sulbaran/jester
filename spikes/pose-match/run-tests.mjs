@@ -6,3 +6,4 @@ import "./calibration.test.mjs";
 import "./recorder.test.mjs";
 import "./reveal.test.mjs";
 import "./rooms.test.mjs";
+import "./fit.test.mjs";
