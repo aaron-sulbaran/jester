@@ -44,11 +44,16 @@ async function getPlayer(): Promise<Player> {
 function startLobbyTracking() {
   const el = $("calib");
   if (!player) return;
-  if (simulated()) { el.textContent = ""; return; }
+  if (simulated()) { el.textContent = ""; room?.setReady(true); return; }
   calibrator.reset();
+  room?.setReady(false);
+  let notInView = 0;
   player.start((f) => {
     const r = calibrator.update(f.landmarks as never, 30);
-    el.textContent = r.passed ? "Ready: your whole body is in view." : r.message;
+    notInView = r.ok ? 0 : notInView + 1;
+    if (notInView >= 15) { calibrator.reset(); notInView = 0; } // moved out of view: hold the pose again
+    room?.setReady(calibrator.passed);                          // tells the room; the host cannot start until all are ready
+    el.textContent = calibrator.passed ? "Ready: your whole body is in view." : r.message;
   }, () => -1);
 }
 
@@ -61,6 +66,7 @@ async function enter(rawCode: string) {
   const name = $<HTMLInputElement>("name").value || me;
   const hosted = hostedTransportFromEnv(code);
   room = new Room({ transport: hosted ?? broadcastChannelTransport(code), code, playerId: me, name });
+  (window as unknown as { __room?: unknown }).__room = room; // for checking in the console
   room.on("update", render);
   room.on("start", onStart);
   room.join();
@@ -83,11 +89,13 @@ async function enter(rawCode: string) {
 function render() {
   if (!room) return;
   $("role").textContent = room.isHost ? "(you are the host)" : "";
-  $<HTMLButtonElement>("start").disabled = !room.isHost || playing;
-  $("roster").innerHTML = room.roster().map((p: { id: string; name: string }) => `<li>${p.name}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""}</li>`).join("");
+  $<HTMLButtonElement>("start").disabled = !room.isHost || playing || !room.allReady;
+  $("roster").innerHTML = room.roster().map((p: { id: string; name: string; ready?: boolean }) => `<li>${p.name}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""} ${(p as { ready?: boolean }).ready ? "&#10003; ready" : "(not in view yet)"}</li>`).join("");
   $("standings").innerHTML = (room.standings() as Standing[]).map((r) => `<li>${r.name}: ${r.score ?? "playing..."}</li>`).join("");
   const waiting = (room.standings() as Standing[]).filter((r) => r.score === null).map((r) => r.name);
-  if (room.round && !playing && waiting.length && waiting.length < room.roster().length) status("Waiting for " + waiting.join(", ") + " to finish...");
+  const notReady = (room.roster() as { name: string; ready?: boolean }[]).filter((p) => !p.ready).map((p) => p.name);
+  if ((!room.round || room.allDone) && room.isHost && notReady.length) status("Waiting for " + notReady.join(", ") + " to get their whole body in view before you can start.");
+  else if (room.round && !playing && waiting.length && waiting.length < room.roster().length) status("Waiting for " + waiting.join(", ") + " to finish...");
   else if (room.round && room.allDone && !playing) status("Everyone finished. Standings and reveal are below.");
   else if (!room.round && !room.isHost) status("In the room. Waiting for the host (" + room.roster().find((p: { id: string }) => p.id === room!.hostId)?.name + ") to start.");
   if (room.round && room.allDone && room.round.roundNo !== revealedRound && !playing) showReveal();
