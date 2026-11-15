@@ -31,7 +31,7 @@ For subjects with no usable skeleton (cartoons, sprites, objects), pass a `box-t
 2. Per limb: full credit within 15 degrees, zero past 60, `1 - x^2` between. Limbs under 0.5 visibility drop out.
 3. Limbs the performer is moving weigh more than limbs they hold still.
 4. One global lag (-200 to +800 ms) is found for the round, with 100 ms slack per frame. Lag up to 300 ms is free.
-5. The score counts only accuracy above what standing still would earn on the same clip, so doing nothing scores near 0.
+5. The round's gain is the larger of two things: accuracy above what standing still would earn on the same clip, and (0.9.0) plain accuracy (0 at 0.55, 1 at 1.0) gated by how much the player moves like the clip. Motion share: each limb's turn over 250 ms, projected on the clip's turn at the matched frame, summed per limb and capped at the clip's own motion. A still body (with or without tracker jitter) has share near 0, so doing nothing still scores near 0, while a noisy webcam copy on a low-motion clip no longer falls under the standing-still baseline and scores 0. Constants: `MOTION` in `src/constants.ts`. A new limb added to `LIMBS` joins the motion share through its weight, with no retuning.
 6. More than 30 percent unscorable frames: no score, "low tracking".
 
 All constants are in `src/constants.ts` with `SCORER_VERSION`. They are starting values; calibrate on real recordings.
