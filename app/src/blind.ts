@@ -142,6 +142,12 @@ export interface BlindUi {
   countdown(seconds: number): Promise<void>;
   /** A short pause after the last turn, before the reveal (optional). */
   beat?(): Promise<void>;
+  /**
+   * Called when a turn's moves start counting (right after the countdown), with a way to start the turn over.
+   * Calling `restart` stops the turn and goes back to `showPart` for the same player. The look decides when and
+   * how often to offer it (Jester: only in the first 5 seconds, once per player per game).
+   */
+  turnStarted?(restart: () => void): void;
   /** The canvas the reveal is drawn on while it records. */
   revealCanvas(): HTMLCanvasElement;
   /** Recording progress of the reveal, 0 to 1. */
@@ -576,10 +582,18 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
     const image = cutFrame(f.source, f.width, f.height, f.landmarks, s.part, f.mask);
     if (image) { s.cutouts.push({ clipMs: f.clipMs, image }); lastCut = f.clipMs; }
   });
-  const frames = await collectFrames(scene.durationMs, null, player, (f) => { clipMs = f.clipMs; pose = f.player; aspect = f.playerAspect; });
+  // The look may offer a restart while the moves count; it ends this turn at once and plays nothing back.
+  let restart: () => void = () => {};
+  const restarted = new Promise<"restart">((resolve) => { restart = () => resolve("restart"); });
+  ui.turnStarted?.(restart);
+  const frames = await Promise.race([
+    collectFrames(scene.durationMs, null, player, (f) => { clipMs = f.clipMs; pose = f.player; aspect = f.playerAspect; }),
+    restarted,
+  ]);
   player.setCapture?.(null);
   clearInterval(painter);
   clipMs = -1; pose = null; paint();
+  if (frames === "restart") { player.stop(); throw new RestartTurn(); }
 
   // recorder.mjs is plain JS; TypeScript misreads its option types from the defaults.
   const rec = new PerformanceRecorder() as unknown as { add(f: unknown, t: number): boolean; finish(o: { durationMs: number; aspect: number }): unknown };
@@ -595,6 +609,9 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
     : scorePoseRound(o.timeline, playerTimeline);
   s.result = { score: r.score, tier: r.tier, lagMs: r.lagMs };
 }
+
+/** Thrown inside a turn when the player starts it over; the turn loop shows their part again. */
+class RestartTurn extends Error {}
 
 // ---- The reveal ----
 
@@ -788,7 +805,10 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
       drawFirstFrame(s, scene, ui);
       s.part = await ui.showPart(s, { ...roleOf(s, scene, ui, leadMs), problem });
       try { await playTurn(s, scene, speed, deps, ui, leadMs); break; }
-      catch (err) { problem = "Camera did not start: " + (err as Error).message + ". Tick 'Simulated player' to try without one."; }
+      catch (err) {
+        if (err instanceof RestartTurn) { problem = undefined; continue; }
+        problem = "Camera did not start: " + (err as Error).message + ". Tick 'Simulated player' to try without one.";
+      }
     }
   }
   await ui.beat?.();
