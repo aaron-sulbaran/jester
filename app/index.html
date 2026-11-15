@@ -92,6 +92,7 @@
 
       <div class="start-actions">
         <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
+        <button type="button" class="btn btn-quiet" id="playOnline">Play with friends online</button>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
 
@@ -122,6 +123,38 @@
         <label class="link upload">Play a file from this computer (testing)<input id="upload" type="file" accept="video/*" /></label>
         <button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button>
       </p>
+    </section>
+
+    <!-- Play with friends online: a room code, each on their own device (ui/room.ts). No passing the laptop. -->
+    <section class="screen" id="screen-room" hidden>
+      <div class="masking"><h2 class="tape">Play with friends, anywhere</h2></div>
+      <div class="room-box">
+        <div id="roomJoin">
+          <label class="field"><span>Your name</span><input id="roomName" type="text" maxlength="14" autocomplete="off" /></label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-main" id="roomCreate"><span class="ticket"><span class="ticket-text">Make a room</span></span></button>
+          </div>
+          <label class="field"><span>Or join a friend's room with their code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" placeholder="ABCD" /></label>
+          <button type="button" class="btn btn-quiet" id="roomEnter">Join</button>
+        </div>
+        <div id="roomLobby" hidden>
+          <p class="note">Room code <b id="roomCodeText"></b> <span id="roomWhere"></span>. Tell your friends.</p>
+          <ul id="roomRoster" class="how"></ul>
+          <div id="roomHostRow" hidden>
+            <label class="field"><span>Clip</span>
+              <select id="roomScene">
+                <option value="dribble">Pickup game: someone, and something they keep bouncing</option>
+                <option value="demo">Dance break: someone dancing, and something flying around</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
+            <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
+          </div>
+          <p id="roomGuestRow" class="note" hidden>Waiting for the host to deal the parts...</p>
+        </div>
+        <p class="problem" id="roomProblem" role="alert" hidden></p>
+        <button type="button" class="link" id="roomBack">Back</button>
+      </div>
     </section>
 
     <!-- Watch first: the whole group watches the clip once before the parts are dealt. -->
