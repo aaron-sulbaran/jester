@@ -1,0 +1,24 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/bank/:path*", "destination": "https://jester-bank.vercel.app/bank/:path*" },
+    { "source": "/public-config.json", "destination": "https://jester-bank.vercel.app/public-config.json" }
+  ],
+  "headers": [
+    {
+      "source": "/version.json",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    },
+    {
+      "source": "/bank/(.*)",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    },
+    {
+      "source": "/public-config.json",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}
