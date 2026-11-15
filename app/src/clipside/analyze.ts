@@ -27,6 +27,11 @@ const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are
 const REJOIN_SECONDS = 3;
 /** The object detector looks at every this many analysed frames. */
 const THING_EVERY = 6;
+/**
+ * A thing track survives this many analysed frames with no sighting: four missed looks in a row
+ * (two seconds at every 6th frame), as before the detector went from every 3rd to every 6th frame.
+ */
+const THING_MAX_GAP = 5 * THING_EVERY;
 
 /** Things (animals, balls, cars) found by the object detector. People are left to the pose tracker. */
 export interface PreparedThings { frames: ThingFrame[]; tracks: ThingTrack[]; candidates: ThingCandidate[] }
@@ -204,7 +209,7 @@ export async function prepareClip(
 function findThings(thingFrames: ThingFrame[], frames: readonly FrameDetections[], cuts: number[], source: ClipSource): PreparedThings {
   const aspect = source.width / source.height;
   const kept = withoutPeople(thingFrames, frames.map((f) => f.people.map((p) => p.box)));
-  const tracks = linkThings(kept, cuts, { aspect });
+  const tracks = linkThings(kept, cuts, { aspect, maxGap: THING_MAX_GAP });
   const candidates = rankThings(tracks, { sampleHz: source.sampleHz, frameCount: frames.length, aspect });
   return { frames: kept, tracks, candidates };
 }
