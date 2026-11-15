@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.9.0";
+export const SCORER_VERSION = "jester-engine/0.10.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -112,6 +112,16 @@ export const MOTION = {
   accuracyFloor: 0.55,
   /** ... and 1 at or above this accuracy (linear in between). */
   accuracyFull: 1.0,
+  /**
+   * 0.10.0 still gate. For the moved share, each limb turn (degrees over spanMs, after smoothing) counts only
+   * the part above this, for player and clip alike: covers tracker jitter, breathing and sway on a body that
+   * is standing still.
+   */
+  movedFloorDeg: 12,
+  /** Moved share (raw player motion over the clip's) at or below this gives no gain over still ... */
+  movedLow: 0.2,
+  /** ... and at or above this the full gain over still (linear in between). */
+  movedHigh: 0.5,
 } as const;
 
 /**
