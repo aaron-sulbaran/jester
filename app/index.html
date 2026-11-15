@@ -61,6 +61,7 @@
       <h2 class="name" id="handoverName"></h2>
       <p class="voice">Everyone else, look away.</p>
       <button type="button" class="btn btn-main" id="handoverGo">I'm ready</button>
+      <div class="jester jester-dance" aria-hidden="true"></div>
     </section>
 
     <!-- A turn: first the shape and how to play, then the camera under the shape. -->
@@ -102,7 +103,10 @@
 
     <!-- Results end on sending it to someone. -->
     <section class="screen" id="screen-results" hidden>
-      <h2 class="title" id="resultsHeadline"></h2>
+      <div class="results-head">
+        <h2 class="title" id="resultsHeadline"></h2>
+        <div class="jester jester-win" aria-hidden="true"></div>
+      </div>
       <div class="results-grid">
         <video id="resultsVideo" playsinline muted loop controls hidden></video>
         <ol class="podium" id="podium"></ol>

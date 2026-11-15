@@ -16,6 +16,10 @@
   --gutter: clamp(16px, 4vw, 56px);
   --ease: cubic-bezier(.2, .8, .2, 1);
   --who: var(--mark);
+  /* Player colours (highlighters) and the recorded reveal's look; game.ts reads these. */
+  --p1: #FFD93D; --p2: #6FDB7F; --p3: #FF8BC6; --p4: #6FC3FF;
+  --reveal-card: #FCFCFA; --reveal-ink: #1C1C1C; --reveal-soft: #6B6B6B; --reveal-accent: #E0322F;
+  --reveal-font: "Shantell Sans", "Comic Sans MS", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -167,6 +171,26 @@ progress { width: min(100%, 480px); height: 12px; accent-color: var(--ink); }
 .place.won { transform: rotate(-1deg); box-shadow: 5px 6px 0 var(--ink); }
 #resultsSave { color: var(--pencil); }
 
+/* ---------- The jester host (pre-rendered sprites, 384 px frames, 24 a second) ---------- */
+.jester { width: 150px; height: 150px; background: 0 0 / calc(24 * 150px) 150px no-repeat; filter: drop-shadow(3px 4px 0 rgba(28, 28, 28, .25)); }
+.jester-dance { background-image: url("/jester/classic-dance.webp"); }
+.jester-win { background-image: url("/jester/classic-win.webp"); }
+.results-head { display: flex; align-items: center; gap: 12px; justify-content: center; }
+
+/* ---------- Face badges: the player's photo, taped in, with a jester cap drawn over it ---------- */
+.place { grid-template-columns: 96px 1fr auto; }
+.badge { position: relative; width: 84px; height: 96px; margin-top: 18px; }
+.badge-photo { position: absolute; inset: 0; background: #fff; padding: 5px 5px 14px; box-shadow: 2px 3px 0 rgba(28, 28, 28, .3); rotate: -3deg; overflow: hidden; }
+.badge-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* No camera: a plain grey head and shoulders stands in for the photo, never a cartoon face. */
+.badge-photo.no-face::after { content: ""; position: absolute; inset: 5px 5px 14px; background:
+  radial-gradient(circle at 50% 40%, #b9b9b9 0 21%, transparent 22%),
+  radial-gradient(ellipse 60% 42% at 50% 100%, #b9b9b9 0 98%, transparent 100%), #dedede; }
+.badge-cap { position: absolute; left: -12px; right: -12px; top: -26px; width: calc(100% + 24px); fill: var(--who); stroke: var(--ink); stroke-width: 6; stroke-linejoin: round; rotate: -3deg; }
+.badge-cap .band { fill: var(--who); }
+.badge-cap .bell { fill: var(--paper); }
+.place-rank { display: block; font-size: 16px; font-weight: 700; color: #4a4a4a; }
+
 /* ---------- Motion: one moment per screen ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .screen:not([hidden]) > * { animation: land .45s var(--ease) both; }
@@ -179,6 +203,9 @@ progress { width: min(100%, 480px); height: 12px; accent-color: var(--ink); }
   #screen-drumroll:not([hidden]) .drum { animation: roll .09s linear infinite alternate; }
   @keyframes roll { from { transform: rotate(-3deg) translateY(0); } to { transform: rotate(3deg) translateY(-3px); } }
   .place { animation: land .5s var(--ease) both; animation-delay: calc(var(--i) * .18s + .2s); }
+  .jester { animation: strip 1s steps(24) infinite; }
+  .jester-win { animation-iteration-count: 3; animation-fill-mode: forwards; }
+  @keyframes strip { to { background-position-x: calc(-24 * 150px); } }
 }
 
 /* ---------- Phone ---------- */
@@ -187,7 +214,13 @@ progress { width: min(100%, 480px); height: 12px; accent-color: var(--ink); }
   .screen { gap: 18px; justify-content: flex-start; padding-top: 28px; }
   .results-grid { grid-template-columns: minmax(0, 1fr); }
   .stage { aspect-ratio: 3 / 4; }
+  #screen-turn[data-state="part"] .stage { width: min(100%, calc(34vh * 3 / 4)); }
+  #screen-turn[data-state="play"] .stage { width: 100%; }
   .btn-main { width: 100%; }
+  /* The part screen's actions stay in reach on a phone. */
+  .part-panel .row-actions { position: sticky; bottom: 0; padding: 10px 0 14px; width: 100%; background: var(--paper); }
+  .jester { width: 110px; height: 110px; background-size: calc(24 * 110px) 110px; }
+  @keyframes strip { to { background-position-x: calc(-24 * 110px); } }
 }
 
 /* ---------- Solo practice (main.ts), kept plain on purpose ---------- */

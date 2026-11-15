@@ -6,6 +6,18 @@ import type { BodyPart } from "../../../engine/src/index.ts";
 import { demoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
+/** A CSS custom property from the skin, or the fallback. */
+const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+
+/** Player colours come from the skin (--p1 to --p4), so the cast, the turn and the reveal all match it. */
+const playerColors = () => [1, 2, 3, 4].map((i) => cssVar(`--p${i}`, PLAYER_COLORS[i - 1]!));
+
+/** The recorded reveal takes the skin's paper, ink and lettering instead of the default dark card. */
+const revealTheme = () => ({
+  card: cssVar("--reveal-card", "#16161d"), ink: cssVar("--reveal-ink", "#f2f2f5"), soft: cssVar("--reveal-soft", "#a0a3b1"),
+  accent: cssVar("--reveal-accent", "#f5c542"), font: cssVar("--reveal-font", "system-ui, sans-serif"), title: "Jester", glow: 0,
+});
+
 export interface GameDeps extends BlindDeps {
   clipVideo: HTMLVideoElement;
   cam: HTMLVideoElement;
@@ -33,6 +45,11 @@ const STARTERS: StarterClip[] = [
   { id: "dribble", title: "Pickup game", hint: "Someone, and something they keep bouncing", make: dribbleScene },
   { id: "dance", title: "Dance break", hint: "Someone dancing, and something flying around", make: demoScene },
 ];
+
+/** A jester cap drawn over each player's photo on the results, in their colour. */
+const CAP_SVG = `<svg class="badge-cap" viewBox="0 0 200 150" aria-hidden="true"><path d="M60 112 C46 84 34 62 14 44 C42 50 72 72 94 106 Z"/><path d="M140 112 C154 84 166 62 186 44 C158 50 128 72 106 106 Z"/><path d="M78 108 C82 74 90 42 100 16 C110 42 118 74 122 108 Z"/><path class="band" d="M48 110 Q100 94 152 110 L152 132 Q100 118 48 132 Z"/><circle class="bell" cx="14" cy="44" r="11"/><circle class="bell" cx="100" cy="16" r="11"/><circle class="bell" cx="186" cy="44" r="11"/></svg>`;
+
+const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
@@ -111,21 +128,27 @@ export function initGame(deps: GameDeps) {
   function openCast() {
     if (!scene) return;
     $("startProblem").hidden = true;
+    // Start with one player per part; more players share parts, fewer leave some out.
     const parts = scene.guides.length;
-    $("castParts").textContent = parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`;
-    if (names.length < MIN_PLAYERS) names = ["", ""];
+    const want = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, parts));
+    names = Array.from({ length: want }, (_, i) => names[i] ?? "");
     renderCast();
     show("cast");
     ($("castNames").querySelector("input") as HTMLInputElement | null)?.focus();
   }
 
   function renderCast() {
+    const parts = scene?.guides.length ?? names.length;
+    const extra = names.length - parts;
+    $("castParts").textContent = (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
+      + (extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : "");
+    const colors = playerColors();
     const box = $("castNames");
     box.innerHTML = "";
     names.forEach((value, i) => {
       const row = document.createElement("label");
       row.className = "who";
-      row.style.setProperty("--who", PLAYER_COLORS[i % PLAYER_COLORS.length]!);
+      row.style.setProperty("--who", colors[i % colors.length]!);
       row.innerHTML = `<span class="who-dot" aria-hidden="true"></span><span class="who-label">Player ${i + 1}</span>`;
       const input = document.createElement("input");
       input.type = "text";
@@ -159,7 +182,7 @@ export function initGame(deps: GameDeps) {
     rows = [];
     videoUrl = null;
     try {
-      await runBlindGame(scene, cast, ui, deps, { speed });
+      await runBlindGame(scene, cast, ui, deps, { speed, colors: playerColors(), theme: revealTheme() });
     } catch (err) {
       // Never stall silently: say what broke and offer a way back.
       console.error("The game stopped:", err);
@@ -187,7 +210,8 @@ export function initGame(deps: GameDeps) {
       turn.dataset.state = "part";
       turn.style.setProperty("--who", player.color);
       $("turnName").textContent = `${player.name}'s turn`;
-      $("partText").textContent = role.text;
+      // The game's own explanation is long; the screen says it in two lines.
+      $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       $("partProblem").textContent = role.problem ?? "";
       $("partProblem").hidden = !role.problem;
       const chips = $("partChips");
@@ -267,14 +291,19 @@ export function initGame(deps: GameDeps) {
     const list = $("podium");
     list.innerHTML = "";
     rows.forEach((r, i) => {
+      // Tied scores share a place.
+      const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
       const li = document.createElement("li");
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="place-rank"></span><span class="place-who"><b></b><span></span></span><span class="place-score"></span>`;
-      li.querySelector(".place-rank")!.textContent = String(i + 1);
+      li.innerHTML = `<span class="badge"><span class="badge-photo"></span>${CAP_SVG}</span><span class="place-who"><span class="place-rank"></span><b></b><span class="place-part"></span></span><span class="place-score"></span>`;
+      li.querySelector(".place-rank")!.textContent = ordinal(place);
+      const photo = li.querySelector(".badge-photo")!;
+      if (r.face) { const img = new Image(); img.src = r.face.toDataURL("image/jpeg", 0.85); img.alt = `${r.name}'s face`; photo.appendChild(img); }
+      else photo.classList.add("no-face");
       li.querySelector("b")!.textContent = r.name;
-      li.querySelector(".place-who span")!.textContent = `was ${r.role}`;
+      li.querySelector(".place-part")!.textContent = `was ${r.role}`;
       li.querySelector(".place-score")!.textContent = r.score == null ? "no score" : String(r.score);
       list.appendChild(li);
     });
