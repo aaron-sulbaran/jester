@@ -1521,8 +1521,8 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
     lagMs: s.result?.lagMs ?? 0,
   }));
   revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
-  // For checking in the console: each turn's score and how many of the player's frames it was scored on.
-  (globalThis as { __jesterTurns?: unknown }).__jesterTurns = rows.map((r) => ({ name: r.name, score: r.score, frames: r.timeline?.frames.length ?? 0 }));
+  // For the team's checks in the console (dev server or ?dev=1 only): each turn's score and how many of the player's frames it was scored on.
+  if (document.body.classList.contains("dev")) (globalThis as { __jesterTurns?: unknown }).__jesterTurns = rows.map((r) => ({ name: r.name, score: r.score, frames: r.timeline?.frames.length ?? 0 }));
   ui.results(rows);
   if (options.reveal === false) return rows;
   if (ui.revealControl) ui.revealControl.speed = 1;
