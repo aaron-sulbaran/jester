@@ -17,6 +17,7 @@ import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
+import { BANK_PREFIX, UPLOAD_ID, getHostUpload, sceneFromBank, waitForUploadedScene } from "../onlineClip.ts";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
 import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
 import { unpackCutouts, unpackFace } from "../packMedia.ts";
@@ -360,12 +361,25 @@ export function initGame(deps: GameDeps) {
   // Each player plays their own part on their own device, so there is no "pass the laptop" screen: the handover
   // is skipped, nobody's results are shown until everyone is in, then everyone sees the same reveal and results.
 
-  const lobby = initRoomLobby({ show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+  const lobby = initRoomLobby({ clipVideo: deps.clipVideo, show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+
+  /** The scene a round names: built in, from the bank, or the host's upload (the host has it; the others wait for it). */
+  async function sceneForRound(room: LobbyRoom, round: OnlineRound): Promise<{ data: Scene; error: null } | { data: null; error: string }> {
+    const make = ONLINE_SCENES[round.clipId as OnlineSceneId];
+    if (make) return { data: make(), error: null };
+    if (round.clipId.startsWith(BANK_PREFIX)) return sceneFromBank(round.clipId.slice(BANK_PREFIX.length), deps.clipVideo);
+    if (round.clipId === UPLOAD_ID) {
+      const mine = getHostUpload();
+      if (room.isHost && mine) return { data: mine, error: null };
+      return waitForUploadedScene(room as never);
+    }
+    return { data: null, error: "This clip is not one this copy of the game knows." };
+  }
 
   async function runOnline(room: LobbyRoom, round: OnlineRound) {
-    const make = ONLINE_SCENES[round.clipId as OnlineSceneId];
-    if (!make) return;
-    const played = make();
+    const made = await sceneForRound(room, round);
+    if (made.error !== null) { startProblem(made.error); show("room"); return; }
+    const played = made.data;
     scene = played;
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
