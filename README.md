@@ -8,7 +8,7 @@ Under the party game is a computer vision judge, and we use LangChain deep agent
 
 **Play it:** https://jester-pi.vercel.app (a laptop with a webcam, in desktop Chrome or Edge)
 
-Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainment**. Special track: **LangChain, Best use of deepagents**.
+Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainment**. Special tracks: **LangChain, Best use of deepagents** and **Amazon, Best Practical AI Innovation**.
 
 ## Inspiration
 
@@ -129,6 +129,15 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 - The referee coach: [`agent/`](agent/README.md). `npm run coach` runs it once; `npm run watch` checks new live rounds every 3 minutes on a laptop and starts a coach run only on cases that newly fail. Its real-rounds switch lives in the git-ignored `agent/.env.local`.
 - The cast checker: [`app/cast-checker.ts`](app/cast-checker.ts), run with `npm run check-cast` in `app/`.
 - The round log and its eval: `eval/`, with `npm run eval`.
+
+![Best Practical AI Innovation, by Amazon](https://aaronsulbaran.com/hack-princeton/brand/devpost/track-amazon.png)
+
+### Practical AI that adapts, without retraining a model
+
+- **Who it is for:** friends who want a party game from any clip, and a small team that has to keep its judge fair and its clip library clean, with no time to retrain a model.
+- **It adapts from feedback.** The judge is computer vision plus fixed scoring rules. Agents turn feedback into changes: the Chamberlain reads a person's past decisions on hand-offs as precedents, so similar clips stop needing us, and the referee coach finds where the scoring is unfair in recorded rounds and proposes a fix that a person approves.
+- **The loop ran twice tonight.** Recorded rounds and their derived test cases showed standing still scoring 66; the engine fix shipped 28 minutes later. The next check showed copies with the other side scoring 0; that fix shipped 12 minutes later. Guard cases keep both fixed every time the eval runs.
+- **It acts on its own where that is safe,** and hands the rest to a person: two clips went from a player's upload to the public library with no person involved.
 
 ![Tech stack](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-stack.png)
 
