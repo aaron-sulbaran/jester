@@ -42,7 +42,7 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
   let capture: CaptureFn | null = null;
   const tracker = await createWebcamTracker({
     video: cam,
-    model: "full",
+    model: new URLSearchParams(location.search).get("model") ?? "full", // add ?model=heavy to the page address for the most accurate (slower) tracker
     // Drop the mask and outline: the pose channel does not use them, and a minute of masks is a lot of memory.
     onFrame: (f: any) => {
       if (!sink) return;

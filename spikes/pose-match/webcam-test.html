@@ -23,7 +23,7 @@ import { Calibrator } from "./calibration.mjs";
 const calib = new Calibrator();
 const $ = (id) => document.getElementById(id);
 const cam = $("cam"), cv = $("out"), ctx = cv.getContext("2d"), hud = $("hud");
-const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+import { DETAIL_BONES as BONES, JOINTS } from "./skeleton.mjs";
 let lastCal = null, tracker = null, latest = null, frames = 0, missing = 0;
 const off = document.createElement("canvas");
 
@@ -46,6 +46,8 @@ function draw(f) {
     ctx.strokeStyle = "#ff5c8a"; ctx.lineWidth = 4; ctx.beginPath();
     for (const [a, b] of BONES) { if (p[a].visibility < .5 || p[b].visibility < .5) continue; ctx.moveTo(p[a].x * w, p[a].y * h); ctx.lineTo(p[b].x * w, p[b].y * h); }
     ctx.stroke();
+    ctx.fillStyle = "#ff5c8a";
+    for (const j of JOINTS) { if (p[j].visibility < .5) continue; ctx.beginPath(); ctx.arc(p[j].x * w, p[j].y * h, 5, 0, Math.PI * 2); ctx.fill(); }
   }
 }
 

@@ -147,13 +147,14 @@ export function buildFrame({ t, landmarks, aspect, maskValues, maskWidth, maskHe
 export const MP_BUNDLE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 export const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
 export const MODEL_URLS = {
+  heavy: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
   full: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
   lite: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 };
 
 // Own landmarker (mask always on), so clip analysis elsewhere stays untouched.
 // Single player: numPoses is 1. Downgrades full to lite when fps stays under minFps.
-export async function createWebcamTracker({ video, onFrame, model = "full", minFps = 18, filter } = {}) {
+export async function createWebcamTracker({ video, onFrame, model = new URLSearchParams(globalThis.location?.search ?? "").get("model") || "full", minFps = 18, filter } = {}) {
   const mp = await import(MP_BUNDLE);
   const vision = await mp.FilesetResolver.forVisionTasks(MP_WASM);
   const make = async (name, delegate) => mp.PoseLandmarker.createFromOptions(vision, {
@@ -192,9 +193,10 @@ export async function createWebcamTracker({ video, onFrame, model = "full", minF
     if (now - windowStart >= 1000) {
       stats.fps = (frames * 1000) / (now - windowStart); frames = 0; windowStart = now;
       slowWindows = stats.fps < minFps ? slowWindows + 1 : 0;
-      if (slowWindows >= 3 && modelName === "full") {
-        slowWindows = 0; modelName = "lite"; stats.model = "lite";
-        make("lite", delegate).then((next) => { const old = landmarker; landmarker = next; old.close(); }).catch(() => {});
+      if (slowWindows >= 3 && modelName !== "lite") {
+        const next = modelName === "heavy" ? "full" : "lite";
+        slowWindows = 0; modelName = next; stats.model = next;
+        make(next, delegate).then((next) => { const old = landmarker; landmarker = next; old.close(); }).catch(() => {});
       }
     }
   }

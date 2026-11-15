@@ -2,7 +2,7 @@
 
 import type { LandmarkObject } from "../../engine/src/index.ts";
 
-const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
+import { DETAIL_BONES as BONES, JOINTS } from "../../spikes/pose-match/skeleton.mjs";
 
 /** Fit the canvas to the source aspect, keeping its width. */
 export function fitCanvas(canvas: HTMLCanvasElement, aspect: number) {
@@ -34,6 +34,12 @@ export function drawFrame(
       ctx.moveTo(p.x * w, p.y * h);
       ctx.lineTo(q.x * w, q.y * h);
       ctx.stroke();
+    }
+    ctx.fillStyle = color;
+    for (const j of JOINTS) {
+      const p = pose[j];
+      if (!p || (p.visibility ?? 1) < 0.5) continue;
+      ctx.beginPath(); ctx.arc(p.x * w, p.y * h, 5, 0, Math.PI * 2); ctx.fill();
     }
     const nose = pose[0];
     if (nose && (nose.visibility ?? 1) >= 0.5) {
