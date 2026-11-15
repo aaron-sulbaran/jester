@@ -14,6 +14,7 @@ import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
+import { DUEL_WINNER_AWARD, duelHeadline, podiumOrder } from "../duelPlay.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -152,7 +153,6 @@ const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3
 
 /** One player may play alone; a new cast still starts with two, since it is a party game. */
 const MIN_PLAYERS = 1;
-const START_PLAYERS = 2;
 const MAX_PLAYERS = 4;
 
 export function initGame(deps: GameDeps) {
@@ -452,12 +452,16 @@ export function initGame(deps: GameDeps) {
 
   // ---- Cast ----
 
-  function openCast() {
+  /**
+   * Opens "Who's playing?". The cast starts with the number of players picked on the start screen; with no pick,
+   * one player per part of the clip (so a one-person clip opens with one player). `again` keeps the cast as it
+   * was, for Play again. Add a player and One fewer still change it.
+   */
+  function openCast(again = false) {
     if (!scene) return;
     $("startProblem").hidden = true;
-    // Start with one player per part; more players share parts, fewer leave some out.
     const parts = scene.guides.length;
-    const want = Math.min(MAX_PLAYERS, Math.max(START_PLAYERS, parts));
+    const want = again && names.length ? names.length : Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, players || parts));
     names = Array.from({ length: want }, (_, i) => names[i] ?? "");
     renderCast();
     show("cast");
@@ -616,7 +620,7 @@ export function initGame(deps: GameDeps) {
       live();
       const standings = keepFinished(finished, room.standings() as Standing[]);
       const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
-        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
+        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? null,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
         // My own pictures are already here at full size; the others' arrive packed.
         cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
@@ -761,6 +765,9 @@ export function initGame(deps: GameDeps) {
       }
       const chips = $("partChips");
       chips.innerHTML = "";
+      // A duel is copied with the whole body only: no part to pick, so a hand is never ranked against a whole body.
+      chips.hidden = !!role.duel;
+      turn.querySelector<HTMLElement>(".part-ask")!.hidden = !!role.duel;
       let chosen: BodyPart = role.parts[0]?.key ?? "body";
       role.parts.forEach((p, i) => {
         const b = document.createElement("button");
@@ -926,7 +933,7 @@ export function initGame(deps: GameDeps) {
     });
     castRow.replaceChildren(...jesters.map((x) => x.slot));
     const winners = winnersOf(rows);
-    const headline = headlineFor(rows);
+    const headline = rows.some((r) => r.duel) ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows);
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
@@ -1043,15 +1050,19 @@ export function initGame(deps: GameDeps) {
 
   function showResults() {
     stopPodium();
-    const winners = winnersOf(rows);
-    letters($("resultsHeadline"), headlineFor(rows));
+    // A duel lists players by their place (timing breaks a tie on score), so the crowned player is first.
+    const duel = rows.some((r) => r.duel);
+    const podium = podiumOrder(rows);
+    const listed = podium.map((p) => p.row);
+    const winners = winnersOf(listed);
+    letters($("resultsHeadline"), duel ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows));
     const list = $("podium");
     list.innerHTML = "";
     // Everyone leaves with something: the crown, or an award from how they played.
-    const awards = awardsFor(rows.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })));
-    rows.forEach((r, i) => {
-      // Tied scores share a place.
-      const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
+    const awards = awardsFor(listed.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })))
+      .map((award, i) => (duel && listed[i]!.winner && !listed[i]!.tied ? DUEL_WINNER_AWARD : award));
+    listed.forEach((r, i) => {
+      const place = podium[i]!.place;
       const li = document.createElement("li");
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
@@ -1108,7 +1119,7 @@ export function initGame(deps: GameDeps) {
     note.textContent = "Saved to your downloads. Send it from there.";
   });
 
-  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(); else show("start"); });
+  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(true); else show("start"); });
   $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
 

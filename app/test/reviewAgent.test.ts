@@ -254,6 +254,14 @@ test("stepsOf: a written plan comes first, other subagents and unclear answers a
   ]);
 });
 
+test("stepsOf: what the decision left out of the cast, as a count only", () => {
+  const base = { mode: "deep" as const, messages: [], todos: [], frames: 4, precedents: 0, playability: "plays well" as const, recorded: "approve" as const, final: "approve" as const };
+  assert.deepEqual(stepsOf({ ...base, castDrops: 2 }).slice(-2), ["Left out of the cast: 2 things", "Recorded the decision: let it in"]);
+  assert.equal(stepsOf({ ...base, castDrops: 1 }).at(-2), "Left out of the cast: 1 thing");
+  assert.ok(!stepsOf({ ...base, castDrops: 0 }).some((s) => s.startsWith("Left out")));
+  assert.ok(!stepsOf(base).some((s) => s.startsWith("Left out")));
+});
+
 test("stepsOf: the fast flow's steps, and a run that recorded nothing", () => {
   assert.deepEqual(stepsOf({ mode: "fast", messages: deepRun, todos: [], frames: 4, precedents: 0, playability: "unsure", recorded: "ask_a_person", final: "ask_a_person" }), [
     "The game's own numbers say: unsure",

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
-import { classify, costUsd, deskCase, mayTrace, nameCheckHolds, outcomeFromLog, renderReport, summarize, truthOfDesk, type CaseFile, type CaseResult, type Decision, type Truth } from "../src/chamberlainCases.ts";
+import { castHolds, classify, costUsd, deskCase, mayTrace, nameCheckHolds, outcomeFromLog, renderReport, summarize, truthOfDesk, type CaseFile, type CaseResult, type Decision, type Truth } from "../src/chamberlainCases.ts";
 import { FRAME_SIZE, figureFrames } from "../src/frames.ts";
 
 const decided = (verdict: Decision["verdict"], nameCheck: Decision["nameCheck"] = "fits"): Decision =>
@@ -154,4 +154,22 @@ test("only synthetic cases may be traced; a case file is always a desk case, wha
     assert.equal(mayTrace(c), false);
     assert.equal(c.input.synthetic, false);
   }
+});
+
+test("the cast check is scored by the thing roles left after its drops", () => {
+  const split = SYNTHETIC.find((c) => c.id === "cast-split-car")!;
+  const c = syntheticCase(split);
+  assert.equal(c.truth?.castThings, 1);
+  assert.equal(c.input.facts.cast?.length, 5);
+  const drops = (labels: string[]) => ({ ...decided("approve"), castDrops: labels.map((label) => ({ label, why: "" })) });
+  assert.equal(castHolds(c.truth, c.input.facts, drops(["Car 2", "Car 3", "Car 4"])), true);
+  assert.equal(castHolds(c.truth, c.input.facts, drops(["Car 4"])), false);
+  // The right count with the wrong piece kept: Car 1, the longest, must stay.
+  assert.equal(castHolds(c.truth, c.input.facts, drops(["Car 1", "Car 3", "Car 4"])), false);
+  assert.equal(castHolds(c.truth, c.input.facts, decided("approve")), false);
+  // Cases without a cast truth, and failed reviews, are not scored on it.
+  assert.equal(castHolds({ want: "approve", alsoOk: [] }, c.input.facts, decided("approve")), true);
+  assert.equal(castHolds(c.truth, c.input.facts, null), true);
+  // The car is drawn into that case's frames, and not into a plain case's.
+  assert.notEqual(c.input.frames[0], syntheticCase(SYNTHETIC.find((x) => x.id === "control-jumping-jacks")!).input.frames[0]);
 });
