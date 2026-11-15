@@ -1325,7 +1325,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
   ctx.globalAlpha = Math.min(1, ms / 400);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4, W * 0.9);
-  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
+  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(players === 1 ? "One brave player." : `${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
   ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66, W * 0.9);
   ctx.globalAlpha = 1;
 }
