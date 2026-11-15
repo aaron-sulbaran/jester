@@ -837,7 +837,7 @@ export function initGame(deps: GameDeps) {
     const on = sfx.soundOn();
     soundButton.setAttribute("aria-pressed", String(on));
     // Only the words change; the horn icon beside them follows aria-pressed in style.css.
-    $("soundSay").textContent = on ? "Sound: on" : "Sound: off";
+    $("soundSay").textContent = soundButton.title = on ? "Sound: on" : "Sound: off";
   };
   soundButton.addEventListener("click", () => { sfx.setSound(!sfx.soundOn()); showSound(); });
   showSound();
