@@ -15,14 +15,18 @@ export function drawFrame(
   canvas: HTMLCanvasElement,
   source: CanvasImageSource | null,
   pose: readonly LandmarkObject[] | null,
-  { mirror = false, color = "#f5c542" } = {},
+  { mirror = false, color = "#f5c542", backdrop = null as CanvasImageSource | null } = {},
 ) {
   const ctx = canvas.getContext("2d")!;
   const { width: w, height: h } = canvas;
   ctx.save();
+  // `backdrop` (drawn unmirrored, filling the canvas) stands in for the plain black behind the picture.
+  if (backdrop) ctx.drawImage(backdrop, 0, 0, w, h);
   if (mirror) { ctx.translate(w, 0); ctx.scale(-1, 1); }
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, w, h);
+  if (!backdrop) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+  }
   if (source) ctx.drawImage(source, 0, 0, w, h);
   if (pose) {
     ctx.strokeStyle = color;
