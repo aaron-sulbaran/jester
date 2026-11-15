@@ -133,19 +133,21 @@
         <p class="typed start-how">Each of you copies a secret part of a clip on the webcam. At the end, you see it all together.</p>
       </header>
 
-      <!-- How you play: how many of you (and for two, together or a duel), and Blind or Normal. The lines under it say
-           what each pick means (game.ts). The clips below are only the ones that fit. -->
+      <!-- How you play: how many are playing (remembered), and for two or more how; then Blind or Normal. The lines
+           under it say what the picks mean (game.ts). The library below follows them. -->
       <div class="start-setup" id="startMode">
         <div class="start-count" role="radiogroup" aria-labelledby="countLabel">
-          <span class="start-ask" id="countLabel">How many of you?</span>
-          <button type="button" class="chip" role="radio" data-count="1" aria-checked="false">1</button>
-          <button type="button" class="chip" role="radio" data-count="2" aria-checked="true">2</button>
-          <button type="button" class="chip" role="radio" data-count="3" aria-checked="false">3</button>
-          <button type="button" class="chip" role="radio" data-count="4" aria-checked="false">4</button>
+          <span class="start-ask" id="countLabel">How many are playing?</span>
+          <button type="button" class="chip" role="radio" data-players="1" aria-checked="true">1</button>
+          <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
+          <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
+          <button type="button" class="chip" role="radio" data-players="4" aria-checked="false">4</button>
         </div>
-        <div class="modes-pick start-duel" id="duelPick" role="radiogroup" aria-label="Two of you">
-          <button type="button" class="mode" role="radio" data-duel="off" aria-checked="true"><b>Together</b><span>Each of you plays a different part.</span></button>
-          <button type="button" class="mode" role="radio" data-duel="on" aria-checked="false"><b>Duel</b><span>You both copy the same person. Best copy wins.</span></button>
+        <div class="start-count start-how" id="howPick" role="radiogroup" aria-labelledby="howLabel" hidden>
+          <span class="start-ask" id="howLabel">How?</span>
+          <button type="button" class="chip" role="radio" data-how="turns" aria-checked="true" data-says="One of you plays, then passes the laptop to the next.">Take turns on this laptop</button>
+          <button type="button" class="chip" role="radio" data-how="duel" aria-checked="false" data-says="You all copy the same person. Best copy wins.">Duel: copy the same person</button>
+          <button type="button" class="chip" role="radio" data-how="online" aria-checked="false" data-says="Each of you plays on your own phone or laptop, from anywhere. You pick the clip in the room.">Each on your own device</button>
         </div>
         <div class="modes-pick" role="radiogroup" aria-label="Game mode">
           <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end, only the shape of their part.</span></button>
@@ -168,6 +170,7 @@
       <div class="library-head" id="libraryHead">
         <h2 class="library-title" id="libraryTitle">Pick from the library</h2>
         <span class="library-count" id="libraryCount"></span>
+        <button type="button" class="link library-more" id="libraryMore" hidden></button>
         <label class="field library-find" role="search"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
       </div>
       <div class="bank" id="bank" role="group" aria-labelledby="libraryTitle"></div>
