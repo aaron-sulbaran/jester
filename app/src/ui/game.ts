@@ -5,8 +5,9 @@
 import type { BodyPart } from "../../../engine/src/index.ts";
 import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
 import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
-// STAND-IN until aaron/video-bank lands: then import listBank, bankScene from "../bank.ts" and submitClip from "../submit.ts".
-import { bankScene, listBank, submitClip, type BankClip } from "./bankStandIn.ts";
+import { listBank, type BankClip } from "../bank.ts";
+import { bankScene } from "../bankRound.ts";
+import { submitClip } from "../submit.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
 /** A CSS custom property from the skin, or the fallback. */
@@ -174,7 +175,7 @@ export function initGame(deps: GameDeps) {
     if (pick.kind === "starter") { scene = pick.starter.make(); openCast(); return; }
     const clip = pick.kind === "bank" ? pick.clip : bank[Math.floor(Math.random() * bank.length)];
     if (!clip) return;
-    const r = await bankScene(clip);
+    const r = await bankScene(clip, deps.clipVideo);
     if (r.error !== null) return startProblem(r.error);
     scene = r.data;
     openCast();
