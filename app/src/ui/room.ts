@@ -505,12 +505,14 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
 
   let link = "";
   const copyBtn = $<HTMLButtonElement>("roomCopy");
+  // Only the words change, so the copy icon stays.
+  const copySay = $("roomCopySay");
   let copyTimer = 0;
   copyBtn.addEventListener("click", async () => {
     clearTimeout(copyTimer);
     try {
       await navigator.clipboard.writeText(link);
-      copyBtn.textContent = "Copied";
+      copySay.textContent = "Copied";
     } catch {
       // No clipboard here: show the link and select it, so it can be copied by hand. Otherwise it stays off
       // screen: the QR and Copy link carry it.
@@ -520,9 +522,9 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       range.selectNodeContents($("roomLinkText"));
       getSelection()?.removeAllRanges();
       getSelection()?.addRange(range);
-      copyBtn.textContent = "Link selected";
+      copySay.textContent = "Link selected";
     }
-    copyTimer = window.setTimeout(() => { copyBtn.textContent = "Copy link"; }, 1800);
+    copyTimer = window.setTimeout(() => { copySay.textContent = "Copy link"; }, 1800);
   });
 
   function enter(rawCode: string) {
@@ -548,7 +550,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     $("roomJoin").hidden = true;
     $("roomLobby").hidden = false;
     $("roomHead").hidden = true;
-    $("roomBack").textContent = "Leave the room";
+    $("roomBackSay").textContent = "Leave the room";
     codeStickers($("roomCodeText"), code);
     link = joinLink(code, location);
     $("roomLinkText").textContent = linkShown(link);
@@ -578,7 +580,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     $("roomJoin").hidden = false;
     $("roomLobby").hidden = true;
     $("roomHead").hidden = false;
-    $("roomBack").textContent = "Back";
+    $("roomBackSay").textContent = "Back";
     showInvite(null);
     if (roomCodeFromSearch(location.search)) history.replaceState(history.state, "", addressWithRoom(location.href, null));
     problem("");
