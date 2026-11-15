@@ -30,7 +30,7 @@ import { whereToStand, LATE_HINT, type WhereToStand } from "./fitFrame.ts";
 import { seatEffort, seatWobble } from "./simSeats.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
-import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
+import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type PlaybackControl, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
 import { playWithSound, setAloud } from "./sound.ts";
 import { castRowShare, dropShrunkCrops } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
@@ -180,7 +180,7 @@ export interface BlindUi {
   /** The canvas the reveal is drawn on while it records. */
   revealCanvas(): HTMLCanvasElement;
   /** Optional: set `speed` above 1 while the reveal records to fast forward it (16 skips it); the UI's buttons own this. */
-  revealControl?: { speed: number };
+  revealControl?: { speed: number; skip?: boolean };
   /** Recording progress of the reveal, 0 to 1. */
   progress(share: number): void;
   /** The end: everyone's role and score. Called before the reveal starts recording on `revealCanvas`. */
@@ -1395,13 +1395,15 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   }));
 }
 
-async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }, aloud = true): Promise<string | null> {
+async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: PlaybackControl, aloud = true): Promise<string | null> {
   const scene = played;
-  // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
-  // about 7 times. Wide clips stay 960 wide.
-  canvas.width = scene.width >= scene.height ? 960 : Math.round((1280 * scene.width) / scene.height);
-  canvas.height = Math.round(canvas.width * (scene.height / scene.width));
-  const W = canvas.width, H = canvas.height;
+  // The clip's own drawing space (W by H): the longest side near 1280 px, so a tall clip is not 960 x 1700 (which blew
+  // each cutout up about 7 times). The recording itself is always 1280 x 720, because the reveal shows the original
+  // and the cast side by side.
+  const W = scene.width >= scene.height ? 960 : Math.round((1280 * scene.width) / scene.height);
+  const H = Math.round(W * (scene.height / scene.width));
+  const CW = 1280, CH = 720;
+  canvas.width = CW; canvas.height = CH;
   const toPlay = (ms: number) => ms / speed;
   const layers = revealLayers(seats, speed);
   const video = scene.video;
@@ -1435,19 +1437,34 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   // shows who they are; a cutout from the middle of their turn only when no face was caught (a crop there can
   // miss the head).
   const faces = seats.map((s) => s.face ?? s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
+  // Two panels in the clip's own shape, side by side under a label each.
+  const panelL = document.createElement("canvas"), panelR = document.createElement("canvas");
+  panelL.width = panelR.width = W; panelL.height = panelR.height = H;
+  const gap = CW * 0.02, top = CH * 0.14, availW = (CW - 3 * gap) / 2, availH = CH - top - gap;
+  const fit = Math.min(availW / W, availH / H);
+  const side = { w: W * fit, h: H * fit, xL: 0, xR: 0, y: 0 };
+  side.xL = gap + (availW - side.w) / 2; side.xR = 2 * gap + availW + (availW - side.w) / 2; side.y = top + (availH - side.h) / 2;
   const segments: Segment[] = [
-    { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
+    { durationMs: 2200, draw: (c, ms) => drawTitle(c, CW, CH, scene.name, seats.length, ms) },
     {
-      // The clip as it was, so everyone sees what they were copying.
+      // The original on the left and the cast on the right, at the same moment, so nobody forgets what they were copying.
       durationMs: realMs, clock: video ? afterReady(videoClock(video, scene.startMs), platePromise) : undefined,
-      draw: (c, ms) => { background(0)(c, ms); caption(c, "The original", "#ffffff"); },
+      draw: (c, ms) => {
+        c.fillStyle = theme.card; c.fillRect(0, 0, CW, CH);
+        background(0)(panelL.getContext("2d")!, ms);
+        const r = panelR.getContext("2d")!;
+        withoutSubjects(0)(r, ms);
+        drawLayers(r, W, H, layers, ms);
+        c.drawImage(panelL, side.xL, side.y, side.w, side.h);
+        c.drawImage(panelR, side.xR, side.y, side.w, side.h);
+        c.save();
+        c.font = font(CH, 0.055, 800); c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillStyle = "#ffffff"; c.fillText("The original", side.xL + side.w / 2, side.y - CH * 0.055);
+        c.fillStyle = theme.accent; c.fillText("Your cast", side.xR + side.w / 2, side.y - CH * 0.055);
+        c.restore();
+      },
     },
-    {
-      // The same clip with each player standing in for the subject they played.
-      durationMs: realMs, clock: video ? videoClock(video, scene.startMs) : undefined,
-      draw: (c, ms) => { withoutSubjects(0)(c, ms); drawLayers(c, W, H, layers, ms); caption(c, "Your cast", theme.accent); },
-    },
-    { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
+    { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, CW, CH, rows, faces, ms) },
   ];
   if (!video || aloud) return recordSegments(canvas, segments, onProgress, control, video);
   // Recorded with its sound, played without it here (setAloud), then the speakers come back for the next turn.

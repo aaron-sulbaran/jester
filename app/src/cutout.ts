@@ -451,7 +451,7 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
 export interface SegmentClock { start(): void | Promise<void>; now(): number; stop?(): void; /** Lets the clock run faster (a video's playbackRate). */ setSpeed?(speed: number): void }
 
 /** Read on every tick while recording, so a button can speed up or skip the rest of a reveal. 1 is real time. */
-export interface PlaybackControl { speed: number }
+export interface PlaybackControl { speed: number; /** Set true to end the recording now: whatever has been recorded so far becomes the video. */ skip?: boolean }
 
 /** One part of a recorded video: drawn for `durationMs`, at the time its clock gives. */
 export interface Segment {
@@ -484,6 +484,7 @@ export async function recordSegments(canvas: HTMLCanvasElement, segments: readon
   });
   let before = 0;
   for (const [k, seg] of segments.entries()) {
+    if (control?.skip) break;
     seg.draw(ctx, 0);
     if (recorder?.state === "recording") recorder.pause();
     if (seg.clock) await seg.clock.start();
@@ -498,6 +499,7 @@ export async function recordSegments(canvas: HTMLCanvasElement, segments: readon
     await new Promise<void>((next) => {
       // A timer, not requestAnimationFrame, so it still records in a background tab.
       const timer = window.setInterval(() => {
+        if (control?.skip) { clearInterval(timer); seg.clock?.stop?.(); next(); return; }
         if (control && seg.clock?.setSpeed) seg.clock.setSpeed(control.speed);
         const ms = Math.max(0, now());
         seg.draw(ctx, Math.min(ms, seg.durationMs));

@@ -152,7 +152,6 @@ const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3
 
 /** One player may play alone; a new cast still starts with two, since it is a party game. */
 const MIN_PLAYERS = 1;
-const START_PLAYERS = 2;
 const MAX_PLAYERS = 4;
 
 export function initGame(deps: GameDeps) {
@@ -176,10 +175,11 @@ export function initGame(deps: GameDeps) {
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
   const revealCanvas = $<HTMLCanvasElement>("revealStage");
   // Fast forward and skip for the reveal: blind.ts reads `speed` every tick while the reveal records.
-  const revealControl = { speed: 1 };
+  const revealControl: { speed: number; skip?: boolean } = { speed: 1 };
   const setPace = (speed: number) => { revealControl.speed = speed; $("revealFastLabel").textContent = `${speed}x`; };
   $("revealFast").addEventListener("click", () => { const steps = [1, 2, 4]; setPace(steps[(steps.indexOf(revealControl.speed) + 1) % steps.length] ?? 1); });
-  $("revealSkip").addEventListener("click", () => setPace(16));
+  // Skip ends the recap at once and goes to the results (the video shows what was recorded so far).
+  $("revealSkip").addEventListener("click", () => { revealControl.skip = true; setPace(16); });
   const turn = $("screen-turn");
 
   // ---- Start ----
@@ -451,12 +451,16 @@ export function initGame(deps: GameDeps) {
 
   // ---- Cast ----
 
-  function openCast() {
+  /**
+   * Opens "Who's playing?". The cast starts with the number of players picked on the start screen; with no pick,
+   * one player per part of the clip (so a one-person clip opens with one player). `again` keeps the cast as it
+   * was, for Play again. Add a player and One fewer still change it.
+   */
+  function openCast(again = false) {
     if (!scene) return;
     $("startProblem").hidden = true;
-    // Start with one player per part; more players share parts, fewer leave some out.
     const parts = scene.guides.length;
-    const want = Math.min(MAX_PLAYERS, Math.max(START_PLAYERS, parts));
+    const want = again && names.length ? names.length : Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, players || parts));
     names = Array.from({ length: want }, (_, i) => names[i] ?? "");
     renderCast();
     show("cast");
@@ -842,6 +846,7 @@ export function initGame(deps: GameDeps) {
     results(r) {
       live();
       setPace(1);
+      revealControl.skip = false;
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
@@ -1106,7 +1111,7 @@ export function initGame(deps: GameDeps) {
     note.textContent = "Saved to your downloads. Send it from there.";
   });
 
-  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(); else show("start"); });
+  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(true); else show("start"); });
   $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
 
