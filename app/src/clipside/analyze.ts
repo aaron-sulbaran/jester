@@ -18,13 +18,15 @@ export { loadPrepared, savePrepared } from "./store.ts";
 
 const SAMPLE_HZ = 15;
 const MAX_MS = 30000;
-const MAX_SIDE = 720;
+// Frames are read at most this many pixels on the long side. The pose model looks at a 256 px crop anyway, so 512 is
+// plenty and decoding, masks and outlines get about half the work (was 720).
+const MAX_SIDE = 512;
 const SIGNATURE_WIDTH = 32;
 const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are used.";
 /** A person lost for up to this long (behind someone, at the back) is joined back into one track. */
 const REJOIN_SECONDS = 3;
 /** The object detector looks at every this many analysed frames. */
-const THING_EVERY = 3;
+const THING_EVERY = 6;
 
 /** Things (animals, balls, cars) found by the object detector. People are left to the pose tracker. */
 export interface PreparedThings { frames: ThingFrame[]; tracks: ThingTrack[]; candidates: ThingCandidate[] }
@@ -151,11 +153,16 @@ export async function prepareClip(
   }
   const thingFrames: ThingFrame[] = [];
   const scratch = document.createElement("canvas");
+  const t0 = performance.now();
+  let peopleMs = 0, thingMs = 0;
   let read: Awaited<ReturnType<typeof readFrames>>;
   try {
     read = await readFrames(file, video, { sampleHz: SAMPLE_HZ, maxMs: MAX_MS, maxSide: MAX_SIDE }, async ({ tMs, canvas, index, count }) => {
+      const a = performance.now();
       frames.push({ tMs, people: detector.data.detect(canvas, tMs), signature: signatureOf(canvas, scratch) });
+      const b = performance.now();
       if (thingDetector) thingFrames.push({ tMs, things: index % THING_EVERY === 0 ? thingDetector.detect(canvas, tMs) : null });
+      peopleMs += b - a; thingMs += performance.now() - b;
       onProgress((index + 1) / count);
     });
   } catch {
@@ -166,6 +173,8 @@ export async function prepareClip(
     thingDetector?.close();
   }
   if (read.error !== null) return refuse(read.error);
+  // Where the time went, for tuning: shown in the console after each fresh analysis.
+  console.info(`[clip] analysed ${frames.length} frames in ${((performance.now() - t0) / 1000).toFixed(1)} s (people ${(peopleMs / 1000).toFixed(1)} s, things ${(thingMs / 1000).toFixed(1)} s, rest is decoding)`);
 
   const info: VideoInfo = read.data;
   const source: ClipSource = {
