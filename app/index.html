@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Jester</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body data-screen="start">
@@ -28,6 +31,13 @@
         <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
         <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
       </filter>
+      <!-- The doodled crown from the scrapbook mockups: a gold fill printed a little off its ink outline. On the J, and the favicon. -->
+      <symbol id="crown-doodle" viewBox="0 0 64 46">
+        <path d="M10 41 L12 13 L24 26 L33 4 L42 26 L54 12 L56 41 Z" fill="#FFC93C" transform="translate(3 -2)" />
+        <path d="M8 43 L10 15 L22 28 L31 6 L40 28 L52 14 L54 43 Z" fill="none" stroke="#1E1B18" stroke-width="3.6" stroke-linejoin="round" stroke-linecap="round" />
+        <path d="M12 36 H50" fill="none" stroke="#1E1B18" stroke-width="3" stroke-linecap="round" />
+        <circle cx="31" cy="31" r="2.8" fill="#D93A2B" />
+      </symbol>
       <symbol id="star" viewBox="0 0 100 100">
         <path d="M50 4 L62 36 L96 37 L69 58 L79 92 L50 72 L21 92 L31 58 L4 37 L38 36 Z" fill="#F4BE1A" stroke="#B9850A" stroke-width="3" stroke-linejoin="round" />
         <path d="M50 16 L58 38 L50 34 L42 38 Z" fill="#FFE27A" />
@@ -106,7 +116,7 @@
     <!-- Start: pick a mode and a clip from the bank, play in one click. -->
     <section class="screen" id="screen-start">
       <header class="masthead">
-        <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J</span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
+        <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-crown" aria-hidden="true" focusable="false"><use href="#crown-doodle" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
