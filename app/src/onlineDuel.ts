@@ -29,7 +29,9 @@ import { blindView, drawBlind, guideFrameAt } from "./clipside/blind.ts";
 import { starterClip, type Clip } from "./clip.ts";
 import { drawReveal, type RevealRole } from "./composite.ts";
 import { drawFrame } from "./draw.ts";
+import { GHOST_TAG, isGhost } from "./ghosts.ts";
 import type { Player } from "./round.ts";
+import { DETAIL_BONES } from "../../spikes/pose-match/skeleton.mjs";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
 
@@ -441,6 +443,13 @@ export function playDuelReveal(canvas: HTMLCanvasElement, dc: DuelClip, ranked: 
   const { roles, rows } = revealRoles(dc, ranked);
   const winner = rows.findIndex((r) => r?.place === 1 && ranked.filter((x) => x.place === 1).length === 1);
   const scratch = document.createElement("canvas");
+  // Ghosts take no player colour: the people are drawn by drawReveal, the ghosts here as a pencil tracing. A second
+  // canvas nobody sees gives every figure's place, ghosts included, exactly as drawReveal lays them out.
+  const layout = document.createElement("canvas");
+  const ghostAt = rows.map((r) => !!r && isGhost(r.id));
+  const people = roles.map((role, i) => (ghostAt[i] ? { ...role, timeline: { frames: [] } } : role));
+  const token = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  const paper = token("--photo", "#FFFFFF"), ink = token("--ink", "#1E1B18");
   const lengthMs = dc.endMs - dc.startMs;
   const started = performance.now();
   let raf = 0;
@@ -456,13 +465,19 @@ export function playDuelReveal(canvas: HTMLCanvasElement, dc: DuelClip, ranked: 
       const sample = sampleAt(dc.clip.samples as never, ms / 1000) as ClipSample | null;
       drawFrame(canvas, null, (sample?.landmarks ?? null) as LandmarkObject[] | null, { color: "#777" });
     }
-    scratch.width = canvas.width; scratch.height = canvas.height;
-    const { figures } = drawReveal(scratch, roles, ms, { clipAspect: dc.aspect, winner, spreadX: spread });
+    scratch.width = layout.width = canvas.width; scratch.height = layout.height = canvas.height;
+    const options = { clipAspect: dc.aspect, winner, spreadX: spread };
+    const { figures } = drawReveal(layout, roles, ms, options);
+    drawReveal(scratch, people, ms, options);
     const ctx = canvas.getContext("2d")!;
     // The reveal's dark background drops out over the video; only the figures show.
     ctx.globalCompositeOperation = "lighten";
     ctx.drawImage(scratch, 0, 0);
     ctx.globalCompositeOperation = "source-over";
+    // Ghosts on top (lighten would wash out ink): paper limbs inside a dashed ink line.
+    (figures as { pose: { x: number; y: number; visibility?: number }[] | null }[]).forEach((fig, i) => {
+      if (ghostAt[i] && fig.pose) drawGhostFigure(ctx, fig.pose, canvas.width, canvas.height, paper, ink, winner < 0 || winner === i ? 1 : 0.35);
+    });
     ctx.font = `bold ${Math.round(canvas.height * 0.045)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     (figures as { pose: { x: number; y: number }[] | null; color: string }[]).forEach((fig, i) => {
@@ -470,17 +485,40 @@ export function playDuelReveal(canvas: HTMLCanvasElement, dc: DuelClip, ranked: 
       if (!row || !fig.pose) return;
       const top = Math.min(...fig.pose.map((p) => p.y));
       const x = fig.pose[0]!.x * canvas.width, y = Math.max(canvas.height * 0.06, (top - 0.06) * canvas.height);
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      const text = `${row.place}. ${row.name}  ${row.score ?? "no score"}`;
+      const ghost = ghostAt[i];
+      const text = ghost ? `${row.place}. ${row.name}, ${GHOST_TAG}  ${row.score ?? "no score"}` : `${row.place}. ${row.name}  ${row.score ?? "no score"}`;
       const w = ctx.measureText(text).width + 12;
+      ctx.fillStyle = ghost ? paper : "rgba(0,0,0,0.6)";
       ctx.fillRect(x - w / 2, y - canvas.height * 0.045, w, canvas.height * 0.06);
-      ctx.fillStyle = fig.color;
+      if (ghost) { ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.strokeRect(x - w / 2, y - canvas.height * 0.045, w, canvas.height * 0.06); ctx.restore(); }
+      ctx.fillStyle = ghost ? ink : fig.color;
       ctx.fillText(text, x, y);
     });
     raf = requestAnimationFrame(tick);
   };
   tick();
   return () => { cancelAnimationFrame(raf); dc.video?.pause(); };
+}
+
+/** A ghost's stick figure as a pencil tracing: a dashed ink line round paper-coloured limbs and head. */
+function drawGhostFigure(ctx: CanvasRenderingContext2D, pose: readonly { x: number; y: number; visibility?: number }[], W: number, H: number, paper: string, ink: string, alpha: number) {
+  const seen = (k: number) => !!pose[k] && (pose[k]!.visibility ?? 1) >= 0.5;
+  const limbs = () => {
+    ctx.beginPath();
+    for (const [a, b] of DETAIL_BONES as [number, number][]) {
+      if (!seen(a) || !seen(b)) continue;
+      ctx.moveTo(pose[a]!.x * W, pose[a]!.y * H); ctx.lineTo(pose[b]!.x * W, pose[b]!.y * H);
+    }
+  };
+  const head = () => { ctx.beginPath(); ctx.arc(pose[0]!.x * W, pose[0]!.y * H, H * 0.04, 0, Math.PI * 2); };
+  ctx.save();
+  ctx.globalAlpha = alpha; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.setLineDash([8, 6]); ctx.strokeStyle = ink; ctx.lineWidth = 9;
+  limbs(); ctx.stroke();
+  ctx.setLineDash([]); ctx.strokeStyle = paper; ctx.fillStyle = paper; ctx.lineWidth = 5;
+  limbs(); ctx.stroke();
+  if (seen(0)) { head(); ctx.fill(); ctx.setLineDash([8, 6]); ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.stroke(); }
+  ctx.restore();
 }
 
 /** The colour each ranked player gets in the reveal, for a legend beside it. */

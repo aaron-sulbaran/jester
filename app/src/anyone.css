@@ -7,7 +7,7 @@
 .anyone-join .field { text-align: left; width: min(100%, 280px); }
 .anyone-status { min-height: 1.4em; }
 
-/* Who is here: name stickers, ghosts in grey with a dashed edge. */
+/* Who is here: name stickers. */
 .anyone-who { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 14px; justify-content: center; max-width: 720px; }
 .anyone-who li { padding: 4px 14px 6px; background: var(--photo); box-shadow: 3px 4px 0 var(--shade); font: 700 22px var(--hand); color: var(--pen); rotate: -1deg; }
 .anyone-who li:nth-child(2n) { rotate: 1.2deg; }
@@ -24,10 +24,13 @@
 .anyone-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; text-align: left; }
 .anyone-bar { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
 .anyone-bar b { font: 700 20px/1.1 var(--hand); color: var(--pen); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.anyone-bar.ghost { opacity: .8; }
+/* A ghost is a pencil tracing: paper with a dashed ink outline, never dimmed, no player colour. */
+.anyone-bar.ghost { --who: var(--photo); }
 .anyone-bar output { font: 400 24px/1 var(--sticker); color: var(--who, var(--ticket)); -webkit-text-stroke: 2.5px var(--ink); paint-order: stroke fill; min-width: 2.2ch; text-align: right; }
 .anyone-bar .track { grid-column: 1 / -1; height: 14px; background: var(--photo); box-shadow: inset 0 0 0 2px var(--shade); overflow: hidden; }
 .anyone-bar .fill { height: 100%; width: 0; background: var(--who, var(--ticket)); transition: width .2s linear; }
+.anyone-bar.ghost .track { background: transparent; box-shadow: none; outline: 2px dashed var(--ink); outline-offset: -2px; }
+.anyone-bar.ghost .fill { border-right: 2px dashed var(--ink); }
 .anyone-bar small { grid-column: 1 / -1; font-size: 13px; }
 
 /* Results: a ranking on paper, then the reveal on the stage. */
@@ -39,7 +42,8 @@
 .anyone-podium .anyone-name { font: 700 24px/1.1 var(--hand); color: var(--pen); }
 .anyone-podium .anyone-name small { display: block; font: 400 14px var(--type); color: var(--ink); }
 .anyone-podium .score { font: 400 34px/1 var(--sticker); color: var(--who, var(--ticket)); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
-.anyone-podium li.ghost { background: var(--wood); }
+.anyone-podium li.ghost { --who: var(--photo); background: transparent; box-shadow: none; outline: 2px dashed var(--ink); outline-offset: -2px; }
+.anyone-podium li.ghost .anyone-name { color: var(--ink); }
 .anyone-podium li.first .score { font-size: 44px; }
 
 /* What shows in each state. */

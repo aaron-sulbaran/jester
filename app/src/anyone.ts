@@ -10,7 +10,7 @@
 import { MemoryBus, Room, broadcastChannelTransport, makeRoomCode } from "../../spikes/pose-match/rooms.mjs";
 import { PLAYER_COLORS } from "../../spikes/pose-match/reveal.mjs";
 import { ghostRecords, ghostRows } from "./ghostSource.ts";
-import { ghostName, ghostNames, ghostScoreAt, ghostStanding, isGhost, labelled, makeGhost, pickClip, pickGhosts, withGhosts, type Ghost } from "./ghosts.ts";
+import { GHOST_NOTE, ghostName, ghostNames, ghostScoreAt, ghostStanding, isGhost, makeGhost, pickClip, pickGhosts, withGhosts, type Ghost } from "./ghosts.ts";
 import { Lobby, MATCH_SIZE, MATCH_WAIT_MS, type Accepted, type MatchPlan, type Waiter } from "./lobby.ts";
 import { lobbyTransport } from "./lobbyTransport.ts";
 import {
@@ -274,9 +274,10 @@ export function initAnyone(deps: AnyoneDeps) {
   /** The score bars: players fill when their score arrives, ghosts fill as the clip plays. */
   function renderBars(r: AnyoneRoom, me: string, ghosts: Ghost[]) {
     const palette = colors();
-    const row = (name: string, color: string, ghost: boolean) => {
+    // Ghosts take no player colour (the look draws them as a pencil tracing); --p1 to --p4 stay for people.
+    const row = (name: string, color: string | null, ghost: boolean) => {
       const li = el("li", "anyone-bar" + (ghost ? " ghost" : ""));
-      li.style.setProperty("--who", color);
+      if (color) li.style.setProperty("--who", color);
       const fill = el("span", "fill");
       const track = el("span", "track");
       track.append(fill);
@@ -286,8 +287,8 @@ export function initAnyone(deps: AnyoneDeps) {
       return { li, fill, out, note };
     };
     const seats = r.roster().map((p, i) => ({ id: p.id, ...row(p.id === me ? `${p.name} (you)` : p.name, palette[i % palette.length]!, false) }));
-    const haunts = ghosts.map((g, i) => ({ g, ...row(labelled(g.name), palette[(seats.length + i) % palette.length]!, true) }));
-    for (const h of haunts) h.note.textContent = "an earlier round, replayed";
+    const haunts = ghosts.map((g) => ({ g, ...row(g.name, null, true) }));
+    for (const h of haunts) h.note.textContent = GHOST_NOTE;
     $("anyoneBars").replaceChildren(...seats.map((s) => s.li), ...haunts.map((h) => h.li));
     const set = (b: { fill: HTMLElement; out: HTMLElement }, score: number | null) => {
       b.fill.style.width = `${Math.max(0, Math.min(100, score ?? 0))}%`;
@@ -312,15 +313,13 @@ export function initAnyone(deps: AnyoneDeps) {
     const top = firsts[0];
     status(!top ? "Nobody could be scored this time." : firsts.length > 1 ? "A tie for first." : top.id === me ? "You win!" : `${top.name} wins.`);
     const palette = colors();
-    const seat = (row: DuelStanding) => {
-      const i = r.roster().findIndex((p) => p.id === row.id);
-      return i >= 0 ? i : r.roster().length + ghosts.findIndex((g) => row.id.endsWith(g.id));
-    };
+    const seat = (row: DuelStanding) => r.roster().findIndex((p) => p.id === row.id);
     const items = table.ranked.map((row) => {
-      const li = el("li", (isGhost(row.id) ? "ghost" : "") + (row.place === 1 ? " first" : ""));
-      li.style.setProperty("--who", palette[Math.max(0, seat(row)) % palette.length]!);
+      const ghost = isGhost(row.id);
+      const li = el("li", (ghost ? "ghost" : "") + (row.place === 1 ? " first" : ""));
+      if (!ghost) li.style.setProperty("--who", palette[Math.max(0, seat(row)) % palette.length]!);
       const who = el("span", "anyone-name", row.id === me ? `${row.name} (you)` : row.name);
-      const why = isGhost(row.id) ? "an earlier round on this clip" : row.error ?? (row.score === null ? "could not be scored" : "");
+      const why = ghost ? GHOST_NOTE : row.error ?? (row.score === null ? "could not be scored" : "");
       if (why) who.append(el("small", "", why));
       li.append(el("span", "rank", String(row.place)), who, el("span", "score", row.score === null ? "-" : String(row.score)));
       return li;
