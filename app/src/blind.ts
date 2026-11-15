@@ -274,11 +274,31 @@ function coverMask(W: number, H: number, guides: readonly Guide[], ms: number): 
  * outline, grown and feathered, is filled with the empty set (`plate`), or with a blurred copy of the frame
  * when there is no plate (a moving camera).
  */
+/** Which outline samples the cover at play time `ms` is made from (it only changes when one of these does). */
+function coverKey(guides: readonly Guide[], ms: number): string {
+  if (ms < 0) return "";
+  return guides.map((g) => {
+    const pos = Math.min(g.boxTrack.frames.length - 1, Math.max(0, (ms * g.source.sampleHz) / 1000));
+    return Math.floor(pos);
+  }).join(",");
+}
+
+/** The last finished cover: outlines sample at a few Hz, so most frames of a recording reuse it as it is. */
+let lastCover: { guides: readonly Guide[]; plate: HTMLCanvasElement; W: number; H: number; key: string; any: boolean } | null = null;
+
 function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number, plate: HTMLCanvasElement | null = null) {
   if (ms < 0) return;
+  const s = coverCanvas(W, H);
+  // With a plate the cover depends only on the outline samples, so it is rebuilt only when they change.
+  const key = plate ? coverKey(guides, ms) : "";
+  if (plate && lastCover && lastCover.guides === guides && lastCover.plate === plate && lastCover.W === W && lastCover.H === H && lastCover.key === key) {
+    if (lastCover.any) c.drawImage(s, 0, 0);
+    return;
+  }
   const mask = coverMask(W, H, guides, ms);
+  if (plate) lastCover = { guides, plate, W, H, key, any: !!mask };
   if (!mask) return;
-  const s = coverCanvas(W, H), sc = s.getContext("2d")!;
+  const sc = s.getContext("2d")!;
   sc.globalCompositeOperation = "source-over";
   sc.clearRect(0, 0, W, H);
   if (plate) {
@@ -308,13 +328,13 @@ function seeked(v: HTMLVideoElement): Promise<void> {
 }
 
 /**
- * The clip's set with nobody in it: about 40 frames across the stretch, and for each pixel the median of the
+ * The clip's set with nobody in it: about 24 frames across the stretch, and for each pixel the median of the
  * frames where no subject was over it (each subject's outline, grown). Pixels no frame saw are filled from the
  * set beside them (see fillFromSides). `scene` is as played; play time ms is media time ms * speed.
  * Null when the camera moves (the frames disagree away from the subjects) or the frames cannot be read.
  */
 async function backgroundPlate(video: HTMLVideoElement, scene: Scene, speed: number, W: number, H: number): Promise<HTMLCanvasElement | null> {
-  const w = 400, h = Math.max(1, Math.round((w * H) / W)), N = 40;
+  const w = 400, h = Math.max(1, Math.round((w * H) / W)), N = 24;
   const work = document.createElement("canvas");
   work.width = w; work.height = h;
   const wc = work.getContext("2d", { willReadFrequently: true })!;
@@ -1060,6 +1080,11 @@ function videoClock(video: HTMLVideoElement, fromMs: number): SegmentClock {
   };
 }
 
+/** A clock that first waits for `ready` (the recorder is paused meanwhile). */
+function afterReady(clock: SegmentClock, ready: Promise<unknown>): SegmentClock {
+  return { ...clock, start: async () => { await ready; await clock.start(); } };
+}
+
 /** How the recorded reveal looks. The look sets it per game through `GameOptions.theme`. */
 export interface RevealTheme { card: string; ink: string; soft: string; accent: string; font: string; title: string; glow: number }
 export const REVEAL_THEME: RevealTheme = { card: "#16161d", ink: "#f2f2f5", soft: "#a0a3b1", accent: "#f5c542", font: "system-ui, -apple-system, sans-serif", title: "Blind mode", glow: 12 };
@@ -1139,8 +1164,11 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   const layers = revealLayers(seats, speed);
   const video = scene.video;
   // A picture of the empty set, so the played subjects can be painted out cleanly (null for a moving camera).
-  const plate = video ? await backgroundPlate(video, scene, speed, W, H) : null;
-  if (video) { video.currentTime = scene.startMs / 1000; await seeked(video); }
+  // It is worked out while the title card plays (the recorder is paused until it is ready, so no dead frames).
+  let plate: HTMLCanvasElement | null = null;
+  const platePromise: Promise<void> = video
+    ? backgroundPlate(video, scene, speed, W, H).then(async (p) => { plate = p; video.currentTime = scene.startMs / 1000; await seeked(video); })
+    : Promise.resolve();
   const realMs = scene.durationMs * speed;
   /** The clip with no players at reveal time ms (`from` ms into the stretch, for a video that was seeked there). */
   const background = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
@@ -1167,7 +1195,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
     {
       // The clip as it was, so everyone sees what they were copying.
-      durationMs: realMs, clock: video ? videoClock(video, scene.startMs) : undefined,
+      durationMs: realMs, clock: video ? afterReady(videoClock(video, scene.startMs), platePromise) : undefined,
       draw: (c, ms) => { background(0)(c, ms); caption(c, "The original", "#ffffff"); },
     },
     {
