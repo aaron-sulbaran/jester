@@ -281,6 +281,8 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 #bank .clip-pic { background: radial-gradient(ellipse 58% 75% at 50% 100%, rgba(255, 255, 255, .5), transparent 70%), repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px), var(--pic, #2E4593); }
 .clip-cast { position: absolute; left: 6%; right: 6%; bottom: 5%; height: 80%; width: 88%; color: var(--ink); filter: url(#die-cut); }
 body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
+/* The live 3D jesters (clipside/cardJesters.ts): each figure carries its own sticker edge, so no filter; a little inside the picture. */
+.clip-cast.is-3d { filter: none; left: 9%; right: 9%; width: 82%; height: 74%; bottom: 7%; }
 
 /* The clips: a grid of small taped photos that scrolls up and down, snapping to whole rows so a photo is never
    cut in half at rest. The padding leaves room for the tape, the picked clip's star and the hard shadows. */

@@ -6,7 +6,7 @@
 // Drawn with the game's own 3D jester (puppet3d.ts) from a made-up standing pose, so the cards and the Blind
 // guide are the same figure. One shared loop at about 10 frames a second redraws only the cards on screen; with
 // reduced motion each card is drawn once. Until the 3D chunk has loaded (or without WebGL) the card keeps its
-// flat silhouettes.
+// flat stills (card-N.webp), which also stay for good without WebGL.
 
 import { boneLengths, liftPose, type Guide, type Turn } from "../../../clip/src/index.ts";
 import { JESTER_COLOURS, suitFor } from "./puppet.ts";
@@ -142,7 +142,7 @@ export function castJesters(pic: HTMLElement, svg: Element | null, people: numbe
   void load().then((m) => {
     if (!m || !pic.isConnected) return;
     const canvas = document.createElement("canvas");
-    canvas.className = "clip-cast";
+    canvas.className = "clip-cast is-3d";
     canvas.setAttribute("aria-hidden", "true");
     if (svg) svg.replaceWith(canvas); else pic.append(canvas);
     const card: Card = { canvas, spots: layout(people, first), things, seen: !watcher, drawn: false };
