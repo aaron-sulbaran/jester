@@ -584,11 +584,20 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   canvas.height = Math.round(canvas.width * (scene.height / scene.width));
   const W = canvas.width, H = canvas.height;
   const toPlay = (ms: number) => ms / speed;
-  const layers: RevealLayer[] = seats.map((s) => ({
-    cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
-    boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), color: s.color,
-    tag: `${s.name} ${s.result?.score ?? "-"}`,
-  }));
+  // Players who drew the same role stand side by side around it instead of on top of each other.
+  const shiftOf = (s: Seat) => {
+    const same = seats.filter((o) => o.guide === s.guide);
+    const k = same.indexOf(s);
+    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 1.3;
+  };
+  const layers: RevealLayer[] = seats.map((s) => {
+    const shift = shiftOf(s);
+    return {
+      cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
+      boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), spread: shift,
+      color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`,
+    };
+  });
   const video = scene.video;
   const realMs = scene.durationMs * speed;
   /** The clip with no players at reveal time ms (`from` ms into the stretch, for a video that was seeked there). */

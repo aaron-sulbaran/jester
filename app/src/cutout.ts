@@ -229,6 +229,8 @@ export interface RevealLayer {
   boxAt: (ms: number) => Box | null;
   /** A person's cutout is the whole body sized to the box; a thing's is sized up so a small ball still shows a hand. */
   kind: "person" | "thing";
+  /** Sideways offset in cutout widths, so players sharing a role stand side by side (default 0). */
+  spread?: number;
   /** Name tag drawn above the cutout, e.g. "Alex 87". */
   tag?: string;
   color?: string;
@@ -261,7 +263,8 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
     const c = nearest(layer.cutouts, ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs));
     if (!b || !c) continue;
     const side = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
-    const x = b.cx * W - side / 2, y = b.cy * H - side / 2;
+    const cx = b.cx * W + (layer.spread ?? 0) * side;
+    const x = cx - side / 2, y = b.cy * H - side / 2;
     ctx.save();
     ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = 12;
     ctx.drawImage(c.image, x, y, side, side);
@@ -271,8 +274,8 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
       ctx.font = `600 ${Math.round(H / 24)}px system-ui, sans-serif`;
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
       const ty = Math.max(H / 20, y + side * 0.06);
-      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, b.cx * W, ty);
-      ctx.fillStyle = layer.color ?? "#f5c542"; ctx.fillText(layer.tag, b.cx * W, ty);
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, cx, ty);
+      ctx.fillStyle = layer.color ?? "#f5c542"; ctx.fillText(layer.tag, cx, ty);
       ctx.restore();
     }
   }
