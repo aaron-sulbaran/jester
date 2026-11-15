@@ -213,11 +213,11 @@ export function initGame(deps: GameDeps) {
     const picked = document.querySelector<HTMLButtonElement>(`.mode[data-mode="${mode}"] span`);
     $("modeSays").textContent = picked?.textContent ?? "";
   };
-  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode")) {
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
       document.body.dataset.mode = mode;
-      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode")) o.setAttribute("aria-checked", String(o === b));
+      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) o.setAttribute("aria-checked", String(o === b));
       sayMode();
       renderBank();
     });

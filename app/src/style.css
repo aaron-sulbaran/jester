@@ -181,19 +181,29 @@ body:not(.solo) #solo { display: none; }
 .clip[aria-pressed="true"] .clip-star { display: block; }
 .start-actions { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; align-items: center; }
 
-/* Two ways to play, as one paper switch with two halves; the picked half is yellow. It reads as a setting,
-   so it never looks like a third and fourth clip. The picked mode's line shows once, under it (#modeSays). */
-.modes-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg; }
+/* Choices as paper cards; the picked one is taped down in yellow (the online room's clip pick uses these). */
+.modes-pick { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
 .mode {
-  min-width: 150px; min-height: 52px; padding: 8px 22px 10px; cursor: pointer;
-  display: grid; place-items: center; border: 0; background: none;
-  transition: background-color .18s var(--ease);
+  width: min(300px, 100%); min-height: 44px; padding: 14px 18px 16px; cursor: pointer; text-align: left;
+  display: grid; gap: 4px; border: 0; background: var(--photo); box-shadow: var(--lift); rotate: -1deg;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease);
 }
-.mode b { font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
-.mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.mode:hover { background: #F4EBDD; }
-.mode[aria-checked="true"] { background: var(--ticket); box-shadow: inset 0 0 0 2px var(--ink); }
+.mode:nth-child(even) { rotate: 1deg; }
+.mode b { font: 700 30px/1 var(--hand); letter-spacing: -.045em; }
+.mode span { font-size: 15px; line-height: 1.35; }
+.mode:hover { transform: translateY(-2px); box-shadow: 7px 9px 0 var(--shade); }
+.mode[aria-checked="true"] { background: var(--ticket); box-shadow: 7px 9px 0 var(--shade), inset 0 0 0 2px var(--ink); }
 .mode:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; }
+
+/* On the start screen the two ways to play are one paper switch with two halves; the picked half is yellow.
+   It reads as a setting, so it never looks like two more clips. The picked mode's line shows once, under it
+   (#modeSays); each half keeps its line for screen readers. */
+#screen-start .modes-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg; }
+#screen-start .mode { width: auto; min-width: 150px; min-height: 52px; padding: 8px 22px 10px; place-items: center; text-align: center; background: none; box-shadow: none; rotate: 0deg; transition: background-color .18s var(--ease); }
+#screen-start .mode b { font-size: 28px; }
+#screen-start .mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#screen-start .mode:hover { transform: none; background: #F4EBDD; }
+#screen-start .mode[aria-checked="true"] { background: var(--ticket); box-shadow: inset 0 0 0 2px var(--ink); }
 .mode-says { margin-top: -6px; font-size: 16px; min-height: 1.4em; }
 
 /* The bank: taped photos. Posters show in Watch first; in Blind they stay under the question mark. */
@@ -452,9 +462,11 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .btn-main .ticket { width: 100%; justify-content: center; }
   /* No sticky bars: on a phone a pinned ticket covered the first clip and the part chips. */
   .start-nav { position: static; }
-  .modes-pick { width: 100%; }
-  .mode { min-width: 0; padding: 8px 10px 10px; }
-  .mode b { font-size: 24px; }
+  .modes-pick { gap: 12px; }
+  .mode b { font-size: 26px; }
+  #screen-start .modes-pick { width: 100%; }
+  #screen-start .mode { min-width: 0; padding: 8px 10px 10px; }
+  #screen-start .mode b { font-size: 24px; }
   .restart { right: 50%; top: auto; bottom: 0; translate: 50% 60%; justify-items: center; }
   .place { grid-template-columns: 84px 1fr auto; }
   .place-score, .place.won .place-score { font-size: 40px; }
