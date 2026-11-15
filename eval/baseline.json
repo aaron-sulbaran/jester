@@ -1,14 +1,158 @@
 {
-  "savedAt": "2026-11-15T03:49:51.629Z",
-  "scorerVersion": "jester-engine/0.8.0",
-  "engineHash": "97ad82d7ce07",
+  "savedAt": "2026-11-15T05:13:57.036Z",
+  "scorerVersion": "jester-engine/0.10.0",
+  "engineHash": "dd4f279f1772",
   "headline": {
-    "cases": 0,
+    "cases": 4,
     "tagged": 0,
     "holding": 0,
     "notHolding": 0,
     "drifted": 0,
-    "localRounds": 0
+    "localRounds": 0,
+    "derived": 24,
+    "derivedHolding": 16,
+    "derivedNotHolding": 0
   },
-  "cases": {}
+  "cases": {
+    "r-mwhbjhtf-bxsrsl": {
+      "tag": null,
+      "score": 73,
+      "holds": null
+    },
+    "r-mwhbk6ld-bcwpp5": {
+      "tag": null,
+      "score": 68,
+      "holds": null
+    },
+    "r-mwhct263-r1f2n4": {
+      "tag": null,
+      "score": 100,
+      "holds": null
+    },
+    "r-mwhctkg1-cvwz9x": {
+      "tag": null,
+      "score": 60,
+      "holds": null
+    },
+    "r-mwhbjhtf-bxsrsl~late": {
+      "tag": "derived:late",
+      "score": 73,
+      "holds": true
+    },
+    "r-mwhbjhtf-bxsrsl~frozen": {
+      "tag": "derived:frozen",
+      "score": 0,
+      "holds": true
+    },
+    "r-mwhbjhtf-bxsrsl~seated": {
+      "tag": "derived:seated",
+      "score": 41,
+      "holds": null
+    },
+    "r-mwhbjhtf-bxsrsl~walked-out": {
+      "tag": "derived:walked-out",
+      "score": null,
+      "holds": true
+    },
+    "r-mwhbjhtf-bxsrsl~jittered": {
+      "tag": "derived:jittered",
+      "score": 73,
+      "holds": true
+    },
+    "r-mwhbjhtf-bxsrsl~mirrored": {
+      "tag": "derived:mirrored",
+      "score": 0,
+      "holds": null
+    },
+    "r-mwhbk6ld-bcwpp5~late": {
+      "tag": "derived:late",
+      "score": 65,
+      "holds": true
+    },
+    "r-mwhbk6ld-bcwpp5~frozen": {
+      "tag": "derived:frozen",
+      "score": 0,
+      "holds": true
+    },
+    "r-mwhbk6ld-bcwpp5~seated": {
+      "tag": "derived:seated",
+      "score": 68,
+      "holds": null
+    },
+    "r-mwhbk6ld-bcwpp5~walked-out": {
+      "tag": "derived:walked-out",
+      "score": null,
+      "holds": true
+    },
+    "r-mwhbk6ld-bcwpp5~jittered": {
+      "tag": "derived:jittered",
+      "score": 67,
+      "holds": true
+    },
+    "r-mwhbk6ld-bcwpp5~mirrored": {
+      "tag": "derived:mirrored",
+      "score": 68,
+      "holds": null
+    },
+    "r-mwhct263-r1f2n4~late": {
+      "tag": "derived:late",
+      "score": 100,
+      "holds": true
+    },
+    "r-mwhct263-r1f2n4~frozen": {
+      "tag": "derived:frozen",
+      "score": 0,
+      "holds": true
+    },
+    "r-mwhct263-r1f2n4~seated": {
+      "tag": "derived:seated",
+      "score": 90,
+      "holds": null
+    },
+    "r-mwhct263-r1f2n4~walked-out": {
+      "tag": "derived:walked-out",
+      "score": null,
+      "holds": true
+    },
+    "r-mwhct263-r1f2n4~jittered": {
+      "tag": "derived:jittered",
+      "score": 100,
+      "holds": true
+    },
+    "r-mwhct263-r1f2n4~mirrored": {
+      "tag": "derived:mirrored",
+      "score": 0,
+      "holds": null
+    },
+    "r-mwhctkg1-cvwz9x~late": {
+      "tag": "derived:late",
+      "score": 60,
+      "holds": true
+    },
+    "r-mwhctkg1-cvwz9x~frozen": {
+      "tag": "derived:frozen",
+      "score": 0,
+      "holds": true
+    },
+    "r-mwhctkg1-cvwz9x~seated": {
+      "tag": "derived:seated",
+      "score": 60,
+      "holds": null
+    },
+    "r-mwhctkg1-cvwz9x~walked-out": {
+      "tag": "derived:walked-out",
+      "score": null,
+      "holds": true
+    },
+    "r-mwhctkg1-cvwz9x~jittered": {
+      "tag": "derived:jittered",
+      "score": 60,
+      "holds": true
+    },
+    "r-mwhctkg1-cvwz9x~mirrored": {
+      "tag": "derived:mirrored",
+      "score": 60,
+      "holds": null
+    }
+  }
 }

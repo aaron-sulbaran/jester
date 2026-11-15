@@ -393,6 +393,10 @@ export function initGame(deps: GameDeps) {
         cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
         face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
       })));
+      // What this device got from each player, for finding out why someone is missing from a recap.
+      const summary = results.map((r) => ({ name: r.name, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
+      console.info("[online] recap inputs", summary);
+      (window as unknown as { __jesterRecap?: unknown }).__jesterRecap = summary;
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
       await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });

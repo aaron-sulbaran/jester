@@ -72,14 +72,26 @@ export function isFrozen(id: string): boolean {
   return existsSync(join(CASES_DIR, id + ".json.gz"));
 }
 
-/** Copies one round into eval/cases. Pose data only ever reaches this point. */
+/**
+ * The round as it may go into the public repo: the browser, GPU, camera name and core count are blanked, since no
+ * replay reads them. Camera width, height and frame rate and the player's frames per second stay.
+ */
+export function withoutDeviceDetails(r: RoundRecord): RoundRecord {
+  const { camera, playerFps } = r.device;
+  return {
+    ...r,
+    device: { userAgent: "", gpu: null, camera: camera ? { label: "", width: camera.width, height: camera.height, frameRate: camera.frameRate } : null, playerFps },
+  };
+}
+
+/** Copies one round into eval/cases. Pose data only ever reaches this point, without device details. */
 export function freezeRound(r: RoundRecord): Result<{ file: string }> {
   if (isFrozen(r.id)) return { data: null, error: `${r.id} is already a case` };
   mkdirSync(REFS_DIR, { recursive: true });
   const refFile = join(REFS_DIR, r.clip.key + ".json.gz");
   if (!existsSync(refFile)) writeFileSync(refFile, gzipSync(JSON.stringify(r.reference)));
   const file = join(CASES_DIR, r.id + ".json.gz");
-  writeFileSync(file, gzipSync(JSON.stringify({ ...r, reference: { ref: r.clip.key } })));
+  writeFileSync(file, gzipSync(JSON.stringify({ ...withoutDeviceDetails(r), reference: { ref: r.clip.key } })));
   return { data: { file }, error: null };
 }
 
