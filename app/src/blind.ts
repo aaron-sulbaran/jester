@@ -1470,7 +1470,8 @@ export interface RemoteResult {
 export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui: BlindUi, options: GameOptions = {}): Promise<ResultRow[]> {
   const speed = options.speed ?? 1;
   const steady = { ...clip, guides: clip.guides.map(steadyRole) };
-  const scene = slowScene({ ...steady, guides: steady.guides.map(fullFigure) }, speed);
+  // Steadied like a local game's roles, so each remote player's figure stays on its own person in the reveal too.
+  const scene = slowScene({ ...steady, guides: steady.guides.map((g) => steadyMarker(fullFigure(g))) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats: Seat[] = results.map((r) => {
     const guide = scene.guides[r.guideIndex]!;
