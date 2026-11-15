@@ -11,8 +11,10 @@ The pieces underneath it found two real scoring gaps on Saturday night, and each
 
 The coach's own first runs:
 
-- **Run 1** (26 rounds, 140 cases, 15 minutes, $2.30): on a clip whose moves repeat, a copy pushed past the engine's 1.2 s lag search lines up with an earlier repeat. The seated cap only applies when the thighs are marked hidden. It recommended no engine change, because the setting it tried, raising the lag search, broke another case.
-- **Run 2** (3.3 minutes, $1.47): on five of six person clips, every camera player was told "step back", because nothing on their camera view shows where to stand.
+- **Run 1** (26 rounds, 140 cases, 15 minutes, about $1.13: $0.69 of Claude Opus and about $0.44 of Muse): on a clip whose moves repeat, a copy pushed past the engine's 1.2 s lag search lines up with an earlier repeat. The seated cap only applies when the thighs are marked hidden. It recommended no engine change, because the setting it tried, raising the lag search, broke another case.
+- **Run 2** (3.3 minutes, $0.52, Claude Opus only, since it sent no subagent): on five of six person clips, every camera player was told "step back", because nothing on their camera view shows where to stand.
+
+Costs are LangSmith's prices for Claude, and the list price for Muse Spark 1.3 (which LangSmith does not price), with cached input at the cached price. The meter these runs printed charged cached input at full price, so it showed $2.30 and $1.47; it was fixed after them.
 
 Both runs read real players' rounds from the live site; they were made before real rounds went behind a switch that is off by default (see "What leaves this laptop"). A person checks its findings before they are passed on. Once, that caught a wrong claim and led to a better tool.
 
