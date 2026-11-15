@@ -4,25 +4,14 @@
 // write `<id>/clip.<type>`, `<id>/poster.jpg`, `<id>/guides.json` and the updated `index.json`.
 
 import type { Guide } from "../../clip/src/index.ts";
-import { prepareVideo, subjectGuides } from "./clip.ts";
 import { guideFrameAt, traceOutline } from "./clipside/blind.ts";
-import {
-  BANK_SCHEMA, bankEntry, emptyBankIndex, guidesJson, readBankIndex, slugFor, withClip, withoutClip,
-  type BankEntry, type BankIndex,
-} from "./bankIndex.ts";
+import { withoutClip, type BankEntry } from "./bankIndex.ts";
 import { listBank, loadBankGuides } from "./bank.ts";
 import { submitClip } from "./submit.ts";
-
-type Result<T> = { data: T; error: null } | { data: null; error: string };
-type VideoType = "mp4" | "webm";
-interface Found { guides: Guide[]; skipped: { number: number; label?: string; reason: string }[] }
-
-// The folder picker and its permission calls are Chrome and Edge only, so TypeScript's DOM types lack them.
-interface WritePermission {
-  queryPermission(d: { mode: "readwrite" }): Promise<PermissionState>;
-  requestPermission(d: { mode: "readwrite" }): Promise<PermissionState>;
-}
-type FolderPicker = (o: { id: string; mode: "readwrite" }) => Promise<FileSystemDirectoryHandle>;
+import {
+  addClip, analyseClip, describe, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, titleFrom,
+  videoType, whenReady, writeIndex, type Found, type Result, type VideoType,
+} from "./bankLabCore.ts";
 
 /** Free clips from Wikimedia Commons, credited as their pages ask. Titles hint without saying who is who. */
 const STARTERS: { file: string; title: string; credit: string }[] = [
@@ -41,7 +30,6 @@ const STARTERS: { file: string; title: string; credit: string }[] = [
 ];
 
 const COLORS = ["#f5c542", "#4f7bf0", "#f47fa6", "#3ccf91", "#ff7a3c", "#b07cff"];
-const POSTER_WIDTH = 640;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const video = $<HTMLVideoElement>("video");
@@ -66,44 +54,10 @@ function syncButtons() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("button.remove")) b.disabled = busy;
 }
 
-// ---- The folder, remembered in IndexedDB so it is picked only once ----
-
-function handleDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("jester-bank-lab", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("handles");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function rememberFolder(handle: FileSystemDirectoryHandle) {
-  try {
-    const db = await handleDb();
-    db.transaction("handles", "readwrite").objectStore("handles").put(handle, "bank");
-  } catch {
-    // Remembering is a convenience: without it the folder is picked again next time.
-  }
-}
-
-async function rememberedFolder(): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    const db = await handleDb();
-    return await new Promise((resolve) => {
-      const request = db.transaction("handles").objectStore("handles").get("bank");
-      request.onsuccess = () => resolve((request.result as FileSystemDirectoryHandle | undefined) ?? null);
-      request.onerror = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
-}
+// ---- The bank folder (remembered by bankLabCore.ts) ----
 
 async function useFolder(handle: FileSystemDirectoryHandle) {
-  const permission = handle as unknown as WritePermission;
-  const granted = (await permission.queryPermission({ mode: "readwrite" })) === "granted"
-    || (await permission.requestPermission({ mode: "readwrite" })) === "granted";
-  if (!granted) return say("folderStatus", "This page may not write to that folder. Pick it again and choose Allow.", "bad");
+  if (!(await mayWrite(handle))) return say("folderStatus", "This page may not write to that folder. Pick it again and choose Allow.", "bad");
   dir = handle;
   await rememberFolder(handle);
   $("reuseFolder").classList.add("hidden");
@@ -115,15 +69,9 @@ async function useFolder(handle: FileSystemDirectoryHandle) {
 }
 
 $("pickFolder").addEventListener("click", async () => {
-  const picker = (window as unknown as { showDirectoryPicker?: FolderPicker }).showDirectoryPicker;
-  if (!picker) return say("folderStatus", "This browser cannot pick a folder. Use Chrome or Edge on a computer.", "bad");
-  let handle: FileSystemDirectoryHandle;
-  try {
-    handle = await picker({ id: "jester-bank", mode: "readwrite" });
-  } catch {
-    return; // Cancelled.
-  }
-  await useFolder(handle);
+  const picked = await pickFolder();
+  if (picked.error !== null) return say("folderStatus", picked.error, "bad");
+  if (picked.data) await useFolder(picked.data);
 });
 
 void rememberedFolder().then((handle) => {
@@ -134,84 +82,18 @@ void rememberedFolder().then((handle) => {
   button.addEventListener("click", () => void useFolder(handle), { once: true });
 });
 
-// ---- Files in the folder ----
-
-async function writeFile(folder: FileSystemDirectoryHandle, name: string, data: Blob | string) {
-  const handle = await folder.getFileHandle(name, { create: true });
-  const writable = await handle.createWritable();
-  await writable.write(data);
-  await writable.close();
-}
-
-async function readIndex(folder: FileSystemDirectoryHandle): Promise<Result<BankIndex>> {
-  let text: string;
-  try {
-    text = await (await (await folder.getFileHandle("index.json")).getFile()).text();
-  } catch (err) {
-    if ((err as DOMException).name === "NotFoundError") return { data: emptyBankIndex(), error: null };
-    return { data: null, error: "index.json could not be read." };
-  }
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return { data: null, error: "index.json is not valid JSON. Fix it or remove it first." };
-  }
-  const read = readBankIndex(json);
-  if (read.error !== null) return { data: null, error: "index.json is not a bank/1 index. Fix it or remove it first." };
-  return { data: { schema: BANK_SCHEMA, clips: read.data }, error: null };
-}
-
-const writeIndex = (folder: FileSystemDirectoryHandle, index: BankIndex) => writeFile(folder, "index.json", JSON.stringify(index, null, 2) + "\n");
-
 // ---- Analysis and the cast preview ----
-
-/**
- * How the bank stores the file. A phone's MOV is the same container as MP4 (browsers read both with one
- * reader), so it goes in as clip.mp4; the lab reading it for moves shows that it decodes.
- */
-function videoType(file: File): VideoType | null {
-  if (file.type === "video/mp4" || /\.(mp4|m4v)$/i.test(file.name)) return "mp4";
-  if (file.type === "video/quicktime" || /\.mov$/i.test(file.name)) return "mp4";
-  if (file.type === "video/webm" || /\.webm$/i.test(file.name)) return "webm";
-  return null;
-}
-
-/** A title from a file name: no file type, dashes and underscores as spaces. */
-const titleFrom = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim().replace(/\s+/g, " ").slice(0, 80) || "Untitled clip";
 
 async function analyse(file: File, onProgress: (share: number) => void): Promise<Result<Found>> {
   // The reader may decode through the <video> element, so the cast preview lets go of it first.
   preview = null;
-  video.pause();
-  const prepared = await prepareVideo(file, video, onProgress, { things: true });
-  if (prepared.error !== null) return { data: null, error: prepared.error };
-  const found = subjectGuides(prepared.data);
-  if (found.guides.length === 0) return { data: null, error: found.skipped[0]?.reason ?? "No one to copy in this clip." };
-  return { data: found, error: null };
-}
-
-function whenReady(): Promise<void> {
-  if (video.readyState >= 2) return Promise.resolve();
-  return new Promise((resolve) => {
-    video.addEventListener("loadeddata", () => resolve(), { once: true });
-    setTimeout(resolve, 5000);
-  });
-}
-
-function seek(seconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => resolve();
-    video.addEventListener("seeked", done, { once: true });
-    setTimeout(done, 3000);
-    video.currentTime = seconds;
-  });
+  return analyseClip(file, video, onProgress);
 }
 
 /** Plays the clip's shared stretch on a loop with every subject's outline and label drawn on it. */
 async function showCast(guides: Guide[]) {
   preview = guides;
-  await whenReady();
+  await whenReady(video);
   const g = guides[0]!;
   overlay.height = Math.round(overlay.width * (g.source.height / g.source.width));
   video.currentTime = g.range.startMs / 1000;
@@ -274,46 +156,8 @@ function listCast(found: Found) {
 
 // ---- Adding to the bank ----
 
-async function posterOf(g: Guide): Promise<Blob> {
-  video.pause();
-  await whenReady();
-  await seek((g.range.startMs + g.range.endMs) / 2000);
-  const scale = Math.min(1, POSTER_WIDTH / (video.videoWidth || POSTER_WIDTH));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round((video.videoWidth || POSTER_WIDTH) * scale);
-  canvas.height = Math.round((video.videoHeight || POSTER_WIDTH * 9 / 16) * scale);
-  canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no poster"))), "image/jpeg", 0.82));
-}
-
-async function addToBank(folder: FileSystemDirectoryHandle, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
-  const index = await readIndex(folder);
-  if (index.error !== null) return index;
-  const g = guides[0]!;
-  const id = slugFor(title, index.data.clips.map((c) => c.id));
-  try {
-    const clipFolder = await folder.getDirectoryHandle(id, { create: true });
-    await writeFile(clipFolder, `clip.${type}`, file);
-    await writeFile(clipFolder, "poster.jpg", await posterOf(g));
-    const json = guidesJson(guides);
-    await writeFile(clipFolder, "guides.json", json);
-    const entry = bankEntry({
-      id, title, credit,
-      durationMs: Math.round(g.range.endMs - g.range.startMs),
-      people: guides.filter((x) => x.subject.kind === "person").length,
-      things: guides.filter((x) => x.subject.kind === "thing").length,
-    }, type);
-    // The index is written last, so a clip that failed halfway never shows up in the game.
-    const latest = await readIndex(folder);
-    if (latest.error !== null) return latest;
-    await writeIndex(folder, withClip(latest.data, entry));
-    return { data: { entry, guidesBytes: json.length }, error: null };
-  } catch (err) {
-    return { data: null, error: `Writing to the bank folder failed: ${(err as Error).message}` };
-  }
-}
-
-const describe = (e: BankEntry) => `${e.people} ${e.people === 1 ? "person" : "people"}, ${e.things} ${e.things === 1 ? "thing" : "things"}, ${(e.durationMs / 1000).toFixed(1)} s`;
+const addToBank = (folder: FileSystemDirectoryHandle, file: File, type: VideoType, guides: Guide[], title: string, credit: string) =>
+  addClip(folder, video, file, type, guides, title, credit);
 
 $("file").addEventListener("change", async (event) => {
   const input = event.target as HTMLInputElement;
@@ -506,264 +350,6 @@ $("check").addEventListener("click", async () => {
     else problems.push(`${clip.title}: ${guides.error}`);
   }
   say("checkStatus", `The game sees ${listed.data.length} clips at ${where}/bank; ${ok} have their moves.${problems.length ? " " + problems.join(" ") : ""} Reload the page to check again.`, problems.length ? "bad" : "good");
-});
-
-// ---- Review submissions: the reviewer agent decides, unsure ones wait for a person ----
-
-interface Pending {
-  id: string;
-  created_at: string;
-  video_path: string;
-  title: string | null;
-  credit: string | null;
-  logged: { verdict: "approved" | "rejected" | "ask_a_person"; reason: string; title: string | null; steps?: string[] } | null;
-}
-interface AgentDecision { verdict: "approve" | "reject" | "ask_a_person"; reason: string; title: string; steps: string[] }
-interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
-
-const SUBMITTED_CREDIT = "Sent in with Submit your own";
-const FRAME_WIDTH = 384;
-
-/** The dev server's review queue (review-dev-server.ts). Every answer is { data, error }. */
-async function reviewApi<T>(route: string, body?: unknown): Promise<Result<T>> {
-  try {
-    const response = await fetch(`/__review/${route}`, {
-      method: body === undefined ? "GET" : "POST",
-      headers: { "x-jester-review": "1", ...(body === undefined ? {} : { "content-type": "application/json" }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const json = (await response.json()) as Result<T>;
-    return json.error === null || typeof json.error === "string" ? json : { data: null, error: "The review queue gave an answer it should not." };
-  } catch {
-    return { data: null, error: "The review queue is not on this dev server. Start it with the jester-bank launch settings." };
-  }
-}
-
-/** The analysis facts the agent reads: who was found, for how much of the stretch, and why anyone was left out. */
-function factsOf(found: Found) {
-  const g0 = found.guides[0]!;
-  return {
-    error: null,
-    durationMs: Math.round(g0.range.endMs - g0.range.startMs),
-    subjects: found.guides.map((g) => ({
-      label: g.subject.label, kind: g.subject.kind, pace: g.pace,
-      seenShare: Math.round((g.boxTrack.frames.filter((f) => f.box).length / Math.max(1, g.boxTrack.frames.length)) * 100) / 100,
-    })),
-    skipped: found.skipped.map((s) => ({ ...(s.label ? { label: s.label } : {}), reason: s.reason })),
-    warnings: g0.warnings,
-  };
-}
-
-/** `count` small JPEG frames spread across the stretch a round plays. */
-async function framesOf(g: Guide, count = 4): Promise<string[]> {
-  video.pause();
-  await whenReady();
-  const canvas = document.createElement("canvas");
-  const w = video.videoWidth || FRAME_WIDTH, h = video.videoHeight || Math.round(FRAME_WIDTH * 9 / 16);
-  canvas.width = Math.min(FRAME_WIDTH, w);
-  canvas.height = Math.round(canvas.width * (h / w));
-  const ctx = canvas.getContext("2d")!;
-  const frames: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const ms = g.range.startMs + ((i + 0.5) / count) * (g.range.endMs - g.range.startMs);
-    await seek(ms / 1000);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    frames.push(canvas.toDataURL("image/jpeg", 0.7));
-  }
-  return frames;
-}
-
-/** A submission's video, read and analysed: kept for the "Needs you" buttons, so approving does not read it twice. */
-const readied = new Map<string, { file: File; type: VideoType; found: Found }>();
-
-async function readySubmission(p: Pending, onProgress: (share: number) => void): Promise<Result<{ file: File; type: VideoType; found: Found }>> {
-  const known = readied.get(p.id);
-  if (known) return { data: known, error: null };
-  let blob: Blob;
-  try {
-    const response = await fetch(`/__review/video?path=${encodeURIComponent(p.video_path)}`, { headers: { "x-jester-review": "1" } });
-    if (!response.ok) return { data: null, error: "The video never arrived." };
-    blob = await response.blob();
-  } catch {
-    return { data: null, error: "The video did not download. Try again." };
-  }
-  const file = new File([blob], p.video_path, { type: blob.type });
-  const type = videoType(file);
-  if (!type) return { data: null, error: "Not an MP4, WebM or MOV file." };
-  const found = await analyse(file, onProgress);
-  if (found.error !== null) return found;
-  const ready = { file, type, found: found.data };
-  readied.set(p.id, ready);
-  return { data: ready, error: null };
-}
-
-/** Puts an approved submission in the bank folder and marks its row approved. */
-async function approveSubmission(p: Pending, title: string, by: "agent" | "aaron", reason: string, steps: string[] = []): Promise<Result<string>> {
-  if (!dir) return { data: null, error: "Pick the bank folder first: approved clips go there." };
-  const ready = await readySubmission(p, (share) => { $<HTMLProgressElement>("progress").value = share; });
-  if (ready.error !== null) return ready;
-  const added = await addToBank(dir, ready.data.file, ready.data.type, ready.data.found.guides, p.title ?? title, p.credit ?? SUBMITTED_CREDIT);
-  if (added.error !== null) return added;
-  const saved = await reviewApi("decide", { id: p.id, video_path: p.video_path, title: added.data.entry.title, status: "approved", by, reason, steps, bankId: added.data.entry.id });
-  if (saved.error !== null) return { data: null, error: `It is in the bank as ${added.data.entry.id}, but the queue did not save that: ${saved.error}` };
-  readied.delete(p.id);
-  return { data: added.data.entry.id, error: null };
-}
-
-const rejectSubmission = (p: Pending, by: "agent" | "aaron" | "check", reason: string, steps: string[] = []) =>
-  reviewApi("decide", { id: p.id, video_path: p.video_path, title: p.title, status: "rejected", by, reason, steps });
-
-let reviewing = false;
-
-async function reviewPending() {
-  if (reviewing || busy) return;
-  const run = $("reviewRun");
-  const note = (text: string, tone: "good" | "bad" | "" = "") => {
-    const li = document.createElement("li");
-    li.textContent = text;
-    if (tone) li.className = tone;
-    run.appendChild(li);
-    return li;
-  };
-  const status = await reviewApi<{ missing: string[] }>("status");
-  if (status.error !== null) return say("reviewStatus", status.error, "bad");
-  if (status.data.missing.length) return say("reviewStatus", `Put ${status.data.missing.join(" and ")} in hack-princeton/jester-review.env, then press Review again. No restart needed.`, "bad");
-  if (!dir) return say("reviewStatus", "Pick the bank folder first (step 1): approved clips go there.", "bad");
-  const pending = await reviewApi<Pending[]>("pending");
-  if (pending.error !== null) return say("reviewStatus", pending.error, "bad");
-  const fresh = pending.data.filter((p) => !p.logged);
-  renderNeedsYou(pending.data);
-  if (fresh.length === 0) {
-    say("reviewStatus", `Checked at ${new Date().toLocaleTimeString()}: nothing new.`, "");
-    return showReviewLog();
-  }
-  reviewing = true;
-  busy = true;
-  syncButtons();
-  $<HTMLButtonElement>("reviewNow").disabled = true;
-  run.replaceChildren();
-  say("reviewStatus", `Reviewing ${fresh.length} new ${fresh.length === 1 ? "submission" : "submissions"}...`);
-  const progress = $<HTMLProgressElement>("progress");
-  for (const p of fresh) {
-    const name = p.title ?? p.video_path.slice(0, 8);
-    const line = note(`${name}: reading the clip...`);
-    const set = (text: string, tone: "good" | "bad" | "" = "") => { line.textContent = `${name}: ${text}`; line.className = tone; };
-    const ready = await readySubmission(p, (share) => { progress.value = share; });
-    if (ready.error !== null) {
-      // The game's own analysis found no one to copy (or no video arrived): no need to ask the agent.
-      const saved = await rejectSubmission(p, "check", ready.error);
-      set(saved.error === null ? `turned away. ${ready.error}` : `could not save the decision: ${saved.error}`, saved.error === null ? "" : "bad");
-      continue;
-    }
-    const g0 = ready.data.found.guides[0]!;
-    await showCast(ready.data.found.guides);
-    set("the reviewer is looking at it...");
-    const frames = await framesOf(g0);
-    const judged = await reviewApi<AgentDecision>("judge", { title: p.title, credit: p.credit, facts: factsOf(ready.data.found), frames });
-    if (judged.error !== null) { set(`${judged.error} It stays in the queue for next time.`, "bad"); continue; }
-    const d = judged.data;
-    if (d.verdict === "approve") {
-      const added = await approveSubmission(p, d.title, "agent", d.reason, d.steps);
-      set(added.error === null ? `added to the bank as ${added.data}. ${d.reason}` : added.error, added.error === null ? "good" : "bad");
-    } else if (d.verdict === "reject") {
-      const saved = await rejectSubmission(p, "agent", d.reason, d.steps);
-      set(saved.error === null ? `turned away. ${d.reason}` : `could not save the decision: ${saved.error}`, saved.error === null ? "" : "bad");
-    } else {
-      const saved = await reviewApi("flag", { id: p.id, video_path: p.video_path, title: p.title ?? d.title, reason: d.reason, steps: d.steps });
-      set(saved.error === null ? `waiting for you. ${d.reason}` : `could not save: ${saved.error}`, saved.error === null ? "" : "bad");
-    }
-  }
-  reviewing = false;
-  busy = false;
-  syncButtons();
-  $<HTMLButtonElement>("reviewNow").disabled = false;
-  say("reviewStatus", `Reviewed at ${new Date().toLocaleTimeString()}.`, "good");
-  const after = await reviewApi<Pending[]>("pending");
-  if (after.error === null) renderNeedsYou(after.data);
-  await showReviewLog();
-}
-
-function renderNeedsYou(pending: Pending[]) {
-  const box = $("needsYou");
-  box.replaceChildren();
-  const waiting = pending.filter((p) => p.logged?.verdict === "ask_a_person");
-  if (waiting.length === 0) {
-    const p = document.createElement("p");
-    p.className = "sub";
-    p.textContent = "Nothing waiting.";
-    box.appendChild(p);
-    return;
-  }
-  for (const p of waiting) {
-    const card = document.createElement("div");
-    card.className = "waiting";
-    const title = p.title ?? p.logged?.title ?? "Untitled clip";
-    const name = document.createElement("strong");
-    name.textContent = `${title}${p.credit ? ` (${p.credit})` : ""}`;
-    const clip = document.createElement("video");
-    clip.controls = true;
-    clip.playsInline = true;
-    clip.preload = "metadata";
-    clip.src = `/__review/video?path=${encodeURIComponent(p.video_path)}`;
-    const why = document.createElement("p");
-    why.className = "why";
-    why.textContent = `The reviewer: ${p.logged?.reason ?? ""}`;
-    const steps = document.createElement("p");
-    steps.className = "steps";
-    steps.textContent = p.logged?.steps?.length ? `Its plan: ${p.logged.steps.join("; ")}` : "";
-    const result = document.createElement("p");
-    result.className = "status";
-    const approve = document.createElement("button");
-    approve.textContent = "Approve, add to the bank";
-    const reject = document.createElement("button");
-    reject.textContent = "Turn it away";
-    const act = async (fn: () => Promise<Result<unknown>>, done: string) => {
-      if (busy) return;
-      busy = true;
-      approve.disabled = reject.disabled = true;
-      result.textContent = "Working...";
-      const r = await fn();
-      busy = false;
-      syncButtons();
-      if (r.error !== null) { result.textContent = r.error; result.className = "status bad"; approve.disabled = reject.disabled = false; return; }
-      result.textContent = done;
-      result.className = "status good";
-      await showReviewLog();
-    };
-    approve.addEventListener("click", () => void act(() => approveSubmission(p, title, "aaron", "Approved by hand."), "Added to the bank.").then(() => showBank()));
-    reject.addEventListener("click", () => void act(() => rejectSubmission(p, "aaron", "Turned away by hand."), "Turned away."));
-    card.append(name, clip, why, steps, approve, document.createTextNode(" "), reject, result);
-    box.appendChild(card);
-  }
-}
-
-async function showReviewLog() {
-  const log = await reviewApi<LogLine[]>("log");
-  const list = $("reviewLog");
-  list.replaceChildren();
-  if (log.error !== null) return;
-  const words: Record<string, string> = { approved: "Added", rejected: "Turned away", ask_a_person: "Waiting for you" };
-  const who: Record<string, string> = { agent: "the reviewer", aaron: "you", check: "the analysis" };
-  for (const e of log.data.slice(0, 15)) {
-    const li = document.createElement("li");
-    li.textContent = `${words[e.verdict] ?? e.verdict}${e.bankId ? ` as ${e.bankId}` : ""}: ${e.title ?? "untitled"} (${who[e.by] ?? e.by}, ${new Date(e.at).toLocaleTimeString()}). ${e.reason}`;
-    list.appendChild(li);
-  }
-}
-
-$("reviewNow").addEventListener("click", () => void reviewPending());
-let reviewTimer = 0;
-$("reviewAuto").addEventListener("change", (event) => {
-  clearInterval(reviewTimer);
-  if ((event.target as HTMLInputElement).checked) {
-    void reviewPending();
-    reviewTimer = window.setInterval(() => void reviewPending(), 60000);
-  }
-});
-void reviewApi<{ missing: string[] }>("status").then((s) => {
-  if (s.error !== null) return say("reviewStatus", s.error, "bad");
-  say("reviewStatus", s.data.missing.length ? `Not ready: put ${s.data.missing.join(" and ")} in hack-princeton/jester-review.env.` : "Ready. Pick the bank folder, then press Review or tick the box.", s.data.missing.length ? "bad" : "good");
-  void showReviewLog();
 });
 
 // ---- Submit your own, as the game sends it ----

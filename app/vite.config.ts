@@ -38,12 +38,7 @@ export default defineConfig(async ({ mode }) => {
     // Round log (round-log-plugin.ts): every scored round is saved, on a dev server to eval/data/rounds, on a
     // build made with JESTER_RECORD_ROUNDS=1 to Supabase. Build stamp (build-stamp.ts): "local" on a dev server,
     // the commit and build time plus a refresh notice on a build made with JESTER_BUILD_STAMP=1.
-    // Review queue (review-dev-server.ts): the bank lab's "Review submissions", with the reviewer agent. Its keys
-    // come from the file JESTER_REVIEW_ENV points at, outside the repo, and stay on the dev server.
-    plugins: [
-      bankDevServer(process.env.JESTER_BANK_DIR), roundLog(), buildStamp(),
-      reviewDevServer({ envFile: process.env.JESTER_REVIEW_ENV, supabaseUrl: loadEnv(mode, process.cwd(), "VITE_").VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL }),
-    ],
+    plugins: [bankDevServer(process.env.JESTER_BANK_DIR), roundLog(), buildStamp(), reviewDevServer({ envFile: process.env.JESTER_REVIEW_ENV, supabaseUrl: process.env.VITE_SUPABASE_URL })],
     // Two pages in the build: the game and the online room page.
     build: { rollupOptions: { input: { main: "index.html", room: "room.html" } } },
   };

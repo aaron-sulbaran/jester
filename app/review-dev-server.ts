@@ -1,29 +1,39 @@
-// Dev server only: the review queue for Submit your own, for the bank lab's "Review submissions".
-// It holds the two server-side keys (read from the file JESTER_REVIEW_ENV points at, never from a VITE_
-// setting, so they never reach a browser), reads pending submissions with the Supabase service role, streams
-// their videos to the lab, runs the reviewer agent (review-agent.ts), and writes each decision back to the
-// row's status. Decisions and their reasons are also kept in a small log file next to that env file.
+// Dev server only: the review queue for Submit your own, behind the Chamberlain's desk (review.html).
+// It holds the server-side keys, read by absolute path from the file JESTER_REVIEW_ENV points at (outside
+// every repo, never a VITE_ setting, so they never reach a browser or a build). With the Supabase service
+// role it reads pending submissions, streams their videos to the desk and writes each decision back to the
+// row's status. With the Anthropic key it runs the Chamberlain (review-agent.ts). Decisions and their
+// reasons go in jester-review-log.json beside that env file, since the table has no column for them.
 //
-// Routes (all under /__review, answered only to the dev server's own pages):
-//   GET  status          which settings are missing
+// What leaves the laptop: the four frames, the analysis facts, and the submitter's title and credit go to
+// Anthropic for each review. Nothing else does. Videos come down from Supabase and stay here.
+//
+// Routes under /__review, answered only to this dev server's own pages (Host must be localhost or
+// 127.0.0.1, against DNS rebinding; and Sec-Fetch-Site same-origin or the x-jester-review header):
+//   GET  status          which settings are missing, the model, the bank folder approvals must land in
 //   GET  pending         pending submissions, each with its logged decision if it has one
 //   GET  video?path=     one submission's video
-//   POST judge           { title, credit, facts, frames } -> the agent's decision
+//   POST judge           { title, credit, facts, frames } -> the Chamberlain's decision
 //   POST decide          { id, video_path, title, status: "approved" | "rejected", by, reason, bankId? }
-//   POST flag            { id, video_path, title, reason } -> logged as waiting for a person
+//   POST flag            { id, video_path, title, reason, ... } -> logged as waiting for a person
 //   GET  log             the latest decisions
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createClient } from "@supabase/supabase-js";
-import { reviewSubmission, type ReviewInput } from "./review-agent.ts";
+import { readBankIndex } from "./src/bankIndex.ts";
+import { DEFAULT_MODEL, reviewSubmission, type ReviewInput } from "./review-agent.ts";
 
 const PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov)$/;
+const ROW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const BANK_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const TYPES: Record<string, string> = { mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime" };
 const MAX_BODY = 8 * 1024 * 1024;
 
+interface Finding { from: string; text: string }
 interface LogEntry {
   id: string;
   video_path: string;
@@ -33,6 +43,8 @@ interface LogEntry {
   reason: string;
   bankId?: string;
   steps?: string[];
+  findings?: Finding[];
+  framesCheck?: string;
   at: string;
 }
 
@@ -57,8 +69,6 @@ function send(res: ServerResponse, status: number, body: unknown) {
   res.setHeader("Cache-Control", "no-store");
   res.end(JSON.stringify(body));
 }
-const ok = (res: ServerResponse, data: unknown) => send(res, 200, { data, error: null });
-const fail = (res: ServerResponse, status: number, error: string) => send(res, status, { data: null, error });
 
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -66,23 +76,29 @@ function readBody(req: IncomingMessage): Promise<unknown> {
     let size = 0;
     req.on("data", (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY) { reject(new Error("too big")); req.destroy(); return; }
+      if (size > MAX_BODY) { reject(new Error("The request is too big.")); req.destroy(); return; }
       chunks.push(c);
     });
     req.on("end", () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch (err) { reject(err); }
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch { reject(new Error("The request is not JSON.")); }
     });
     req.on("error", reject);
   });
 }
 
-/** Only the dev server's own pages: same-origin fetches and video loads, or a request carrying our header. */
+/** This dev server's own pages only: a local Host (no rebinding), and a same-origin request or our header. */
 function fromOurPage(req: IncomingMessage): boolean {
-  const site = req.headers["sec-fetch-site"];
-  return site === "same-origin" || req.headers["x-jester-review"] === "1";
+  if (!LOCAL_HOST.test(req.headers.host ?? "")) return false;
+  return req.headers["sec-fetch-site"] === "same-origin" || req.headers["x-jester-review"] === "1";
 }
 
+const strings = (x: unknown): string[] | undefined => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string").slice(0, 20) : undefined);
+const findingsOf = (x: unknown): Finding[] | undefined => (Array.isArray(x)
+  ? x.filter((f): f is Finding => typeof f?.from === "string" && typeof f?.text === "string").slice(0, 10)
+  : undefined);
+
 export function reviewDevServer(options: { envFile: string | undefined; supabaseUrl: string | undefined }): Plugin {
+  const bankDir = process.env.JESTER_BANK_DIR;
   const logPath = options.envFile ? join(dirname(options.envFile), "jester-review-log.json") : undefined;
   const readLog = (): LogEntry[] => {
     if (!logPath) return [];
@@ -90,57 +106,82 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
   };
   const addLog = (entry: Omit<LogEntry, "at">) => {
     if (!logPath) return;
-    const log = readLog().filter((e) => !(e.id === entry.id && e.verdict === "ask_a_person" && entry.verdict !== "ask_a_person"));
     log.push({ ...entry, at: new Date().toISOString() });
     writeFileSync(logPath, JSON.stringify(log.slice(-500), null, 2) + "\n");
   };
+  let log: LogEntry[] = [];
+  /** The project URL Vite loaded for the page (app/.env.local or the live site's public settings). */
+  let pageUrl: string | undefined;
 
   /** Read on every request, so filling in the env file needs no restart. */
   const settings = () => {
     const env = readEnvFile(options.envFile);
-    const url = env.SUPABASE_URL || options.supabaseUrl;
-    const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const anthropicKey = env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-    const missing = [
+    const url = env.SUPABASE_URL || options.supabaseUrl || pageUrl;
+    const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+    const anthropicKey = env.ANTHROPIC_API_KEY;
+    const model = env.JESTER_REVIEW_MODEL || DEFAULT_MODEL;
+    const queueMissing = [
       ...(options.envFile ? [] : ["JESTER_REVIEW_ENV (the dev server was started without it)"]),
       ...(url ? [] : ["SUPABASE_URL"]),
       ...(serviceKey ? [] : ["SUPABASE_SERVICE_ROLE_KEY"]),
-      ...(anthropicKey ? [] : ["ANTHROPIC_API_KEY"]),
     ];
-    return { url, serviceKey, anthropicKey, missing };
+    const judgeMissing = anthropicKey ? [] : ["ANTHROPIC_API_KEY"];
+    /** No key value may ever leave in a message, whatever the libraries put in their errors. */
+    const scrub = (text: string) => [serviceKey, anthropicKey].reduce((t, k) => (k ? t.split(k).join("[key]") : t), text);
+    return { url, serviceKey, anthropicKey, model, queueMissing, judgeMissing, scrub };
   };
-  const admin = (url: string, key: string) => createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  /** The bank's own index, so a row is marked approved only once its clip is really in the bank. */
+  const inBank = (id: string): boolean => {
+    if (!bankDir) return false;
+    try {
+      const read = readBankIndex(JSON.parse(readFileSync(join(bankDir, "index.json"), "utf8")));
+      return read.error === null && read.data.some((c) => c.id === id);
+    } catch {
+      return false;
+    }
+  };
 
   return {
     name: "jester-review-dev",
     apply: "serve",
+    configResolved(config) {
+      pageUrl = config.env.VITE_SUPABASE_URL as string | undefined;
+    },
     configureServer(server) {
       server.middlewares.use("/__review", async (req, res) => {
-        if (!fromOurPage(req)) return fail(res, 403, "Only the bank lab may use the review queue.");
+        const s = settings();
+        const ok = (data: unknown) => send(res, 200, { data, error: null });
+        const fail = (status: number, error: string) => send(res, status, { data: null, error: s.scrub(error) });
+        if (!fromOurPage(req)) return fail(403, "Only the Chamberlain's desk may use the review queue.");
         const route = (req.url ?? "/").split("?")[0]!.replace(/^\/+/, "");
         const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "");
-        const s = settings();
+        log = readLog();
         try {
-          if (route === "status") return ok(res, { missing: s.missing, logFile: logPath ?? null });
-          if (route === "log") return ok(res, readLog().slice(-40).reverse());
-          if (s.missing.length || !s.url || !s.serviceKey || !s.anthropicKey) return fail(res, 503, `The reviewer is missing: ${s.missing.join(", ")}.`);
-          const db = admin(s.url, s.serviceKey);
+          if (route === "status") {
+            return ok({
+              missing: [...s.queueMissing, ...s.judgeMissing], canQueue: s.queueMissing.length === 0, canJudge: s.queueMissing.length === 0 && s.judgeMissing.length === 0,
+              model: s.model, bankFolder: bankDir ? basename(bankDir) : null, envFile: options.envFile ? basename(options.envFile) : null,
+            });
+          }
+          if (route === "log") return ok(log.slice(-40).reverse());
+          if (s.queueMissing.length || !s.url || !s.serviceKey) return fail(503, `The review queue is missing: ${s.queueMissing.join(", ")}.`);
+          const db = createClient(s.url, s.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
           if (route === "pending" && req.method === "GET") {
             const { data, error } = await db.from("submissions")
               .select("id, created_at, video_path, title, credit")
               .eq("status", "pending").order("created_at", { ascending: true }).limit(50);
-            if (error) return fail(res, 502, `Reading the queue failed: ${error.message}`);
-            const log = readLog();
+            if (error) return fail(502, `Reading the queue failed: ${error.message}`);
             const last = (id: string) => [...log].reverse().find((e) => e.id === id) ?? null;
-            return ok(res, (data ?? []).map((row) => ({ ...row, logged: last(row.id as string) })));
+            return ok((data ?? []).map((row) => ({ ...row, logged: last(row.id as string) })));
           }
 
           if (route === "video" && req.method === "GET") {
             const path = query.get("path") ?? "";
-            if (!PATH.test(path)) return fail(res, 400, "That is not a submission's video.");
+            if (!PATH.test(path)) return fail(400, "That is not a submission's video.");
             const { data, error } = await db.storage.from("submissions").download(path);
-            if (error || !data) return fail(res, 404, "The video never arrived.");
+            if (error || !data) return fail(404, "The video never arrived.");
             const bytes = Buffer.from(await data.arrayBuffer());
             res.statusCode = 200;
             res.setHeader("Content-Type", TYPES[path.split(".").pop()!] ?? "application/octet-stream");
@@ -149,43 +190,55 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             return res.end(bytes);
           }
 
-          if (req.method !== "POST") return fail(res, 404, "No such review route.");
+          if (req.method !== "POST") return fail(404, "No such review route.");
           const body = (await readBody(req)) as Record<string, unknown>;
 
           if (route === "judge") {
+            if (s.judgeMissing.length || !s.anthropicKey) return fail(503, `The Chamberlain is missing: ${s.judgeMissing.join(", ")}. You can still decide by hand.`);
             const input = body as unknown as ReviewInput;
-            if (!input.facts || !Array.isArray(input.frames)) return fail(res, 400, "The review needs the clip's facts and frames.");
+            if (!input.facts || !Array.isArray(input.frames) || input.frames.length > 8) return fail(400, "The review needs the clip's facts and up to 8 frames.");
             try {
-              return ok(res, await reviewSubmission(input, s.anthropicKey));
+              return ok(await reviewSubmission(input, { apiKey: s.anthropicKey, model: s.model }));
             } catch (err) {
-              return fail(res, 502, `The reviewer could not run: ${(err as Error).message}`);
+              return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
           }
 
           const id = String(body.id ?? "");
           const videoPath = String(body.video_path ?? "");
-          const title = typeof body.title === "string" ? body.title : null;
-          const reason = String(body.reason ?? "");
-          if (!/^[0-9a-f-]{36}$/.test(id)) return fail(res, 400, "That is not a submission.");
+          const title = typeof body.title === "string" ? body.title.slice(0, 80) : null;
+          const reason = String(body.reason ?? "").slice(0, 600);
+          if (!ROW_ID.test(id) || !PATH.test(videoPath)) return fail(400, "That is not a submission.");
+          const extra = {
+            ...(strings(body.steps) ? { steps: strings(body.steps)! } : {}),
+            ...(findingsOf(body.findings) ? { findings: findingsOf(body.findings)! } : {}),
+            ...(typeof body.framesCheck === "string" ? { framesCheck: body.framesCheck.slice(0, 600) } : {}),
+          };
 
           if (route === "decide") {
             const status = body.status === "approved" ? "approved" : body.status === "rejected" ? "rejected" : null;
             const by = body.by === "aaron" ? "aaron" : body.by === "check" ? "check" : "agent";
-            if (!status) return fail(res, 400, "A decision is approved or rejected.");
-            const { error } = await db.from("submissions").update({ status }).eq("id", id);
-            if (error) return fail(res, 502, `Saving the decision failed: ${error.message}`);
-            addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(typeof body.bankId === "string" ? { bankId: body.bankId } : {}), ...(Array.isArray(body.steps) ? { steps: body.steps as string[] } : {}) });
-            return ok(res, { id, status });
+            if (!status) return fail(400, "A decision is approved or rejected.");
+            const bankId = typeof body.bankId === "string" && BANK_ID.test(body.bankId) ? body.bankId : null;
+            if (status === "approved" && (!bankId || !inBank(bankId))) {
+              return fail(409, bankDir
+                ? `The clip is not in the bank folder "${basename(bankDir)}" this dev server serves, so it stays pending. Pick that folder on the desk.`
+                : "This dev server was started without JESTER_BANK_DIR, so it cannot check the clip is in the bank.");
+            }
+            const { error } = await db.from("submissions").update({ status }).eq("id", id).eq("status", "pending");
+            if (error) return fail(502, `Saving the decision failed: ${error.message}`);
+            addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(bankId ? { bankId } : {}), ...extra });
+            return ok({ id, status });
           }
 
           if (route === "flag") {
-            addLog({ id, video_path: videoPath, title, verdict: "ask_a_person", by: "agent", reason, ...(Array.isArray(body.steps) ? { steps: body.steps as string[] } : {}) });
-            return ok(res, { id });
+            addLog({ id, video_path: videoPath, title, verdict: "ask_a_person", by: "agent", reason, ...extra });
+            return ok({ id });
           }
 
-          return fail(res, 404, "No such review route.");
+          return fail(404, "No such review route.");
         } catch (err) {
-          return fail(res, 500, `The review queue failed: ${(err as Error).message}`);
+          return fail(500, `The review queue failed: ${(err as Error).message}`);
         }
       });
     },
