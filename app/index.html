@@ -60,6 +60,22 @@
         <button type="button" class="btn btn-main" id="leaveGo"><span class="ticket"><span class="ticket-text">Leave</span></span></button>
       </div>
     </dialog>
+    <!-- The camera and tracker are starting (ui/feel.ts). Shown only if it takes a moment. -->
+    <dialog class="leave" id="cameraWait" aria-labelledby="cameraWaitText">
+      <div class="note-wrap"><p class="note" id="cameraWaitText">Starting the camera...</p></div>
+      <progress id="cameraWaitBar" value="0" max="1"></progress>
+      <button type="button" class="btn btn-quiet" id="cameraWaitCancel">Cancel</button>
+    </dialog>
+    <!-- The camera was refused, is missing, or the tracker did not start: three ways out (ui/feel.ts). -->
+    <dialog class="leave" id="cameraDialog" aria-labelledby="cameraTitle" aria-describedby="cameraText">
+      <div class="masking"><h2 class="tape" id="cameraTitle">The camera is blocked</h2></div>
+      <div class="note-wrap"><p class="note" id="cameraText"></p></div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="cameraHome">Go home</button>
+        <button type="button" class="btn btn-quiet" id="cameraUnderstudy">Let the computer play this turn</button>
+        <button type="button" class="btn btn-main" id="cameraRetry"><span class="ticket"><span class="ticket-text">Try the camera again</span></span></button>
+      </div>
+    </dialog>
 
     <!-- How to play: opens on a first visit, and from the start screen. -->
     <section class="screen" id="screen-howto" hidden>
@@ -140,6 +156,7 @@
         <div id="roomLobby" hidden>
           <p class="note">Room code <b id="roomCodeText"></b> <span id="roomWhere"></span>. Tell your friends.</p>
           <ul id="roomRoster" class="how"></ul>
+          <p class="aside">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
           <div id="roomHostRow" hidden>
             <label class="field"><span>Clip</span>
               <select id="roomScene">
@@ -199,6 +216,8 @@
         <button type="button" class="chip" data-speed="0.75" aria-pressed="false">A bit slower</button>
         <button type="button" class="chip" data-speed="0.5" aria-pressed="false">Half speed</button>
       </div>
+      <!-- Only with ?demo=1 (ui/feel.ts): the simulated player plays every turn, so no camera is needed. -->
+      <label class="consent" id="demoRow" hidden><input type="checkbox" id="demoUnderstudy" checked /><span>Demo: the computer plays every turn, so no camera is needed.</span></label>
       <div class="row-actions">
         <button type="button" class="btn btn-quiet" id="castBack">Back</button>
         <button type="button" class="btn btn-main" id="deal"><span class="ticket"><span class="ticket-text">Deal the secret parts</span></span></button>
@@ -230,6 +249,8 @@
               <canvas id="youCanvas" width="640" height="480" aria-label="You, in a mirror"></canvas>
               <canvas id="guideCanvas" width="640" height="360" aria-label="Your shape to copy"></canvas>
               <div class="count" id="count" aria-live="assertive" hidden></div>
+              <!-- No pose for 1.5 s while the moves count (ui/feel.ts). A notice only; the turn carries on. -->
+              <p class="problem lost" id="lostNotice" role="status" hidden>The camera can't see you. Step back into the picture.</p>
             </div>
             <div class="valance" aria-hidden="true"><i></i></div>
             <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>

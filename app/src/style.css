@@ -445,7 +445,8 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .step-pic { aspect-ratio: 16 / 7; }
   .game-nav { top: 8px; left: 8px; }
   /* Room for the Home tab, so it never sits on the first line of a screen. */
-  body:not([data-screen="start"]):not([data-screen="howto"]) .screen { padding-top: 64px; }
+  /* Lisa's circus tent Home stands about 90 px tall from the top on a phone. */
+  body:not([data-screen="start"]):not([data-screen="howto"]) .screen { padding-top: 100px; }
   .crown-wrap .stage { aspect-ratio: 4 / 5; }
   .cast-row { flex-wrap: wrap; align-content: flex-end; }
   .cast-slot { flex: 1 1 40%; max-width: 48%; }
@@ -478,3 +479,7 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 
 /* Reveal: fast forward and skip. */
 .reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+
+/* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
+.lost { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
+.place-who .aside { text-align: left; }
