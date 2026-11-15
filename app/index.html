@@ -129,18 +129,32 @@
     <section class="screen" id="screen-start">
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
-        <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
+        <div class="note-wrap"><p class="note start-title">The party game that gets you off your chair.</p></div>
+        <p class="typed start-how">Each of you copies a secret part of a clip on the webcam. At the end, you see it all together.</p>
       </header>
 
-      <div class="start-mode" id="startMode">
+      <!-- How you play: how many of you (and for two, together or a duel), and Blind or Normal. The lines under it say
+           what each pick means (game.ts). The clips below are only the ones that fit. -->
+      <div class="start-setup" id="startMode">
+        <div class="start-count" role="radiogroup" aria-labelledby="countLabel">
+          <span class="start-ask" id="countLabel">How many of you?</span>
+          <button type="button" class="chip" role="radio" data-count="1" aria-checked="false">1</button>
+          <button type="button" class="chip" role="radio" data-count="2" aria-checked="true">2</button>
+          <button type="button" class="chip" role="radio" data-count="3" aria-checked="false">3</button>
+          <button type="button" class="chip" role="radio" data-count="4" aria-checked="false">4</button>
+        </div>
+        <div class="modes-pick start-duel" id="duelPick" role="radiogroup" aria-label="Two of you">
+          <button type="button" class="mode" role="radio" data-duel="off" aria-checked="true"><b>Together</b><span>Each of you plays a different part.</span></button>
+          <button type="button" class="mode" role="radio" data-duel="on" aria-checked="false"><b>Duel</b><span>You both copy the same person. Best copy wins.</span></button>
+        </div>
         <div class="modes-pick" role="radiogroup" aria-label="Game mode">
-          <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
-          <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+          <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end, only the shape of their part.</span></button>
+          <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Everyone sees the clip and dances along with it.</span></button>
         </div>
         <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
       </div>
 
-      <!-- Surprise me: the first choice, a random clip from the ones the library shows (game.ts fills its line). -->
+      <!-- The choice: Surprise me, or pick from the library. Surprise me draws from the clips that fit the pick. -->
       <button type="button" class="clip surprise" id="surpriseCard" data-key="surprise" aria-pressed="true">
         <span class="washi w-pink" aria-hidden="true"></span>
         <span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span>
@@ -148,20 +162,15 @@
         <span class="clip-hint" id="surpriseHint"></span>
         <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
       </button>
+      <p class="start-or" id="startOr" aria-hidden="true">or</p>
 
-      <!-- The library: every clip, found by name or by how many players it needs (one player per part). -->
-      <div class="library-head" id="libraryHead" role="search" aria-label="Find a clip">
-        <label class="field library-find"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
-        <div class="library-players" role="radiogroup" aria-labelledby="playersLabel">
-          <span class="library-players-label" id="playersLabel">Players</span>
-          <button type="button" class="chip" role="radio" data-players="0" aria-checked="true">Any</button>
-          <button type="button" class="chip" role="radio" data-players="1" aria-checked="false">1</button>
-          <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
-          <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
-          <button type="button" class="chip" role="radio" data-players="4" aria-checked="false" aria-label="4 or more">4+</button>
-        </div>
+      <!-- The library: every clip that fits, found by name. -->
+      <div class="library-head" id="libraryHead">
+        <h2 class="library-title" id="libraryTitle">Pick from the library</h2>
+        <span class="library-count" id="libraryCount"></span>
+        <label class="field library-find" role="search"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
       </div>
-      <div class="bank" id="bank" role="group" aria-label="Clips"></div>
+      <div class="bank" id="bank" role="group" aria-labelledby="libraryTitle"></div>
       <p class="typed library-none" id="libraryNone" role="status" hidden></p>
       <p class="typed bank-note" id="bankNote" hidden></p>
 
@@ -205,47 +214,54 @@
     </section>
 
     <!-- Play with friends online: a room code, each on their own device (ui/room.ts). No passing the laptop. -->
-    <!-- Send in a clip: what you can and can't send, what happens next, and the form. -->
+    <!-- Send in a clip: how sending and checking works as four steps, then one form card with what not to send. -->
     <section class="screen" id="screen-submit" hidden>
       <div class="masking"><h2 class="tape">Send in a clip</h2></div>
-      <div class="note-wrap"><p class="note">Send me a move and everyone gets to play it. The Chamberlain looks it over and lets it in if it's fine. If it isn't sure, one of us decides.</p></div>
-      <p class="typed send-when">Usually within a few minutes while we're around. Nothing you send is public until it's let in.</p>
-      <div class="send-layout">
-        <div class="send-rules">
-          <section class="rule-card can" aria-labelledby="sendCan">
-            <span class="washi w-mint" aria-hidden="true"></span>
-            <h3 id="sendCan">You can send</h3>
-            <ul class="how">
-              <li>A short video of people moving, or a person moving a thing: a dance, a trick, a workout.</li>
-              <li>MP4, WebM or MOV, up to 25 MB.</li>
-              <li>At least 3 seconds long. Only the first 30 seconds get played.</li>
-            </ul>
-          </section>
-          <section class="rule-card cannot" aria-labelledby="sendCannot">
-            <span class="washi w-pink" aria-hidden="true"></span>
-            <h3 id="sendCannot">Please don't send</h3>
-            <ul class="how">
-              <li>Anything sexual, violent or hateful.</li>
-              <li>Anything meant to shock or bully someone.</li>
-              <li>Writing in the video that tries to talk the reviewer into something.</li>
-              <li>A clip where nobody and nothing moves. The game turns those away.</li>
-            </ul>
-          </section>
-        </div>
-        <div class="send-form" id="submit">
-          <form id="submitForm" novalidate>
-            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /></label>
-            <label class="field"><span>Give it a name</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
-            <label class="field"><span>Credit (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" /><small>Your name or handle, shown small under the clip.</small></label>
-            <p class="aside send-privacy">To check it, a few frames of your clip, what the game measured in it, its name and your credit are sent to Anthropic, the company that makes the AI.</p>
+      <!-- The same clip card in every picture: picked, named, checked by the Chamberlain, then let in. -->
+      <ol class="steps" id="sendSteps">
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card send-step-back"><span class="send-step-photo"></span></span>
+          <span class="send-step-card"><span class="send-step-photo"><span class="clip-q">?</span></span><svg class="send-step-star"><use href="#star" /></svg></span>
+        </span></span><b>Pick a clip.</b><span>People moving, or a person moving a thing: a dance, a trick, a workout.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card"><span class="send-step-photo"><span class="clip-q">?</span></span></span>
+          <span class="send-step-tag">Gains</span>
+        </span></span><b>Name it with a hint.</b><span>Then send it in. Nothing is public until it's let in.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card"><span class="send-step-photo"><svg class="send-step-player" viewBox="0 0 300 400"><use href="/art.svg#player" /></svg></span></span>
+          <span class="send-step-tag send-step-ringed">Gains</span>
+        </span></span><b>The Chamberlain checks it.</b><span>Our AI reviewer lets it in if it's fine and the name fits. If it isn't sure, a person decides.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card"><span class="send-step-photo"><span class="clip-q">?</span></span><span class="send-step-stamp">Let in</span></span>
+          <span class="send-step-jester"></span>
+        </span></span><b>It's in the bank.</b><span>Usually within a few minutes while we're around. This tab tells you.</span></li>
+      </ol>
+      <div class="send-form" id="submit">
+        <form id="submitForm" novalidate>
+          <div class="send-fields">
+            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /><small>MP4, WebM or MOV, up to 25 MB. At least 3 seconds long. Only the first 30 seconds play.</small></label>
+            <label class="field"><span>Name your clip</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
+            <label class="field"><span>Your name (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" placeholder="Anonymous" /><small>Shown as Anonymous if you leave it empty.</small></label>
+          </div>
+          <div class="send-go">
+            <section class="send-dont" aria-labelledby="sendCannot">
+              <h3 id="sendCannot">Please don't send</h3>
+              <ul class="how">
+                <li>Anything sexual, violent or hateful.</li>
+                <li>Anything meant to shock or bully.</li>
+                <li>Writing in the video that tries to talk the reviewer into something.</li>
+                <li>A clip where nothing moves.</li>
+              </ul>
+            </section>
+            <p class="aside send-privacy">To check it, a few frames of your clip, what the game measured in it, the clip's name and your name are sent to Anthropic, the company that makes the AI.</p>
             <button type="submit" class="btn btn-main" id="submitSend"><span class="ticket"><span class="ticket-text">Send it in</span></span></button>
             <progress id="submitBar" value="0" max="1" hidden></progress>
             <p class="problem" id="submitProblem" role="alert" hidden></p>
-          </form>
-          <div id="submitThanks" hidden>
-            <div class="note-wrap"><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides. Keep playing; if it's in within the hour, I'll tell you here.</p></div>
-            <button type="button" class="btn btn-quiet" id="submitAgain">Send another clip</button>
           </div>
+        </form>
+        <div id="submitThanks" hidden>
+          <div class="note-wrap"><p class="note">Thanks! Keep playing. If it gets in within the hour, I'll tell you here.</p></div>
+          <button type="button" class="btn btn-quiet" id="submitAgain">Send another clip</button>
         </div>
       </div>
       <button type="button" class="btn btn-quiet" id="submitBack">Back to the start</button>
@@ -302,6 +318,11 @@
     <section class="screen" id="screen-cast" hidden>
       <div class="masking"><h2 class="tape">Who's playing?</h2></div>
       <p class="typed" id="castParts"></p>
+      <!-- A clip with a thing in it (a ball, a dog): play the thing as a part too, or people only (game.ts). -->
+      <div class="cast-thing" id="castThing" role="radiogroup" aria-label="The thing in this clip" hidden>
+        <button type="button" class="chip" role="radio" data-things="on" aria-checked="true">With the thing as a part</button>
+        <button type="button" class="chip" role="radio" data-things="off" aria-checked="false">People only</button>
+      </div>
       <div class="cast" id="castNames"></div>
       <div class="cast-count">
         <button type="button" class="btn btn-quiet" id="castLess">One fewer</button>
@@ -374,8 +395,8 @@
 
     <!-- The beat before the reveal. -->
     <section class="screen" id="screen-drumroll" hidden>
-      <div class="masking"><p class="tape">That's everyone!</p></div>
-      <div class="note-wrap"><p class="note">Gather round. Here comes what you all actually did.</p></div>
+      <div class="masking"><p class="tape" id="drumrollTitle">That's everyone!</p></div>
+      <div class="note-wrap"><p class="note" id="drumrollNote">Gather round. Here comes what you all actually did.</p></div>
     </section>
 
     <!-- The reveal plays live on the shoebox stage while it records. -->

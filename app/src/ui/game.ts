@@ -5,6 +5,7 @@
 import type { BodyPart } from "../../../engine/src/index.ts";
 import { demoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
+import { castLine, playersFor, sentInBy } from "../castWords.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
 import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
@@ -14,7 +15,7 @@ import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { startRide, type Ride } from "./ride.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
-import { awardsFor, motionOf, rankFor } from "../feelText.ts";
+import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -94,18 +95,6 @@ type Mode = "blind" | "normal";
 /** What the Play ticket will start. A surprise is a random bank clip nobody sees first. */
 type Pick = { kind: "bank"; clip: BankClip } | { kind: "starter"; starter: StarterClip } | { kind: "surprise" };
 
-/** How many players a clip is made for: one per part, and every person and every thing is a part. */
-const playersFor = (clip: BankClip) => clip.people + clip.things;
-
-/** "3 players, 15 s" */
-function castLine(clip: BankClip) {
-  const players = playersFor(clip);
-  return `${players} ${players === 1 ? "player" : "players"}, ${Math.round(clip.durationMs / 1000)} s`;
-}
-
-/** The bank fills in "Anonymous" (once "Sent in with Submit your own") when nobody gave a name; only a real name is worth showing. */
-const creditLine = (credit: string) => (credit && !/^(sent in|anonymous$)/i.test(credit.trim()) ? `by ${credit}` : "");
-
 /** Lower case, accents and punctuation gone, so "BESTie" and "bestie" and "love-options" all match. */
 const searchable = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
@@ -151,7 +140,8 @@ function letters(el: HTMLElement, text: string, color?: string) {
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
-const MIN_PLAYERS = 2;
+/** One player may play alone; a new cast still starts with two, since it is a party game. */
+const MIN_PLAYERS = 1;
 const MAX_PLAYERS = 4;
 
 export function initGame(deps: GameDeps) {
@@ -159,6 +149,9 @@ export function initGame(deps: GameDeps) {
   let mode: Mode = "blind";
   let bank: BankClip[] = [];
   let pick: Pick | null = null;
+  /** The bank clip being cast, and its scene with every part; `scene` leaves out the things when they are off. */
+  let castClip: BankClip | null = null;
+  let fullScene: Scene | null = null;
   let names: string[] = ["", "", ""];
   /** Each seat's jester colour, picked on the cast screen; seats start on different colours. */
   let seatColors: string[] = [];
@@ -175,10 +168,11 @@ export function initGame(deps: GameDeps) {
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
   const revealCanvas = $<HTMLCanvasElement>("revealStage");
   // Fast forward and skip for the reveal: blind.ts reads `speed` every tick while the reveal records.
-  const revealControl = { speed: 1 };
+  const revealControl: { speed: number; skip?: boolean } = { speed: 1 };
   const setPace = (speed: number) => { revealControl.speed = speed; $("revealFastLabel").textContent = `${speed}x`; };
   $("revealFast").addEventListener("click", () => { const steps = [1, 2, 4]; setPace(steps[(steps.indexOf(revealControl.speed) + 1) % steps.length] ?? 1); });
-  $("revealSkip").addEventListener("click", () => setPace(16));
+  // Skip ends the recap at once and goes to the results (the video shows what was recorded so far).
+  $("revealSkip").addEventListener("click", () => { revealControl.skip = true; setPace(16); });
   const turn = $("screen-turn");
 
   // ---- Start ----
@@ -192,26 +186,45 @@ export function initGame(deps: GameDeps) {
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
-  // The library's two filters: a name to look for, and how many players (0 is any number).
+  // How you play: how many of you, for two of you together or a duel, and a name to look for in the library.
+  let count = 2;
+  let duelOn = false;
   let query = "";
-  let players = 0;
-  /** The bank clips the library shows right now. */
-  // The last chip is 4 or more: a game takes four players at most, and a bigger clip leaves some parts out.
-  const fits = (c: BankClip) => !players || (players === 4 ? playersFor(c) >= 4 : playersFor(c) === players);
+  /** Each clip with a thing in it (a ball, a dog) plays the thing as a part unless the cast screen turns it off. */
+  const thingsOff = new Set<string>();
+  const withThingsFor = (c: BankClip) => !thingsOff.has(c.id);
+  const partsOf = (c: BankClip) => playersFor(c.people, c.things, withThingsFor(c));
+  const isDuel = () => count === 2 && duelOn;
+  // One of you, or a duel, takes a clip with exactly one person; otherwise a clip needs a part for each of you.
+  // More parts than players is fine (not every part gets played).
+  const fits = (c: BankClip) => (count === 1 || isDuel() ? c.people === 1 : partsOf(c) >= count);
+  /** The clips the library shows right now. */
   const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query)));
-  /** Surprise me draws from every clip for this many players; the name search is for finding one clip. */
+  /** Surprise me draws from every clip that fits; the name search is for finding one clip. */
   const surprises = () => bank.filter(fits);
-  /** "for 2 players", "for 4 or more players", or nothing when any number will do. */
-  const forPlayers = () => (!players ? "" : ` for ${players === 4 ? "4 or more" : players} ${players === 1 ? "player" : "players"}`);
+  /** "for 2 players", "for a duel". */
+  const forPick = () => (isDuel() ? "for a duel" : `for ${count} ${count === 1 ? "player" : "players"}`);
 
-  /** One taped photo per clip. In blind mode the picture stays under a question mark. */
+  /** Little performers on a lit backdrop: one per person, and a ball for the clip's things when they are parts. */
+  function performers(c: BankClip): string {
+    const people = Math.min(5, c.people);
+    const things = withThingsFor(c) ? Math.min(2, c.things) : 0;
+    const w = people * 46 + things * 30 + 8;
+    const figs = Array.from({ length: people }, (_, i) => `<use href="/art.svg#player" x="${4 + i * 46}" y="4" width="46" height="62" />`).join("")
+      + Array.from({ length: things }, (_, i) => `<use href="/art.svg#ball" x="${8 + people * 46 + i * 30}" y="44" width="22" height="22" />`).join("");
+    return `<svg class="clip-cast" viewBox="0 0 ${w} 70" preserveAspectRatio="xMidYMax meet">${figs}</svg>`;
+  }
+
+  /** One taped photo per clip. In Blind the picture stays hidden and its performers stand in for it. */
   function card(p: Pick, i: number): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "clip";
     b.dataset.key = keyOf(p);
-    const tape = ["mint", "dots", "pink"][i % 3];
-    b.innerHTML = `<span class="washi w-${tape}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><span class="clip-credit"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
+    const tape = ["mint", "dots", "pink"][i % 3]!;
+    b.style.setProperty("--pic", tape === "mint" ? "var(--p4)" : tape === "dots" ? "var(--ticket)" : "var(--p1)");
+    const art = p.kind === "bank" ? performers(p.clip) : `<span class="clip-q">?</span>`;
+    b.innerHTML = `<span class="washi w-${tape}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true">${art}</span><span class="clip-name"></span><span class="clip-hint"></span><span class="clip-credit"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
     if (p.kind === "bank" && p.clip.poster) {
       // The poster url comes from the bank, so set it as an attribute rather than writing it into markup.
       const img = document.createElement("img");
@@ -219,7 +232,7 @@ export function initGame(deps: GameDeps) {
       img.alt = "";
       b.querySelector(".clip-pic")!.prepend(img);
     }
-    const [name, hint, credit] = p.kind === "bank" ? [p.clip.title, castLine(p.clip), creditLine(p.clip.credit)]
+    const [name, hint, credit] = p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs, withThingsFor(p.clip)), sentInBy(p.clip.credit)]
       : p.kind === "starter" ? [p.starter.title, p.starter.hint, ""] : ["", "", ""];
     b.querySelector(".clip-name")!.textContent = name;
     b.querySelector(".clip-hint")!.textContent = hint;
@@ -237,13 +250,16 @@ export function initGame(deps: GameDeps) {
     bankBox.replaceChildren(...picks.map(card));
     // Surprise me needs the bank: the starters are only two, and nobody needs a surprise between two.
     surpriseCard.hidden = bank.length === 0;
+    $("startOr").hidden = bank.length === 0;
     surpriseCard.disabled = surprises().length === 0;
-    $("surpriseHint").textContent = mode === "blind" ? `Any clip${forPlayers()}. Nobody sees it until the end.` : `Any clip${forPlayers() || " in the library"}.`;
+    // In Blind a library pick still shows its name; a surprise keeps even that from whoever picked it.
+    $("surpriseHint").textContent = `Any clip ${isDuel() ? "with one person" : forPick()}.` + (mode === "blind" ? " Not even you know which." : "");
     $("libraryHead").hidden = bank.length === 0;
+    $("libraryCount").textContent = `${list.length} ${list.length === 1 ? "clip" : "clips"}`;
     const none = $("libraryNone");
     none.hidden = !bank.length || list.length > 0;
     const wanted = $<HTMLInputElement>("clipSearch").value.trim();
-    none.textContent = `No clip${wanted ? ` called "${wanted}"` : ""}${forPlayers()} yet.`;
+    none.textContent = `No clip${wanted ? ` called "${wanted}"` : ""} ${forPick()} yet.`;
     // A note for the team only: visitors just see the starter clips.
     const note = $("bankNote");
     note.hidden = bank.length > 0 || !document.body.classList.contains("dev");
@@ -284,32 +300,39 @@ export function initGame(deps: GameDeps) {
     $<HTMLButtonElement>("play").disabled = !p;
   }
 
-  function clearFilters() {
+  /** Shows `clip` in the library: the name search is cleared, and the pick changes to fit it if it has to. */
+  function showInLibrary(clip: BankClip) {
     query = "";
-    players = 0;
     $<HTMLInputElement>("clipSearch").value = "";
-    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(o.dataset.players === "0"));
+    if (!fits(clip)) setCount(Math.min(4, Math.max(1, partsOf(clip))), false);
     renderBank();
   }
 
-  // The library's filters redraw it as you type or tap; a pick that drops out of view falls back to Surprise me.
+  // The name search redraws the library as you type; a pick that drops out of view falls back to Surprise me.
   $<HTMLInputElement>("clipSearch").addEventListener("input", (e) => {
     query = searchable((e.target as HTMLInputElement).value);
     renderBank();
   });
-  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-players]")) {
-    b.addEventListener("click", () => {
-      players = Number(b.dataset.players);
-      for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(o === b));
-      renderBank();
-    });
-  }
 
-  // The two modes are one switch; the picked mode's line shows once, under it.
+  // The lines under the switches: the picked mode's, and for two of you, together's or the duel's.
   const sayMode = () => {
-    const picked = document.querySelector<HTMLButtonElement>(`.mode[data-mode="${mode}"] span`);
-    $("modeSays").textContent = picked?.textContent ?? "";
+    const line = (sel: string) => { const s = document.createElement("span"); s.textContent = document.querySelector(`${sel} span`)?.textContent ?? ""; return s; };
+    $("modeSays").replaceChildren(line(`.mode[data-mode="${mode}"]`), ...(count === 2 ? [line(`.mode[data-duel="${duelOn ? "on" : "off"}"]`)] : []));
   };
+  function setCount(n: number, duel = duelOn) {
+    count = n;
+    duelOn = n === 2 && duel;
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-count]")) o.setAttribute("aria-checked", String(Number(o.dataset.count) === n));
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-duel]")) o.setAttribute("aria-checked", String((o.dataset.duel === "on") === duelOn));
+    $("duelPick").hidden = n !== 2;
+    sayMode();
+  }
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-count]")) {
+    b.addEventListener("click", () => { setCount(Number(b.dataset.count)); renderBank(); });
+  }
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-duel]")) {
+    b.addEventListener("click", () => { setCount(2, b.dataset.duel === "on"); renderBank(); });
+  }
   for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
@@ -319,7 +342,7 @@ export function initGame(deps: GameDeps) {
       renderBank();
     });
   }
-  sayMode();
+  setCount(count);
 
   void listBank().then((r) => {
     bank = r.data ?? [];
@@ -352,8 +375,8 @@ export function initGame(deps: GameDeps) {
     $("clipReady").hidden = true;
     if (!clip) return;
     if (document.body.dataset.screen !== "start") show("start");
-    // The library's filters are cleared, so the new clip is on screen when it is picked.
-    clearFilters();
+    // The library shows the new clip when it is picked.
+    showInLibrary(clip);
     choose({ kind: "bank", clip });
   });
   $("clipReadyLater").addEventListener("click", () => {
@@ -364,8 +387,8 @@ export function initGame(deps: GameDeps) {
   $("play").addEventListener("click", async () => {
     if (!pick) return;
     $("startProblem").hidden = true;
-    if (pick.kind === "starter") { scene = pick.starter.make(); openCast(); return; }
-    // A surprise comes from the clips for this many players.
+    if (pick.kind === "starter") { castClip = null; fullScene = scene = pick.starter.make(); openCast(); return; }
+    // A surprise comes from the clips that fit how many of you there are.
     const from = surprises().length ? surprises() : bank;
     const clip = pick.kind === "bank" ? pick.clip : from[Math.floor(Math.random() * from.length)];
     if (!clip) return;
@@ -373,6 +396,7 @@ export function initGame(deps: GameDeps) {
     const ride = pick.kind === "surprise" ? surpriseRide(clip, from) : null;
     // The ride's first frame is painted before the load starts, so any work the load does runs under it.
     if (ride) await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    // Loaded with its things; the cast screen's switch plays them as parts or leaves them out (sceneFor).
     const loading = bankScene(clip, deps.clipVideo);
     let loaded = false;
     void loading.then(() => { loaded = true; });
@@ -382,14 +406,16 @@ export function initGame(deps: GameDeps) {
     }
     const r = await loading;
     if (r.error !== null) { ride?.close(); return startProblem(r.error); }
-    scene = r.data;
+    castClip = clip;
+    fullScene = r.data;
+    scene = sceneFor();
     openCast();
     ride?.close();
   });
 
   /**
    * The ride for a surprise: six to eight photos, the picked clip at a random place among others it could have been.
-   * In Blind every photo is the same question mark with no name, so nothing on screen says which clip it is.
+   * In Blind every photo is the same question mark with no name and no performers, so nothing says which clip it is.
    */
   function surpriseRide(clip: BankClip, from: BankClip[]): Ride {
     const blind = mode === "blind";
@@ -404,6 +430,13 @@ export function initGame(deps: GameDeps) {
     });
     return startRide(photos, pickAt, blind ? "Got one. Nobody sees it until the end." : `Got one: ${clip.title}.`);
   }
+  /** The clip being cast, with its things as parts or people only, by its switch: what bankScene's withThings does. */
+  function sceneFor(): Scene | null {
+    if (!fullScene || !castClip || withThingsFor(castClip)) return fullScene;
+    return { ...fullScene, guides: fullScene.guides.filter((g) => g.subject.kind === "person") };
+  }
+  /** A duel needs a clip with exactly one person and at least two of you. */
+  const duelGame = () => isDuel() && castClip?.people === 1 && names.length >= 2;
 
   // ---- Send in a clip: an invite under the Play ticket opens its own screen ----
 
@@ -462,7 +495,8 @@ export function initGame(deps: GameDeps) {
     try {
       const s = await videoScene(file, deps.clipVideo, (share) => { bar.value = share; });
       if (typeof s === "string") return startProblem(s);
-      scene = s;
+      castClip = null;
+      fullScene = scene = s;
       openCast();
     } catch (err) {
       startProblem(`I could not read that clip: ${(err as Error).message}`);
@@ -480,12 +514,16 @@ export function initGame(deps: GameDeps) {
 
   // ---- Cast ----
 
-  function openCast() {
+  /**
+   * Opens "Who's playing?". The cast starts with the number of players picked on the start screen; with no pick,
+   * one player per part of the clip (so a one-person clip opens with one player). `again` keeps the cast as it
+   * was, for Play again. Add a player and One fewer still change it.
+   */
+  function openCast(again = false) {
     if (!scene) return;
     $("startProblem").hidden = true;
-    // Start with one player per part; more players share parts, fewer leave some out.
-    const parts = scene.guides.length;
-    const want = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, parts));
+    // As many seats as the start screen's pick; more players than parts share them, fewer leave some out.
+    const want = again && names.length ? names.length : Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, count));
     names = Array.from({ length: want }, (_, i) => names[i] ?? "");
     renderCast();
     show("cast");
@@ -516,9 +554,14 @@ export function initGame(deps: GameDeps) {
   function renderCast() {
     const parts = scene?.guides.length ?? names.length;
     const extra = names.length - parts;
-    $("castParts").textContent = (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
-      + (extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : "")
+    $("castParts").textContent = (duelGame()
+      ? `This clip has 1 person. ${names.length === 2 ? "You both copy them" : "You all copy them"}; the best copy wins.`
+      : (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
+        + (names.length === 1 && parts > 1 ? " You play one of them." : extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : ""))
       + " Tap your dot to change your jester's colour.";
+    // A clip with a thing in it: play the thing as a part, or people only. Not in a duel, where everyone is the person.
+    $("castThing").hidden = !castClip || castClip.things === 0 || duelGame();
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-things]")) o.setAttribute("aria-checked", String((o.dataset.things === "on") === (!castClip || withThingsFor(castClip))));
     settleColors();
     const box = $("castNames");
     box.innerHTML = "";
@@ -554,6 +597,16 @@ export function initGame(deps: GameDeps) {
     $<HTMLButtonElement>("castLess").disabled = names.length <= MIN_PLAYERS;
     $<HTMLButtonElement>("castMore").disabled = names.length >= MAX_PLAYERS;
   }
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-things]")) {
+    b.addEventListener("click", () => {
+      if (!castClip) return;
+      if (b.dataset.things === "on") thingsOff.delete(castClip.id); else thingsOff.add(castClip.id);
+      scene = sceneFor();
+      renderCast();
+      // The clip's card on the start screen counts its players the same way.
+      renderBank();
+    });
+  }
   $("castMore").addEventListener("click", () => { if (names.length < MAX_PLAYERS) { names.push(""); renderCast(); } });
   $("castLess").addEventListener("click", () => { if (names.length > MIN_PLAYERS) { names.pop(); renderCast(); } });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) {
@@ -574,6 +627,7 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    soloGame = cast.length === 1;
     game = new AbortController();
     const signal = game.signal;
     restartsLeft.clear();
@@ -582,7 +636,7 @@ export function initGame(deps: GameDeps) {
     try {
       settleColors();
       gameColors = seatColors.slice(0, cast.length);
-      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: seatColors.slice(0, cast.length), theme: revealTheme(), showClip: mode === "normal" });
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: seatColors.slice(0, cast.length), theme: revealTheme(), showClip: mode === "normal", ...(duelGame() ? { duel: true } : {}) });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -621,6 +675,7 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    soloGame = false; // a room waits for the others on the drum roll, even with one player in it
     game = new AbortController();
     restartsLeft.clear();
     restartsLeft.set(room.name, RESTARTS_PER_PLAYER);
@@ -682,6 +737,8 @@ export function initGame(deps: GameDeps) {
   /** The game under way: leaving aborts it, so its pending screens stop waiting and a new game never collides. */
   let game: AbortController | null = null;
   let running = false;
+  /** One player on their own: no passing the laptop, and the drum roll says so. */
+  let soloGame = false;
   const sig = () => game?.signal;
   const live = () => { if (game?.signal.aborted) throw left(); };
   /** The current turn's restart, kept so leaving mid-turn can end the turn at once. */
@@ -752,6 +809,7 @@ export function initGame(deps: GameDeps) {
       camera.newTurn();
       activeRestart = null;
       hideRestart();
+      if (soloGame) return; // one player: nobody to pass the laptop to
       show("handover");
       const screen = $("screen-handover");
       screen.style.setProperty("--who", player.color);
@@ -848,6 +906,8 @@ export function initGame(deps: GameDeps) {
       live();
       activeRestart = null;
       hideRestart();
+      $("drumrollTitle").textContent = soloGame ? "That's the show!" : "That's everyone!";
+      $("drumrollNote").textContent = soloGame ? "Here comes what you actually did." : "Gather round. Here comes what you all actually did.";
       show("drumroll");
       say("beat");
       const roll = sfx.drumRoll();
@@ -864,6 +924,7 @@ export function initGame(deps: GameDeps) {
     results(r) {
       live();
       setPace(1);
+      revealControl.skip = false;
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
@@ -945,8 +1006,8 @@ export function initGame(deps: GameDeps) {
       return { row, j, slot };
     });
     castRow.replaceChildren(...jesters.map((x) => x.slot));
-    const winners = rows.filter((r) => r.winner);
-    const headline = winners.length === 0 ? "Everyone played!" : winners.length === 1 ? `${winners[0]!.name} wins!` : `${winners.map((w) => w.name).join(" and ")} tie!`;
+    const winners = winnersOf(rows);
+    const headline = headlineFor(rows);
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
@@ -987,7 +1048,7 @@ export function initGame(deps: GameDeps) {
       if (mine === runs) {
         roll();
         sfx.crown();
-        say(winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: winners.map((w) => w.name).join(" and ") });
+        say(rows.length === 1 ? "solo" : winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: rows.length === 1 ? rows[0]!.name : winners.map((w) => w.name).join(" and ") });
       }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
@@ -1063,11 +1124,8 @@ export function initGame(deps: GameDeps) {
 
   function showResults() {
     stopPodium();
-    const winners = rows.filter((r) => r.winner);
-    const headline = winners.length === 0 ? "Everyone played!"
-      : winners.length === 1 ? `${winners[0]!.name} wins!`
-      : `${winners.map((w) => w.name).join(" and ")} tie!`;
-    letters($("resultsHeadline"), headline);
+    const winners = winnersOf(rows);
+    letters($("resultsHeadline"), headlineFor(rows));
     const list = $("podium");
     list.innerHTML = "";
     // Everyone leaves with something: the crown, or an award from how they played.
@@ -1080,7 +1138,7 @@ export function initGame(deps: GameDeps) {
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
       li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
-      li.querySelector(".place-rank")!.textContent = ordinal(place);
+      li.querySelector(".place-rank")!.textContent = rows.length === 1 ? "" : ordinal(place); // no "1st" of one
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
       j.canvas.setAttribute("aria-label", `${r.name} as a jester`);
@@ -1091,6 +1149,8 @@ export function initGame(deps: GameDeps) {
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
       li.querySelector(".place-award")!.textContent = awards[i]!;
       const score = li.querySelector<HTMLElement>(".place-score")!;
+      // The final score is on the element from the start, so anything reading it mid count-up gets the real one.
+      score.dataset.score = r.score == null ? "" : String(r.score);
       if (r.score == null) score.textContent = "no score";
       else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
@@ -1129,7 +1189,7 @@ export function initGame(deps: GameDeps) {
     note.textContent = "Saved to your downloads. Send it from there.";
   });
 
-  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(); else show("start"); });
+  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(true); else show("start"); });
   $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
 

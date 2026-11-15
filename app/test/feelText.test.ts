@@ -1,7 +1,7 @@
 // Run from app/: npm test (node 22.6+ runs the TypeScript directly).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { awardsFor, cameraTrouble, hostLine, motionOf, rankFor, RANKS } from "../src/feelText.ts";
+import { awardsFor, cameraTrouble, headlineFor, hostLine, motionOf, rankFor, RANKS, winnersOf } from "../src/feelText.ts";
 
 const named = (name: string, message = "") => Object.assign(new Error(message), { name });
 
@@ -77,4 +77,29 @@ test("host lines fill in the winner and never use em dashes", () => {
   for (const e of ["beat", "roll", "crown", "tie", "nobody", "results"] as const) {
     for (const r of [0, 0.5, 0.99]) assert.doesNotMatch(hostLine(e, { winner: "Ana", title: "X" }, () => r), /—|\{/);
   }
+});
+
+test("scores of 41 and 12 make one winner, even if both rows are marked winner", () => {
+  const rows = [{ name: "Ana", score: 41, winner: true, motion: 1 }, { name: "Ben", score: 12, winner: true, motion: 0.5 }];
+  assert.deepEqual(winnersOf(rows).map((r) => r.name), ["Ana"]);
+  const a = awardsFor(rows);
+  assert.equal(a[0], "Winner");
+  assert.notEqual(a[1], "Joint winner");
+  assert.notEqual(a[1], "Winner");
+  assert.equal(headlineFor(rows), "Ana wins!");
+});
+
+test("a real tie is still joint", () => {
+  const rows = [{ name: "Ana", score: 100, winner: true, motion: 1 }, { name: "Ben", score: 100, winner: true, motion: 1 }];
+  assert.deepEqual(awardsFor(rows), ["Joint winner", "Joint winner"]);
+  assert.equal(headlineFor(rows), "Ana and Ben tie!");
+});
+
+test("one player: no winner among one, their rank title as the award", () => {
+  assert.deepEqual(awardsFor([{ score: 80, winner: true, motion: 1 }]), ["Great"]);
+  assert.deepEqual(awardsFor([{ score: 5, winner: true, motion: null }]), ["Keep practising"]);
+  assert.deepEqual(awardsFor([{ score: null, winner: false, motion: null }]), ["Not seen by the camera"]);
+  assert.equal(headlineFor([{ name: "Ana", score: 80, winner: true }]), "Well done, Ana!");
+  assert.equal(headlineFor([{ name: "Ana", score: null, winner: false }]), "Thanks for playing, Ana!");
+  assert.equal(hostLine("solo", { winner: "Ana" }, () => 0), "Well done, Ana!");
 });

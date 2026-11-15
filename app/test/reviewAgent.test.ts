@@ -128,7 +128,9 @@ test("reviewSubmission: with tracing on, a real submission is refused before any
   process.env.LANGSMITH_TRACING = "true";
   try {
     const input = { title: "gains", credit: null, facts: facts(), frames: [] };
+    // A shell switch alone refuses a real submission, and the refusal comes before anything is changed.
     await assert.rejects(reviewSubmission(input, { apiKey: "not-a-key", model: "claude-sonnet-5-5" }), /real submission/);
+    assert.equal(process.env.LANGSMITH_TRACING, "true");
     delete process.env.LANGSMITH_TRACING;
     await assert.rejects(reviewSubmission(input, { apiKey: "not-a-key", model: "claude-sonnet-5-5", callbacks: [tracer] as never }), /real submission/);
   } finally {

@@ -223,35 +223,54 @@ body:not(.solo) #solo { display: none; }
 .clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 body[data-mode="blind"] .clip-pic img { display: none; }
 body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
-.clip-credit { font-size: 12px; color: #6B5A48; min-height: 1em; }
+.clip-credit { font-size: 13px; color: #6B5A48; min-height: 1em; }
 .clip.surprise .clip-pic { background: var(--stamp) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
 .bank-note { max-width: 46ch; }
 
-/* The start screen reads top to bottom as one page: the wordmark and the Jester's note, how to play (Blind or
-   Normal), the library with Surprise me first, then Play, playing online, and sending in a clip. On a laptop it
-   all fits one screen (1440 by 900, 1024 by 768): the library scrolls inside itself, one whole row at a time. */
-#screen-start .start-mode { display: grid; justify-items: center; gap: 8px; }
+/* The start screen reads top to bottom as one page: the wordmark, what Jester is and how it works, how you play (how
+   many of you, Blind or Normal), then the choice between Surprise me and the library, then Play, playing online
+   and sending in a clip. On a laptop it all fits one screen (1440 by 900, 1024 by 768): the library scrolls inside
+   itself, one whole row at a time, and its head says how many clips fit. */
 #screen-start .masthead { grid-area: mast; }
 #startMode { grid-area: mode; }
-#libraryHead { grid-area: head; }
 #surpriseCard { grid-area: surp; }
+#startOr { grid-area: or; }
+#libraryHead { grid-area: head; }
 #bank { grid-area: bank; }
 #libraryNone { grid-area: bank; align-self: start; justify-self: center; margin-top: 40px; }
 #startFoot { grid-area: foot; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 30px; }
 #startProblem { grid-area: prob; justify-self: center; }
 #screen-start > .dev-only { grid-area: dev; }
+.start-how { font-size: 16px; max-width: none; text-wrap: balance; }
 
-/* Find a clip by name, and how many players. A visible label on each, per the house rules for fields. */
-.library-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 22px; text-align: left; }
-.library-find { flex: 1 1 260px; max-width: 470px; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 12px; }
-.library-find > span, .library-players-label { font-size: 15px; }
-.library-find input { min-height: 44px; padding: 6px 12px; border: 0; border-radius: 0; background: var(--photo); box-shadow: var(--lift); font: 700 22px var(--hand); color: var(--pen); }
-.library-find input::-webkit-search-cancel-button { cursor: pointer; }
-.library-players { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.library-players-label { margin-right: 4px; }
-.library-players .chip { min-width: 44px; padding: 7px 12px; }
-.library-players .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+/* How you play: one strip of picks, with what they mean underneath. */
+#startMode { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 22px; }
+.start-count { display: flex; align-items: center; gap: 6px; }
+.start-ask { margin-right: 6px; font: 700 24px/1 var(--hand); letter-spacing: -.045em; white-space: nowrap; }
+.start-count .chip { min-width: 44px; padding: 7px 10px; font-size: 18px; }
+.start-count .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+#startMode .mode-says { flex: 1 0 100%; display: grid; justify-items: center; gap: 2px; margin: 0; max-width: none; font-size: 16px; text-wrap: balance; }
+#screen-start .start-duel { rotate: .8deg; }
+
+/* The choice: Surprise me, a handwritten "or", then the library. */
+.start-or { margin: 0; align-self: center; justify-self: center; font: 700 30px/1 var(--hand); letter-spacing: -.04em; color: var(--pen); }
+#libraryHead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; text-align: left; }
+.library-title { margin: 0; font: 700 30px/1 var(--hand); letter-spacing: -.045em; }
+.library-count { font-size: 15px; color: #6B5A48; }
+/* The label sits a clear gap from its field, on the same line (the base .field rule would close it up). */
+#libraryHead .library-find { display: flex; align-items: center; gap: 12px; flex: 1 1 300px; justify-content: flex-end; margin: 0 0 0 auto; }
+#libraryHead .library-find > span { font-size: 15px; white-space: nowrap; }
+#libraryHead .library-find input { width: min(260px, 100%); min-height: 44px; padding: 6px 12px; border: 0; border-radius: 0; background: var(--photo); box-shadow: var(--lift); font: 700 22px var(--hand); color: var(--pen); }
 .library-none { font-size: 16px; }
+/* On the cast screen: a clip with a thing in it plays the thing as a part, or people only. */
+.cast-thing { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.cast-thing .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+
+/* Blind cards: the clip stays hidden, and its performers stand in a spotlight on the card's own colour, one per
+   person and a ball for a thing. Normal shows the poster over them. */
+#bank .clip-pic { background: radial-gradient(ellipse 58% 75% at 50% 100%, rgba(255, 255, 255, .5), transparent 70%), repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px), var(--pic, #2E4593); }
+.clip-cast { position: absolute; left: 10%; right: 10%; bottom: 7%; height: 70%; width: 80%; color: var(--ink); opacity: .85; }
+body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 
 /* The clips: a grid of small taped photos that scrolls up and down, snapping to whole rows so a photo is never
    cut in half at rest. The padding leaves room for the tape, the picked clip's star and the hard shadows. */
@@ -270,7 +289,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 #bank .clip-star { top: -18px; right: -16px; width: 52px; height: 52px; }
 
 /* Surprise me: the first choice, a bigger photo beside the library. */
-#surpriseCard { width: 100%; align-self: start; rotate: -1.2deg; padding: 10px 10px 12px; }
+#surpriseCard { width: 100%; rotate: -1.2deg; padding: 10px 10px 12px; }
 #surpriseCard .clip-name { font-size: 34px; }
 #surpriseCard .clip-hint { font-size: 15px; }
 #surpriseCard .clip-q { font-size: 84px; }
@@ -291,22 +310,23 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 
 @media (min-width: 761px) {
   #screen-start {
-    display: grid; height: 100vh; height: 100dvh; min-height: 620px; padding-top: 18px; padding-bottom: 20px;
-    grid-template-columns: minmax(200px, 236px) minmax(0, 980px); justify-content: center;
+    display: grid; height: 100vh; height: 100dvh; min-height: 620px; padding-top: 16px; padding-bottom: 18px;
+    grid-template-columns: minmax(190px, 236px) 40px minmax(0, 960px); justify-content: center;
     grid-template-rows: auto auto auto minmax(auto, 1fr) auto auto auto;
-    grid-template-areas: "mast mast" "mode mode" "head head" "surp bank" "foot foot" "prob prob" "dev dev";
-    gap: 10px 30px; align-items: start; align-content: center;
+    grid-template-areas: "mast mast mast" "mode mode mode" "surp or head" "surp or bank" "foot foot foot" "prob prob prob" "dev dev dev";
+    gap: 10px 22px; align-items: start; align-content: center;
   }
   /* Once game.ts has cut the library to whole rows, the page closes up around it instead of leaving a gap. */
   #screen-start[data-library="fitted"] { grid-template-rows: auto auto auto auto auto auto auto; }
   #screen-start .masthead { gap: 4px; }
   #screen-start .wordmark { font-size: clamp(56px, min(7.5vw, 9vh), 96px); padding-bottom: 4px; }
-  #screen-start .masthead .note { --lh: 32px; font-size: 26px; padding: 16px 22px 10px 54px; }
-  /* The picked mode's line sits beside the switch, so the two read as one setting. */
-  #screen-start #startMode { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 22px; }
-  #startMode .mode-says { margin: 0; text-align: left; max-width: 30ch; }
+  #screen-start .masthead .note { --lh: 32px; font-size: 26px; padding: 14px 22px 8px 54px; }
+  #screen-start .mode { min-width: 104px; padding: 8px 14px 10px; }
+  #screen-start .mode b { font-size: 26px; }
+  /* Room above the wordmark for the hat on the J. */
+  #screen-start .masthead { padding-top: 14px; }
   #bank { align-self: stretch; }
-  #surpriseCard { margin-top: 8px; }
+  #surpriseCard { align-self: center; }
   /* Room for the Send in a clip card's tape under the library's last row. */
   #startFoot { flex-wrap: nowrap; margin-top: 10px; }
   #startActions { flex-wrap: nowrap; }
@@ -323,23 +343,56 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
   .send-card-text { font-size: 18px; }
 }
 
-/* Its own screen: what happens next, then what you can and can't send beside the form. */
+/* Its own screen: how it works as four steps, then one form card. On laptops the fields fill its left half and
+   what not to send sits on the right, over the privacy line and the ticket, so it is read before sending. Every
+   rule here is under #screen-submit or #sendSteps: the start screen has its own .send-card. */
 #screen-submit { justify-content: flex-start; gap: 18px; }
-.send-when { font-size: 16px; }
-.send-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 34px; width: min(100%, 1040px); align-items: start; text-align: left; }
-.send-rules { display: grid; gap: 26px; }
-.rule-card { position: relative; padding: 24px 22px 18px; background: var(--photo); box-shadow: var(--lift); rotate: -.8deg; }
-.rule-card.cannot { rotate: .7deg; }
-.rule-card .washi { top: -13px; left: 28px; width: 88px; height: 24px; rotate: -3deg; }
-.rule-card h3 { margin: 0 0 10px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
-.rule-card.can li::marker { color: var(--p4); }
-.rule-card.cannot li::marker { color: var(--stamp); }
-.send-form { padding: 22px 24px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .4deg; }
-/* After a send: the thanks note, then "Send another clip" under it, clear of the paper's edge. */
-#submitThanks { display: grid; gap: 18px; justify-items: start; }
+#screen-submit .send-form { width: min(100%, 1040px); padding: 22px 26px 24px; background: var(--photo); box-shadow: var(--lift); rotate: -.3deg; text-align: left; }
+#submitForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 44px; align-items: start; }
+#submitForm .send-fields, #submitForm .send-go { display: grid; gap: 12px; }
+#submitForm .send-dont h3 { margin: 0 0 6px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
+#submitForm .send-dont li::marker { color: var(--stamp); }
+#submitCredit::placeholder { color: #6B5A48; opacity: 1; font-weight: 400; }
+
+/* The four steps, built like How to play's. Each picture is a little scene on the desk made of the game's own
+   parts, the same clip card in all four: picked, named, looked over, let in. A scene is 24em by 12em, where 1em
+   is a 24th of the picture's width, so it scales with the step; parts are placed in percent of the scene. */
+#sendSteps { width: min(100%, 1040px); gap: 22px; margin-top: 8px; }
+#sendSteps .step { padding: 12px 12px 16px; }
+#sendSteps .step b { font-size: 25px; }
+#sendSteps .step-pic { position: relative; aspect-ratio: 2 / 1; overflow: hidden; container-type: inline-size; background: var(--kraft) var(--grain); }
+#sendSteps .send-step-scene { position: absolute; inset: 0; font-size: calc(100cqw / 24); }
+#sendSteps .send-step-card { position: absolute; left: 18%; top: 15%; width: 11em; padding: .45em .45em 1.3em; background: var(--photo); box-shadow: .3em .35em 0 var(--shade); rotate: -3deg; }
+#sendSteps .send-step-photo { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; overflow: hidden; background: #2E4593 repeating-linear-gradient(-35deg, transparent 0 .6em, rgba(255, 255, 255, .07) .6em .75em); }
+#sendSteps .clip-q { font-size: 3.4em; -webkit-text-stroke-width: .07em; filter: url(#sticker); }
+#sendSteps .send-step-star { position: absolute; top: -1.5em; right: -1.5em; width: 4em; height: 4em; rotate: 12deg; }
+#sendSteps .send-step-player { width: auto; height: 92%; color: var(--ticket); }
+/* Pick: one card from a pile, starred like a picked clip in the bank. */
+#sendSteps .send-step-back { left: 8%; top: 22%; rotate: -10deg; }
+#sendSteps .send-step-back + .send-step-card { left: 40%; top: 11%; rotate: 4deg; }
+/* The name: a punched paper tag in the Jester's pen, tucked under the card's corner. */
+#sendSteps .send-step-tag {
+  position: absolute; left: 54%; top: 56%; padding: .15em .7em .25em 1.75em; background: var(--photo); border-radius: .2em;
+  box-shadow: .12em .15em 0 var(--shade); rotate: 8deg; font: 700 2.4em/1 var(--hand); letter-spacing: -.04em; color: var(--pen);
+}
+#sendSteps .send-step-tag::before { content: ""; position: absolute; left: .55em; top: 50%; width: .5em; height: .5em; translate: 0 -50%; border-radius: 50%; background: var(--kraft); box-shadow: inset 0 0 0 .1em #B48C61; }
+/* Checked: the name ringed in pen. */
+#sendSteps .send-step-ringed::after { content: ""; position: absolute; inset: -.3em -.35em -.25em -.3em; border: .09em solid var(--pen); border-radius: 50%; rotate: -5deg; }
+/* Let in: the red stamp across the card, and the jester cheers. */
+#sendSteps li:last-child .send-step-card { left: 7%; top: 13%; }
+#sendSteps .send-step-stamp {
+  position: absolute; left: 50%; bottom: .15em; translate: -50% 0; rotate: -9deg; padding: .12em .35em .05em; white-space: nowrap;
+  border: .12em solid var(--stamp); border-radius: .15em; background: var(--photo); font: 400 2.1em/1 var(--type); color: var(--stamp);
+}
+#sendSteps .send-step-jester { position: absolute; left: 58%; top: 9%; width: 9.6em; height: 9.6em; background: url("/jester/classic-win.webp") calc(9 / 23 * 100%) 0 / 2400% 100% no-repeat; filter: url(#sticker); }
+/* Tablets: two by two, so a step's name never breaks into three lines. */
+@media (min-width: 761px) and (max-width: 900px) { #sendSteps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* After a send the form's paper steps aside: the Jester's note sits on the desk, centred, with "Send another clip"
+   under it. */
+#screen-submit .send-form:has(> #submitThanks:not([hidden])) { width: auto; padding: 6px 0 0; background: none; box-shadow: none; rotate: 0deg; }
+#submitThanks { display: grid; gap: 18px; justify-items: center; }
 .send-privacy { display: block; font-size: 13px; line-height: 1.45; color: #6B5A48; text-align: left; }
 .how { margin: 0; padding-left: 20px; font-size: 16px; line-height: 1.5; }
-#submitForm { display: grid; gap: 12px; }
 .field { display: grid; gap: 4px; font-size: 15px; }
 .field input[type="text"] { min-height: 44px; padding: 6px 10px; border: 0; background: #FFFEFA; box-shadow: inset 0 0 0 2px #C9B497; font: 700 22px var(--hand); color: var(--pen); }
 .field small { font-size: 13px; color: #6B5A48; }
@@ -347,7 +400,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .field input[type="file"]::file-selector-button { min-height: 44px; margin-right: 12px; padding: 8px 16px; border: 0; border-radius: 3px; background: var(--ticket); box-shadow: 3px 4px 0 var(--shade); font: 400 16px var(--type); color: var(--ink); cursor: pointer; }
 .consent { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; font-size: 15px; cursor: pointer; }
 .consent input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--pen); }
-#submitSend { justify-self: start; }
+#submitSend { justify-self: start; margin-top: 4px; }
 .aside { display: flex; flex-wrap: wrap; gap: 6px 22px; justify-content: center; }
 .aside .upload { position: relative; overflow: hidden; display: inline-flex; align-items: center; min-height: 44px; }
 
@@ -648,9 +701,18 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .send-card { flex: 0 0 auto; }
   #screen-start > * { width: 100%; }
   #screen-start .masthead { width: auto; }
-  #surpriseCard .clip-star { right: -8px; }
-  .send-layout { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  #surpriseCard .clip-star { right: 0; }
+  .start-ask { font-size: 20px; margin-right: 2px; }
+  .start-count .chip { min-width: 44px; padding: 6px 8px; }
   #startActions { justify-content: center; }
+  #screen-submit .send-form { padding: 20px 18px 22px; }
+  #submitForm { grid-template-columns: minmax(0, 1fr); }
+  /* Each step is one row: the picture on the left, its words on the right. */
+  #sendSteps { gap: 16px; }
+  #sendSteps .step { grid-template-columns: minmax(0, 46%) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 12px; row-gap: 2px; padding: 8px 10px 10px 8px; }
+  #sendSteps .step-pic { grid-row: 1 / 3; align-self: center; }
+  #sendSteps .step b { font-size: 22px; align-self: end; }
+  #sendSteps .step > span:last-child { font-size: 14px; }
   .side-nav { top: 8px; right: 8px; gap: 8px; }
   .side-nav .btn-quiet { min-height: 40px; padding: 6px 12px 6px 30px; font-size: 14px; }
   .side-nav .btn-quiet::before { left: 11px; }
