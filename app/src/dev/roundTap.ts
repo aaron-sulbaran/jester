@@ -1,65 +1,78 @@
-// Dev server only. app/round-log-dev-server.ts points every app import of engine/src/index.ts here, so
-// solo, rooms, blind, duel, the link reveal and the labs all pass through without a line changed in them.
-// The scorer runs untouched and its result goes back as is. Afterwards, when the page is idle, the two
-// timelines it compared and the result are sent to the dev server, which saves them to eval/data/rounds.
-// Pose data only: no video, no images, no masks.
+// The round log's tap (see app/round-log-plugin.ts). Every app file that imports engine/src/index.ts gets the
+// engine as is, except its two scorers come from `bindTap` here, tagged with that file's name. So solo, rooms,
+// blind, duel and the labs all pass through without a line changed in them. The scorer runs untouched and its
+// result goes back as is. Afterwards, when the page is idle, the two timelines it compared and the result are
+// saved: on a dev server to eval/data/rounds, on the live site (only when built with JESTER_RECORD_ROUNDS=1) to
+// the Supabase table `rounds`. Pose data only: no video, no images, no masks.
 
 import * as engine from "../../../engine/src/index.ts";
 import type { BoxTrack, PoseTimeline } from "../../../engine/src/index.ts";
 import {
-  RECORD_SCHEMA, fingerprint, newRoundId, packBoxes, packPose,
+  RECORD_SCHEMA, fingerprint, newRoundId, packBoxes, packPose, rowOf,
   type Channel, type PackedBoxes, type PackedPose, type RoundRecord,
 } from "../../../eval/src/record.ts";
 import { mountDevPanel, showProblem, showSaved, takeTag } from "./devPanel.ts";
 
-export * from "../../../engine/src/index.ts";
-
 type Result<T> = { data: T; error: null } | { data: null; error: string };
+
+/** What the build put in (the live site only): its commit, build time and engine hash. Null on a dev server. */
+export interface TapBuild { commit: string | null; builtAt: string; engineHash: string | null }
 
 /** Pages may say what is being played (the eval lab does); otherwise the bank guides the page fetched are matched. */
 interface RoundContext { bankId?: string; title?: string; subject?: string }
 declare global { interface Window { __jesterRoundContext?: RoundContext } }
 
-export const scorePoseRound: typeof engine.scorePoseRound = (reference, player, options = {}) => {
-  const result = engine.scorePoseRound(reference, player, options);
-  observe("pose", reference, player, { ...options }, result);
-  return result;
-};
+const DEV = import.meta.env.DEV;
 
-export const scoreTrajectoryRound: typeof engine.scoreTrajectoryRound = (track, player, options = {}) => {
-  const result = engine.scoreTrajectoryRound(track, player, options);
-  observe("trajectory", track, player, { ...options }, result);
-  return result;
-};
+/** The two scorers for one importing file (its name, for example "blind"), as the generated module hands them out. */
+export function bindTap(file: string, build: TapBuild | null) {
+  const scorePoseRound: typeof engine.scorePoseRound = (reference, player, options = {}) => {
+    const result = engine.scorePoseRound(reference, player, options);
+    observe(file, build, "pose", reference, player, { ...options }, result);
+    return result;
+  };
+  const scoreTrajectoryRound: typeof engine.scoreTrajectoryRound = (track, player, options = {}) => {
+    const result = engine.scoreTrajectoryRound(track, player, options);
+    observe(file, build, "trajectory", track, player, { ...options }, result);
+    return result;
+  };
+  return { scorePoseRound, scoreTrajectoryRound };
+}
 
 // ---- Capture: cheap work now, the rest when idle ----
 
-function observe(channel: Channel, reference: PoseTimeline | BoxTrack, player: PoseTimeline, options: Record<string, unknown>, result: RoundRecord["result"]) {
+function observe(file: string, build: TapBuild | null, channel: Channel, reference: PoseTimeline | BoxTrack, player: PoseTimeline, options: Record<string, unknown>, result: RoundRecord["result"]) {
   try {
-    // Chrome keeps 10 stack frames by default; the mode is read from the app files on the stack.
-    const errorClass = Error as { stackTraceLimit?: number };
-    const limit = errorClass.stackTraceLimit;
-    errorClass.stackTraceLimit = 40;
-    const stack = new Error().stack ?? "";
-    errorClass.stackTraceLimit = limit;
+    let stack = "";
+    if (DEV) {
+      // Chrome keeps 10 stack frames by default. A built page's stack names nothing useful, so only a dev server reads it.
+      const errorClass = Error as { stackTraceLimit?: number };
+      const limit = errorClass.stackTraceLimit;
+      errorClass.stackTraceLimit = 40;
+      stack = new Error().stack ?? "";
+      errorClass.stackTraceLimit = limit;
+    }
     const { tag, note } = takeTag();
     const context = { ...(window.__jesterRoundContext ?? {}) };
     const createdAt = new Date().toISOString();
     later(() => {
-      void logRound(buildRecord({ channel, reference, player, options, result, stack, tag, note, context, createdAt }));
+      void logRound(buildRecord({ file, build, channel, reference, player, options, result, stack, tag, note, context, createdAt }));
     });
   } catch (err) {
     console.warn("[round log] skipped a round:", err);
   }
 }
 
+/** When the page is idle: up to 4 s on a dev server, up to 20 s on the live site so it stays out of play and the reveal. */
 function later(fn: () => void) {
   const idle = (window as { requestIdleCallback?: (cb: () => void, o: { timeout: number }) => number }).requestIdleCallback;
-  if (idle) idle(fn, { timeout: 4000 });
-  else setTimeout(fn, 300);
+  if (idle) idle(fn, { timeout: DEV ? 4000 : 20000 });
+  else setTimeout(fn, DEV ? 300 : 3000);
 }
 
 interface Captured {
+  file: string;
+  build: TapBuild | null;
   channel: Channel;
   reference: PoseTimeline | BoxTrack;
   player: PoseTimeline;
@@ -81,7 +94,7 @@ function buildRecord(c: Captured): RoundRecord {
     id: newRoundId(Date.parse(c.createdAt)),
     createdAt: c.createdAt,
     browserId: browserId(),
-    mode: modeOf(callers, location.pathname),
+    mode: modeOf(c.file, callers, location.pathname),
     page: location.pathname,
     callers,
     clip: {
@@ -99,7 +112,8 @@ function buildRecord(c: Captured): RoundRecord {
     result: c.result,
     scorerVersion: c.result.scorerVersion,
     device: deviceFacts(c.player),
-    app: null,
+    // A dev server stamps this when it saves the round; a build knows it already.
+    app: c.build ? { commit: c.build.commit, dirty: null, engineHash: c.build.engineHash } : null,
   };
 }
 
@@ -107,13 +121,19 @@ function buildRecord(c: Captured): RoundRecord {
 
 const pending: RoundRecord[] = [];
 let retryTimer = 0;
+const NO_SETTINGS = "this build has no Supabase settings";
 
-/** Sends one record to the dev server. Never throws; a failed send waits and goes again with the next one. */
+/** Sends one record (dev server or Supabase). Never throws; a failed send waits in memory and goes again later. */
 export async function logRound(record: RoundRecord): Promise<Result<{ id: string }>> {
   pending.push(record);
   let last: Result<{ id: string }> = { data: null, error: "Nothing sent." };
   for (const r of pending.splice(0)) {
     last = await send(r);
+    if (last.error === NO_SETTINGS) {
+      console.info("[round log] not recording: " + NO_SETTINGS);
+      pending.length = 0;
+      return last;
+    }
     if (last.error !== null) {
       pending.unshift(r);
       showProblem(`Not saved yet (${last.error}); trying again in 15 s.`);
@@ -131,12 +151,33 @@ export async function logRound(record: RoundRecord): Promise<Result<{ id: string
 }
 
 async function send(r: RoundRecord): Promise<Result<{ id: string }>> {
+  return DEV ? sendToDevServer(r) : sendToSupabase(r);
+}
+
+async function sendToDevServer(r: RoundRecord): Promise<Result<{ id: string }>> {
   try {
     const response = await fetch("/__jester/rounds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(r) });
     const body = (await response.json()) as Result<{ id: string }>;
     return response.ok ? body : { data: null, error: body.error ?? `dev server answered ${response.status}` };
   } catch {
     return { data: null, error: "the dev server did not answer" };
+  }
+}
+
+/** One row per request; an id already in the table is skipped (the page's key can add rows, never change them). */
+async function sendToSupabase(r: RoundRecord): Promise<Result<{ id: string }>> {
+  const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  if (!url || !key) return { data: null, error: NO_SETTINGS };
+  try {
+    const response = await fetch(`${url.replace(/\/+$/, "")}/rest/v1/rounds?on_conflict=id`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" },
+      body: JSON.stringify(rowOf(r)),
+    });
+    return response.ok ? { data: { id: r.id }, error: null } : { data: null, error: `Supabase answered ${response.status}` };
+  } catch {
+    return { data: null, error: "Supabase did not answer" };
   }
 }
 
@@ -152,16 +193,20 @@ function callersOf(stack: string): string[] {
   return out;
 }
 
-function modeOf(callers: string[], page: string): string {
-  const has = (f: string) => callers.includes(f);
+/**
+ * `file` is the app file that called the scorer (round, blind, onlineDuel). On a dev server the call stack says
+ * more (onlineBlind, the link reveal); a built page has only `file` and the address.
+ */
+function modeOf(file: string, callers: string[], page: string): string {
+  const has = (f: string) => file === f || callers.includes(f);
   if (has("eval-lab") || page.endsWith("/eval-lab.html")) return "eval-lab";
-  if (has("onlineDuel") || has("duel-lab")) return "duel";
+  if (has("onlineDuel") || has("duel-lab") || page.endsWith("/duel-lab.html")) return "duel";
   if (has("onlineBlind")) return "blind-online";
   if (has("linkReveal") || has("link-lab")) return "link";
   if (has("blind")) return "blind";
   if (has("online") || page.endsWith("/room.html")) return "room";
-  if (has("main") || has("ui/game")) return "solo";
   if (/-lab\.html$/.test(page)) return "lab";
+  if (has("main") || has("ui/game") || has("round")) return "solo";
   return "unknown";
 }
 

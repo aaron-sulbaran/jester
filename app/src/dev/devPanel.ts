@@ -17,6 +17,16 @@ export const TAG_HINTS: Record<DevTag, string> = {
 
 let nextTag: DevTag | null = null;
 let nextNote = "";
+
+/** `?tag=nailed` in the address tags every round on this page load (the panel shows it, so it is not forgotten). */
+const stickyTag: DevTag | null = (() => {
+  try {
+    const t = new URLSearchParams(location.search).get("tag");
+    return isDevTag(t) ? t : null;
+  } catch {
+    return null;
+  }
+})();
 let lastLine = "No round saved yet on this page.";
 let saved = 0;
 let render: (() => void) | null = null;
@@ -39,9 +49,9 @@ export function setNextTag(tag: DevTag | null, note = ""): void {
   render?.();
 }
 
-/** The tag and note for the round being scored now. A tag counts for one round, then resets. */
+/** The tag and note for the round being scored now. A picked tag counts for one round, then resets to the address's tag. */
 export function takeTag(): { tag: DevTag | null; note: string | null } {
-  const taken = { tag: nextTag, note: nextNote.trim() || null };
+  const taken = { tag: nextTag ?? stickyTag, note: nextNote.trim() || null };
   nextTag = null;
   nextNote = "";
   render?.();
@@ -61,7 +71,7 @@ export function showProblem(line: string): void {
 
 export function mountDevPanel(): void {
   // The eval lab has its own picker.
-  if (render || !devMode() || !document.body || location.pathname.endsWith("/eval-lab.html")) return;
+  if (render || !(devMode() || stickyTag) || !document.body || location.pathname.endsWith("/eval-lab.html")) return;
   const host = document.createElement("div");
   host.id = "jester-round-log";
   const root = host.attachShadow({ mode: "open" });
@@ -88,6 +98,8 @@ export function mountDevPanel(): void {
       </div>
     </div>`;
   const box = root.querySelector<HTMLDivElement>(".box")!;
+  // On a phone the open panel would cover the game: start folded to its title line.
+  if (innerWidth < 600) box.classList.add("closed");
   const select = root.querySelector<HTMLSelectElement>(".tag")!;
   const note = root.querySelector<HTMLInputElement>(".note")!;
   root.querySelector(".toggle")!.addEventListener("click", () => box.classList.toggle("closed"));
@@ -96,7 +108,11 @@ export function mountDevPanel(): void {
   render = () => {
     select.value = nextTag ?? "";
     if (document.activeElement !== host) note.value = nextNote;
-    root.querySelector(".hint")!.textContent = nextTag ? TAG_HINTS[nextTag] : "Pick one before Start to make this round a test case.";
+    root.querySelector(".hint")!.textContent = nextTag
+      ? TAG_HINTS[nextTag]
+      : stickyTag
+        ? `Every round on this page counts as ${stickyTag} (from the address): ${TAG_HINTS[stickyTag]}.`
+        : "Pick one before Start to make this round a test case.";
     root.querySelector(".last")!.textContent = lastLine;
     root.querySelector(".count")!.textContent = saved ? `(${saved} saved)` : "";
   };

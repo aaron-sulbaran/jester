@@ -162,6 +162,11 @@ export function fingerprint(packed: PackedPose | PackedBoxes): string {
   return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
 }
 
+/** The row for the shared Supabase table `rounds` (supabase/migrations/20261115_eval_rounds.sql). */
+export function rowOf(r: RoundRecord) {
+  return { id: r.id, created_at: r.createdAt, scorer_version: r.scorerVersion, mode: r.mode, tag: r.tag, clip_key: r.clip.key, score: r.result.score, record: r };
+}
+
 /** A new round id: sortable by time, random after that. */
 export function newRoundId(now = Date.now(), random = Math.random): string {
   return "r-" + now.toString(36) + "-" + Math.floor(random() * 36 ** 6).toString(36).padStart(6, "0");

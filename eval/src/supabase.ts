@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROUND_ID, looksLikeRecord, type RoundRecord } from "./record.ts";
+import { ROUND_ID, looksLikeRecord, rowOf, type RoundRecord } from "./record.ts";
 import { REPO_DIR } from "./store.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
@@ -101,13 +101,12 @@ export async function fetchRecords(s: Settings, ids: readonly string[], onRound:
 export async function insertRounds(s: Settings, rounds: readonly RoundRecord[]): Promise<Result<number>> {
   let sent = 0;
   for (const r of rounds) {
-    const row = { id: r.id, created_at: r.createdAt, scorer_version: r.scorerVersion, mode: r.mode, tag: r.tag, clip_key: r.clip.key, score: r.result.score, record: r };
     let response: Response;
     try {
       response = await fetchPatiently(`${s.url}/rest/v1/rounds?on_conflict=id`, {
         method: "POST",
         headers: { ...headers(s), Prefer: "resolution=ignore-duplicates,return=minimal" },
-        body: JSON.stringify(row),
+        body: JSON.stringify(rowOf(r)),
       });
     } catch {
       return { data: null, error: `Supabase did not answer after ${sent} rounds. Check the connection.` };
