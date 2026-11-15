@@ -109,6 +109,10 @@ body:not(.solo) #solo { display: none; }
 /* A word of letters stays on one line; the line breaks only between words. */
 .letters .word { display: inline-flex; color: inherit; rotate: none; translate: none; margin-right: 0; }
 .wordmark { margin: 0; font: 400 clamp(72px, 10vw, 128px)/1 var(--sticker); padding: 6px 14px 16px; }
+/* The crown on the J, tipped like a hat: the doodled crown from the scrapbook mockups, also the favicon. It sits
+   inside the letter stickers, so it shares their white die-cut edge. */
+.wordmark .letters > span:first-child { position: relative; }
+.wordmark-crown { position: absolute; left: var(--crown-x, -.16em); top: var(--crown-y, -.2em); width: var(--crown-w, .66em); height: calc(var(--crown-w, .66em) * .72); overflow: visible; rotate: var(--crown-r, -38deg); }
 
 /* ---------- Buttons ---------- */
 /* The main action: a ticket stub, notched at both ends, with a perforated tear-off. */
