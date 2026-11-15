@@ -25,7 +25,8 @@ export class Room {
     this.listeners = { update: [], start: [] };
     this.skew = 0;              // estimated (my clock - sender clock), updated from each message
     this.joinedAt = this.now();
-    this.players.set(this.me, { id: this.me, name: this.name, joinedAt: this.joinedAt });
+    this.ready = false;
+    this.players.set(this.me, { id: this.me, name: this.name, joinedAt: this.joinedAt, ready: false });
     this.unsubscribe = transport.onMessage((m) => this.#receive(m));
   }
 
@@ -33,7 +34,17 @@ export class Room {
   #emit(event, arg) { for (const fn of this.listeners[event]) fn(arg ?? this); }
   #send(msg) { this.transport.send({ ...msg, room: this.code, from: this.me, sentAt: this.now() }); }
 
-  join() { this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt }); }
+  join() { this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready }); }
+
+  // Tell the room whether I am ready to play (for example: my whole body is in view). Sent only on change.
+  setReady(ready) {
+    if (this.ready === ready) return;
+    this.ready = ready;
+    this.players.get(this.me).ready = ready;
+    this.#send({ type: "ready", ready });
+    this.#emit("update");
+  }
+  get allReady() { return this.roster().every((p) => p.ready); }
   leave() { this.#send({ type: "leave" }); this.unsubscribe?.(); this.transport.close?.(); }
 
   // The host is the player who joined first (ties broken by id), so everyone agrees without a server.
@@ -75,10 +86,11 @@ export class Room {
     switch (m.type) {
       case "join": {
         const isNew = !this.players.has(m.from);
-        this.players.set(m.from, { id: m.from, name: m.name || m.from, joinedAt: m.joinedAt ?? this.now() });
-        if (isNew) this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt }); // so the newcomer sees me
+        this.players.set(m.from, { id: m.from, name: m.name || m.from, joinedAt: m.joinedAt ?? this.now(), ready: !!m.ready });
+        if (isNew) this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready }); // so the newcomer sees me
         break;
       }
+      case "ready": { const p = this.players.get(m.from); if (p) p.ready = !!m.ready; break; }
       case "leave": this.players.delete(m.from); this.results.delete(m.from); break;
       case "start": {
         // translate the host's start time into my clock (skew includes network delay, fine for a party game)
