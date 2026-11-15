@@ -2,6 +2,7 @@
 // a player is scored against. "as-served" is what blind mode does today (steadyRole in app/src/blind.ts); the
 // others are ideas to try. `npm run serve` replays real players' recordings against each one.
 
+import { limbDirection } from "../../engine/src/geometry.ts";
 import { LIMBS, smoothTimeline, type PoseTimeline } from "../../engine/src/index.ts";
 import { setConstant } from "./judge.ts";
 import type { RoundRecord } from "./record.ts";
@@ -146,8 +147,40 @@ export const WHAT_IFS: readonly WhatIf[] = [
   { name: "credit-from-0.5", about: "Accuracy starts earning at 0.5 instead of 0.55 (a gentler score curve).", settings: ["MOTION.accuracyFloor=0.5"] },
   { name: "ceiling-0.95", about: "Accuracy 0.95 maps to 100 instead of 1.0 (the calibration constants.ts expects).", settings: ["MOTION.accuracyFull=0.95"] },
   { name: "late-ok-900", about: "Full timing credit up to 900 ms late instead of 650 (blind players lag 0.5 to 1.2 s).", settings: ["TIMING.freeMs=900"] },
+  { name: "calm-fallback-off", about: "No plain-accuracy fallback on calm parts (where standing still already earns 0.9): today any mover scores there.", settings: ["ROUND.minHeadroom=0"] },
+  { name: "legs-count-hidden", about: "Limbs that move a quarter as much as the busiest limb count as used for the hidden-limb cap (instead of half).", settings: ["POSE.hiddenActiveMin=0.25"] },
+  { name: "looser-and-guarded", about: "angles-20-75 with the calm-part fallback off.", settings: ["POSE.thetaInDeg=20", "POSE.thetaOutDeg=75", "ROUND.minHeadroom=0"] },
 ];
 
 export function whatIfNamed(name: string): WhatIf | null {
   return WHAT_IFS.find((w) => w.name === name) ?? null;
+}
+
+/**
+ * A rough difficulty for a clip, since the bank has no rating: how fast the reference's limbs turn, in degrees
+ * per second, measured over 250 ms steps (as the engine measures motion) and weighted by the engine's limb
+ * weights. A busy clip turns fast; a clip that mostly stands turns slowly. A proxy only.
+ */
+export function turningRate(reference: PoseTimeline): number | null {
+  const frames = reference.frames;
+  const aspect = reference.source.width / reference.source.height;
+  if (frames.length < 2) return null;
+  const stepMs = (frames[frames.length - 1]!.tMs - frames[0]!.tMs) / (frames.length - 1);
+  const span = Math.max(1, Math.round(250 / stepMs));
+  let weighted = 0, weights = 0;
+  for (const limb of Object.values(LIMBS)) {
+    let total = 0, count = 0;
+    for (let i = 0; i + span < frames.length; i++) {
+      const a = frames[i]!.landmarks, b = frames[i + span]!.landmarks;
+      if (!a || !b) continue;
+      const da = limbDirection(a, limb, aspect), db = limbDirection(b, limb, aspect);
+      if (!da || !db || Math.min(da.visibility, db.visibility) < 0.5) continue;
+      total += (Math.acos(Math.max(-1, Math.min(1, da.x * db.x + da.y * db.y))) * 180) / Math.PI;
+      count++;
+    }
+    if (count === 0) continue;
+    weighted += limb.weight * (total / count / ((span * stepMs) / 1000));
+    weights += limb.weight;
+  }
+  return weights > 0 ? weighted / weights : null;
 }

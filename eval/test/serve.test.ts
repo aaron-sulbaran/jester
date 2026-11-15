@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Landmark, PoseTimeline } from "../../engine/src/index.ts";
+import { constants, fromClipSamples, LIMBS, scorePoseRound, type ClipSample, type Landmark, type PoseTimeline } from "../../engine/src/index.ts";
+import { makeSequenceTimeline } from "../../spikes/pose-match/synthetic.mjs";
 import type { RoundRecord } from "../src/record.ts";
-import { asServed, honestRound, LIMB_ENDS, steadier } from "../src/serving.ts";
+import { applySettings, asServed, honestRound, LIMB_ENDS, steadier, turningRate } from "../src/serving.ts";
 
 /** 60 frames of a figure whose every joint shakes a little, the wrist (16) a lot. */
 function shaky(): PoseTimeline {
@@ -47,4 +48,41 @@ test("honestRound: nailed rounds count; untagged ones only from a real camera th
   assert.equal(honestRound(round({ score: null })), null);
   assert.equal(honestRound(round({ bankId: null })), null, "not a bank clip");
   assert.equal(honestRound(round({ channel: "trajectory" })), null, "a hand, head or foot play or a thing");
+});
+
+const dance = (names: string[], idleDegrees = 0): PoseTimeline =>
+  fromClipSamples(makeSequenceTimeline(names, { idleDegrees, aspect: 4 / 3 }) as ClipSample[], { width: 1333, height: 1000, timeUnit: "s" });
+
+test("applySettings: a what-if changes the score, and undo puts the engine back exactly", () => {
+  const reference = dance(["rest", "armsUp", "tPose", "leftArmUp", "squat", "rest"]);
+  const player = dance(["rest", "tPose", "armsUp", "tPose", "squat", "rest"], 4);
+  const before = scorePoseRound(reference, player).score;
+  const applied = applySettings(["POSE.thetaInDeg=40", "LIMB.hands=0", "LIMB.rightForearm=1"]);
+  assert.equal(applied.error, null);
+  assert.equal(constants.POSE.thetaInDeg, 40);
+  assert.equal(LIMBS.leftHand!.weight, 0);
+  assert.equal(LIMBS.rightHand!.weight, 0);
+  assert.equal(LIMBS.rightForearm!.weight, 1);
+  const during = scorePoseRound(reference, player).score;
+  assert.notEqual(during, before, "looser angles move the score");
+  applied.data!();
+  assert.equal(constants.POSE.thetaInDeg, 15);
+  assert.equal(LIMBS.leftHand!.weight, 0.5);
+  assert.equal(LIMBS.rightForearm!.weight, 1.5);
+  assert.equal(scorePoseRound(reference, player).score, before);
+});
+
+test("applySettings: a bad setting is refused and changes nothing, even after a good one", () => {
+  for (const bad of [["POSE.thetaInDeg=20", "POSE.nope=1"], ["POSE.thetaInDeg=20", "LIMB.tail=1"], ["POSE.thetaInDeg"], ["LIMB.hands=wide"]]) {
+    const applied = applySettings(bad);
+    assert.ok(applied.error, `refused: ${bad.join(", ")}`);
+    assert.equal(constants.POSE.thetaInDeg, 15);
+    assert.equal(LIMBS.leftHand!.weight, 0.5);
+  }
+});
+
+test("turningRate: a busy dance turns faster than one that mostly stands", () => {
+  const busy = turningRate(dance(["rest", "armsUp", "tPose", "squat", "armsUp", "rest"]))!;
+  const calm = turningRate(dance(["rest", "rest", "rest", "rest", "armsUp", "rest"]))!;
+  assert.ok(busy > calm * 1.5, `${busy} vs ${calm}`);
 });
