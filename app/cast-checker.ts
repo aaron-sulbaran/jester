@@ -32,7 +32,7 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { LLMResult } from "@langchain/core/outputs";
 import { readFileSync } from "node:fs";
-import { allowedDrops, DEFAULT_MODEL, stopInheritedTracing, tracingRefusal, type ClipFacts } from "./review-agent.ts";
+import { allowedDrops, ANTHROPIC_API_URL, DEFAULT_MODEL, stopInheritedTracing, tracingRefusal, type ClipFacts } from "./review-agent.ts";
 import { castSummary, castText, type CastLine } from "./src/castSummary.ts";
 import type { ChangeFlag, ClipFrames, CastGuide } from "./castFrames.ts";
 
@@ -375,8 +375,8 @@ export class CastUsageMeter extends BaseCallbackHandler {
   }
 }
 
-/** Where every model call goes: Anthropic's own API, never a base URL or gateway from the environment. */
-export const ANTHROPIC_API_URL = "https://api.anthropic.com";
+/** Where every model call goes: Anthropic's own API (one constant, kept in review-agent.ts). */
+export { ANTHROPIC_API_URL };
 
 export interface CastSettings {
   apiKey: string;

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkerAnswers, finalize, PLAYABILITY, playabilityOf, reviewMode, reviewSubmission, stepsOf, systemPrompt, tracingRefusal, verdictIn, type ClipFacts } from "../review-agent.ts";
+import { ANTHROPIC_API_URL as CAST_API_URL } from "../cast-checker.ts";
+import { ANTHROPIC_API_URL, chamberlainModel, checkerAnswers, finalize, PLAYABILITY, playabilityOf, reviewMode, reviewSubmission, stepsOf, systemPrompt, tracingRefusal, verdictIn, type ClipFacts } from "../review-agent.ts";
 import { askedBecauseOf, parsePrecedents, precedentFrom, precedentsBlock, PRECEDENTS_READ, type Flagged, type Precedent } from "../review-precedents.ts";
 
 const person = (seenShare: number) => ({ label: "Person 1", kind: "person" as const, seenShare, pace: "medium" });
@@ -272,4 +273,22 @@ test("stepsOf: the fast flow's steps, and a run that recorded nothing", () => {
     "Recorded no decision",
     "The code's rules made it: ask a person",
   ]);
+});
+
+test("the Chamberlain's model is pinned to Anthropic's API, whatever the environment says", async () => {
+  const before = { gw: process.env.LANGSMITH_GATEWAY, base: process.env.ANTHROPIC_BASE_URL, url: process.env.ANTHROPIC_API_URL };
+  process.env.LANGSMITH_GATEWAY = "true";
+  process.env.ANTHROPIC_BASE_URL = "https://example.invalid";
+  process.env.ANTHROPIC_API_URL = "https://example.invalid";
+  try {
+    const m = await chamberlainModel("unused", "claude-sonnet-5-5");
+    assert.equal(ANTHROPIC_API_URL, "https://api.anthropic.com");
+    assert.equal((m as unknown as { apiUrl?: string }).apiUrl, ANTHROPIC_API_URL);
+    // One constant: the cast checker uses the same one.
+    assert.equal(CAST_API_URL, ANTHROPIC_API_URL);
+  } finally {
+    for (const [k, v] of [["LANGSMITH_GATEWAY", before.gw], ["ANTHROPIC_BASE_URL", before.base], ["ANTHROPIC_API_URL", before.url]] as const) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
 });
