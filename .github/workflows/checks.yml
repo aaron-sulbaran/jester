@@ -41,7 +41,7 @@ jobs:
       - run: node --test spikes/pose-match/
 
   app:
-    name: "app: typecheck and build"
+    name: "app: tests and build"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -54,4 +54,5 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm test
       - run: npm run build
