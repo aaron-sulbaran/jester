@@ -27,6 +27,7 @@ import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { whereToStand, LATE_HINT, type WhereToStand } from "./fitFrame.ts";
+import { seatEffort, seatWobble } from "./simSeats.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
@@ -51,6 +52,8 @@ export interface Scene {
 interface Seat {
   name: string;
   color: string;
+  /** Turn order from 0; a simulated player plays a little worse each seat on (simSeats.ts). */
+  seat?: number;
   /** The role as played (slowed to the game's speed). */
   guide: Guide;
   /** The same role at the clip's own speed: turns are scored against this. */
@@ -795,7 +798,7 @@ export function deal(names: string[], guides: Guide[], colors: readonly string[]
     const guide = pool.pop()!;
     // People are a jester puppet (a moving outline is too hard to read); things are their outline.
     const look: Look = isThing(guide) ? "outline" : GUIDE.puppet ? "puppet" : "stick";
-    return { name, color: colors[i % colors.length]!, guide, original: guide, look, part: "body", cutouts: [], face: null, result: null, recording: null };
+    return { name, color: colors[i % colors.length]!, seat: i, guide, original: guide, look, part: "body", cutouts: [], face: null, result: null, recording: null };
   });
 }
 
@@ -814,13 +817,15 @@ const followsBox = (s: Seat) => isThing(s.guide) || s.part !== "body";
 
 /** A simulated player for a role, so the whole mode can be tried without a camera. */
 function simulatedFor(s: Seat, scene: Scene, deps: BlindDeps): Player {
+  // Each seat plays a little worse than the one before, so a simulated game has a winner and losers, not a tie at 100.
+  const seat = s.seat ?? 0;
   if (followsBox(s)) {
     const like = { boxAt: (ms: number) => boxAt(s.guide, ms), durationMs: scene.durationMs } as unknown as ObjectClip;
-    return simulatedObjectPlayer(like, () => 1 - deps.noise() / 50, s.part);
+    return simulatedObjectPlayer(like, () => Math.max(0, 1 - deps.noise() / 50) * seatEffort(seat), s.part);
   }
   const frames = s.guide.timeline?.frames ?? [];
   const samples = frames.map((f) => ({ t: f.tMs / 1000, landmarks: f.landmarks ? f.landmarks.map(([x, y, v]) => ({ x, y, z: 0, visibility: v })) : null }));
-  return simulatedPlayer({ samples, width: scene.width, height: scene.height }, deps.noise);
+  return simulatedPlayer({ samples, width: scene.width, height: scene.height }, () => deps.noise() + seatWobble(seat));
 }
 
 /** How a role is drawn for its player: a person centred and sized to fill the view, a thing in its place so its travel shows. */
@@ -1333,7 +1338,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
   ctx.globalAlpha = Math.min(1, ms / 400);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4, W * 0.9);
-  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
+  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(players === 1 ? "One brave player." : `${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
   ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66, W * 0.9);
   ctx.globalAlpha = 1;
 }

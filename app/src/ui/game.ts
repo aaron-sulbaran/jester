@@ -13,7 +13,7 @@ import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } fro
 import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
-import { awardsFor, motionOf, rankFor } from "../feelText.ts";
+import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -93,11 +93,20 @@ type Mode = "blind" | "normal";
 /** What the Play ticket will start. A surprise is a random bank clip nobody sees first. */
 type Pick = { kind: "bank"; clip: BankClip } | { kind: "starter"; starter: StarterClip } | { kind: "surprise" };
 
-/** "1 person and 1 thing, 20 s" */
-function castLine(people: number, things: number, durationMs: number) {
-  const parts = [people ? `${people} ${people === 1 ? "person" : "people"}` : "", things ? `${things} ${things === 1 ? "thing" : "things"}` : ""].filter(Boolean);
-  return `${parts.join(" and ")}, ${Math.round(durationMs / 1000)} s`;
+/** How many players a clip is made for: one per part, and every person and every thing is a part. */
+const playersFor = (clip: BankClip) => clip.people + clip.things;
+
+/** "3 players, 15 s" */
+function castLine(clip: BankClip) {
+  const players = playersFor(clip);
+  return `${players} ${players === 1 ? "player" : "players"}, ${Math.round(clip.durationMs / 1000)} s`;
 }
+
+/** The bank fills in "Anonymous" (once "Sent in with Submit your own") when nobody gave a name; only a real name is worth showing. */
+const creditLine = (credit: string) => (credit && !/^(sent in|anonymous$)/i.test(credit.trim()) ? `by ${credit}` : "");
+
+/** Lower case, accents and punctuation gone, so "BESTie" and "bestie" and "love-options" all match. */
+const searchable = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 // The built-in clips work offline. They show only when the bank is empty.
 // Titles hint at the clip without saying who is what: in blind mode nobody sees the clip until the reveal.
@@ -141,7 +150,9 @@ function letters(el: HTMLElement, text: string, color?: string) {
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
-const MIN_PLAYERS = 2;
+/** One player may play alone; a new cast still starts with two, since it is a party game. */
+const MIN_PLAYERS = 1;
+const START_PLAYERS = 2;
 const MAX_PLAYERS = 4;
 
 export function initGame(deps: GameDeps) {
@@ -182,13 +193,25 @@ export function initGame(deps: GameDeps) {
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
+  // The library's two filters: a name to look for, and how many players (0 is any number).
+  let query = "";
+  let players = 0;
+  /** The bank clips the library shows right now. */
+  // The last chip is 4 or more: a game takes four players at most, and a bigger clip leaves some parts out.
+  const fits = (c: BankClip) => !players || (players === 4 ? playersFor(c) >= 4 : playersFor(c) === players);
+  const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query)));
+  /** Surprise me draws from every clip for this many players; the name search is for finding one clip. */
+  const surprises = () => bank.filter(fits);
+  /** "for 2 players", "for 4 or more players", or nothing when any number will do. */
+  const forPlayers = () => (!players ? "" : ` for ${players === 4 ? "4 or more" : players} ${players === 1 ? "player" : "players"}`);
+
   /** One taped photo per clip. In blind mode the picture stays under a question mark. */
   function card(p: Pick, i: number): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "clip" + (p.kind === "surprise" ? " surprise" : "");
+    b.className = "clip";
     b.dataset.key = keyOf(p);
-    const tape = ["pink", "mint", "dots"][i % 3];
+    const tape = ["mint", "dots", "pink"][i % 3];
     b.innerHTML = `<span class="washi w-${tape}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><span class="clip-credit"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
     if (p.kind === "bank" && p.clip.poster) {
       // The poster url comes from the bank, so set it as an attribute rather than writing it into markup.
@@ -197,9 +220,8 @@ export function initGame(deps: GameDeps) {
       img.alt = "";
       b.querySelector(".clip-pic")!.prepend(img);
     }
-    const [name, hint, credit] = p.kind === "surprise" ? ["Surprise me", "A clip from the bank. Nobody sees it until the end.", ""]
-      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? (/^sent in/i.test(p.clip.credit) ? p.clip.credit : `by ${p.clip.credit}`) : ""]
-      : [p.starter.title, p.starter.hint, ""];
+    const [name, hint, credit] = p.kind === "bank" ? [p.clip.title, castLine(p.clip), creditLine(p.clip.credit)]
+      : p.kind === "starter" ? [p.starter.title, p.starter.hint, ""] : ["", "", ""];
     b.querySelector(".clip-name")!.textContent = name;
     b.querySelector(".clip-hint")!.textContent = hint;
     b.querySelector(".clip-credit")!.textContent = credit;
@@ -207,25 +229,81 @@ export function initGame(deps: GameDeps) {
     return b;
   }
 
+  const surpriseCard = $<HTMLButtonElement>("surpriseCard");
+  surpriseCard.addEventListener("click", () => choose({ kind: "surprise" }));
+
   function renderBank() {
-    const picks: Pick[] = bank.length
-      ? [...(mode === "blind" && bank.length > 1 ? [{ kind: "surprise" } as Pick] : []), ...bank.map((clip): Pick => ({ kind: "bank", clip }))]
-      : STARTERS.map((starter): Pick => ({ kind: "starter", starter }));
+    const list = shown();
+    const picks: Pick[] = bank.length ? list.map((clip): Pick => ({ kind: "bank", clip })) : STARTERS.map((starter): Pick => ({ kind: "starter", starter }));
     bankBox.replaceChildren(...picks.map(card));
+    // Surprise me needs the bank: the starters are only two, and nobody needs a surprise between two.
+    surpriseCard.hidden = bank.length === 0;
+    surpriseCard.disabled = surprises().length === 0;
+    $("surpriseHint").textContent = mode === "blind" ? `Any clip${forPlayers()}. Nobody sees it until the end.` : `Any clip${forPlayers() || " in the library"}.`;
+    $("libraryHead").hidden = bank.length === 0;
+    const none = $("libraryNone");
+    none.hidden = !bank.length || list.length > 0;
+    const wanted = $<HTMLInputElement>("clipSearch").value.trim();
+    none.textContent = `No clip${wanted ? ` called "${wanted}"` : ""}${forPlayers()} yet.`;
     // A note for the team only: visitors just see the starter clips.
     const note = $("bankNote");
     note.hidden = bank.length > 0 || !document.body.classList.contains("dev");
     note.textContent = "The bank is empty. Add clips with the bank tool. Until then, here are the starter clips.";
-    // Keep the pick if it is still on screen, else the first card.
-    const keep = pick && picks.find((p) => keyOf(p) === keyOf(pick!));
-    choose(keep ?? picks[0] ?? null);
+    // Keep the pick if it is still on screen, else Surprise me, else the first card.
+    const onScreen = (p: Pick) => (p.kind === "surprise" ? !surpriseCard.hidden && !surpriseCard.disabled : picks.some((q) => keyOf(q) === keyOf(p)));
+    const first: Pick | null = !surpriseCard.hidden && !surpriseCard.disabled ? { kind: "surprise" } : picks[0] ?? null;
+    choose(pick && onScreen(pick) ? pick : first);
+    fitRows();
   }
+
+  // On a laptop the library is as tall as the room left on screen, cut down to whole rows: a photo cut in half at
+  // its bottom edge reads as broken. It then scrolls a row at a time. A phone has one sideways row instead.
+  const laptop = matchMedia("(min-width: 761px)");
+  function fitRows() {
+    const start = $("screen-start");
+    bankBox.style.maxHeight = "";
+    delete start.dataset.library;
+    const first = bankBox.querySelector<HTMLElement>(".clip");
+    if (!laptop.matches || !first || start.hidden) return;
+    // Measured while the library still fills the room the page leaves it.
+    const look = getComputedStyle(bankBox);
+    const gap = parseFloat(look.rowGap) || 0;
+    const pad = (parseFloat(look.paddingTop) || 0) + (parseFloat(look.paddingBottom) || 0);
+    const row = first.offsetHeight + gap;
+    const rows = Math.max(1, Math.floor((bankBox.clientHeight - pad + gap) / row));
+    bankBox.style.maxHeight = `${rows * row - gap + pad}px`;
+    start.dataset.library = "fitted";
+  }
+  addEventListener("resize", fitRows);
+  new MutationObserver(fitRows).observe($("screen-start"), { attributes: true, attributeFilter: ["hidden"] });
+  void document.fonts.ready.then(fitRows);
 
   function choose(p: Pick | null) {
     pick = p;
-    for (const b of bankBox.querySelectorAll<HTMLButtonElement>(".clip")) b.setAttribute("aria-pressed", String(!!p && b.dataset.key === keyOf(p)));
+    for (const b of $("screen-start").querySelectorAll<HTMLButtonElement>(".clip")) b.setAttribute("aria-pressed", String(!!p && b.dataset.key === keyOf(p)));
     $("playLabel").textContent = !p ? "Play" : p.kind === "surprise" ? "Play a surprise clip" : `Play ${p.kind === "bank" ? p.clip.title : p.starter.title}`;
     $<HTMLButtonElement>("play").disabled = !p;
+  }
+
+  function clearFilters() {
+    query = "";
+    players = 0;
+    $<HTMLInputElement>("clipSearch").value = "";
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(o.dataset.players === "0"));
+    renderBank();
+  }
+
+  // The library's filters redraw it as you type or tap; a pick that drops out of view falls back to Surprise me.
+  $<HTMLInputElement>("clipSearch").addEventListener("input", (e) => {
+    query = searchable((e.target as HTMLInputElement).value);
+    renderBank();
+  });
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-players]")) {
+    b.addEventListener("click", () => {
+      players = Number(b.dataset.players);
+      for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(o === b));
+      renderBank();
+    });
   }
 
   // The two modes are one switch; the picked mode's line shows once, under it.
@@ -275,6 +353,8 @@ export function initGame(deps: GameDeps) {
     $("clipReady").hidden = true;
     if (!clip) return;
     if (document.body.dataset.screen !== "start") show("start");
+    // The library's filters are cleared, so the new clip is on screen when it is picked.
+    clearFilters();
     choose({ kind: "bank", clip });
   });
   $("clipReadyLater").addEventListener("click", () => {
@@ -286,7 +366,9 @@ export function initGame(deps: GameDeps) {
     if (!pick) return;
     $("startProblem").hidden = true;
     if (pick.kind === "starter") { scene = pick.starter.make(); openCast(); return; }
-    const clip = pick.kind === "bank" ? pick.clip : bank[Math.floor(Math.random() * bank.length)];
+    // A surprise comes from the clips for this many players.
+    const from = surprises().length ? surprises() : bank;
+    const clip = pick.kind === "bank" ? pick.clip : from[Math.floor(Math.random() * from.length)];
     if (!clip) return;
     const r = await bankScene(clip, deps.clipVideo);
     if (r.error !== null) return startProblem(r.error);
@@ -374,7 +456,7 @@ export function initGame(deps: GameDeps) {
     $("startProblem").hidden = true;
     // Start with one player per part; more players share parts, fewer leave some out.
     const parts = scene.guides.length;
-    const want = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, parts));
+    const want = Math.min(MAX_PLAYERS, Math.max(START_PLAYERS, parts));
     names = Array.from({ length: want }, (_, i) => names[i] ?? "");
     renderCast();
     show("cast");
@@ -406,7 +488,7 @@ export function initGame(deps: GameDeps) {
     const parts = scene?.guides.length ?? names.length;
     const extra = names.length - parts;
     $("castParts").textContent = (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
-      + (extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : "")
+      + (names.length === 1 && parts > 1 ? " You play one of them." : extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : "")
       + " Tap your dot to change your jester's colour.";
     settleColors();
     const box = $("castNames");
@@ -463,6 +545,7 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    soloGame = cast.length === 1;
     game = new AbortController();
     const signal = game.signal;
     restartsLeft.clear();
@@ -510,6 +593,7 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    soloGame = false; // a room waits for the others on the drum roll, even with one player in it
     game = new AbortController();
     restartsLeft.clear();
     restartsLeft.set(room.name, RESTARTS_PER_PLAYER);
@@ -571,6 +655,8 @@ export function initGame(deps: GameDeps) {
   /** The game under way: leaving aborts it, so its pending screens stop waiting and a new game never collides. */
   let game: AbortController | null = null;
   let running = false;
+  /** One player on their own: no passing the laptop, and the drum roll says so. */
+  let soloGame = false;
   const sig = () => game?.signal;
   const live = () => { if (game?.signal.aborted) throw left(); };
   /** The current turn's restart, kept so leaving mid-turn can end the turn at once. */
@@ -641,6 +727,7 @@ export function initGame(deps: GameDeps) {
       camera.newTurn();
       activeRestart = null;
       hideRestart();
+      if (soloGame) return; // one player: nobody to pass the laptop to
       show("handover");
       const screen = $("screen-handover");
       screen.style.setProperty("--who", player.color);
@@ -737,6 +824,8 @@ export function initGame(deps: GameDeps) {
       live();
       activeRestart = null;
       hideRestart();
+      $("drumrollTitle").textContent = soloGame ? "That's the show!" : "That's everyone!";
+      $("drumrollNote").textContent = soloGame ? "Here comes what you actually did." : "Gather round. Here comes what you all actually did.";
       show("drumroll");
       say("beat");
       const roll = sfx.drumRoll();
@@ -834,8 +923,8 @@ export function initGame(deps: GameDeps) {
       return { row, j, slot };
     });
     castRow.replaceChildren(...jesters.map((x) => x.slot));
-    const winners = rows.filter((r) => r.winner);
-    const headline = winners.length === 0 ? "Everyone played!" : winners.length === 1 ? `${winners[0]!.name} wins!` : `${winners.map((w) => w.name).join(" and ")} tie!`;
+    const winners = winnersOf(rows);
+    const headline = headlineFor(rows);
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
@@ -876,7 +965,7 @@ export function initGame(deps: GameDeps) {
       if (mine === runs) {
         roll();
         sfx.crown();
-        say(winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: winners.map((w) => w.name).join(" and ") });
+        say(rows.length === 1 ? "solo" : winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: rows.length === 1 ? rows[0]!.name : winners.map((w) => w.name).join(" and ") });
       }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
@@ -952,11 +1041,8 @@ export function initGame(deps: GameDeps) {
 
   function showResults() {
     stopPodium();
-    const winners = rows.filter((r) => r.winner);
-    const headline = winners.length === 0 ? "Everyone played!"
-      : winners.length === 1 ? `${winners[0]!.name} wins!`
-      : `${winners.map((w) => w.name).join(" and ")} tie!`;
-    letters($("resultsHeadline"), headline);
+    const winners = winnersOf(rows);
+    letters($("resultsHeadline"), headlineFor(rows));
     const list = $("podium");
     list.innerHTML = "";
     // Everyone leaves with something: the crown, or an award from how they played.
@@ -969,7 +1055,7 @@ export function initGame(deps: GameDeps) {
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
       li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
-      li.querySelector(".place-rank")!.textContent = ordinal(place);
+      li.querySelector(".place-rank")!.textContent = rows.length === 1 ? "" : ordinal(place); // no "1st" of one
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
       j.canvas.setAttribute("aria-label", `${r.name} as a jester`);
@@ -980,6 +1066,8 @@ export function initGame(deps: GameDeps) {
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
       li.querySelector(".place-award")!.textContent = awards[i]!;
       const score = li.querySelector<HTMLElement>(".place-score")!;
+      // The final score is on the element from the start, so anything reading it mid count-up gets the real one.
+      score.dataset.score = r.score == null ? "" : String(r.score);
       if (r.score == null) score.textContent = "no score";
       else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
