@@ -86,6 +86,9 @@ export class FaceJester {
 
   stop() { cancelAnimationFrame(this.raf); this.raf = 0; }
 
+  /** Puts a new face on this jester (or the grey stand-in for null); the next frame shows it. */
+  setFace(face: HTMLCanvasElement | null) { this.face = face; }
+
   private tick = () => {
     this.raf = requestAnimationFrame(this.tick);
     void this.draw();

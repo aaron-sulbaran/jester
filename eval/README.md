@@ -55,12 +55,38 @@ First run (24 honest attempts, Nov 15):
 - Smoothing them less changes almost nothing.
 - So the clip's smoothing is not what costs players their hands.
 
+### Engine what-ifs
+
+`npm run serve -- --what-ifs` keeps the guide as served and tries engine settings instead, for this run only. Nothing in `engine/` changes.
+
+- **Settings:** `GROUP.name=value` is a number in `engine/src/constants.ts`. `LIMB.<limb>=value` is a limb's weight in `engine/src/geometry.ts`; `hands`, `forearms` and `feet` name both sides. Presets live in `WHAT_IFS` in `src/serving.ts`.
+- **Your own:** `--what-if angles-20` runs a preset, and `--what-if POSE.thetaInDeg=25,LIMB.hands=0.25` spells one out. Both are compared with today.
+- **What it replays:** every honest round, on the reference it was recorded against. Rounds played before a clip's moves were read again still count.
+- **Guards:**
+  - A frozen copy must stay at 10 or less.
+  - A copy with the legs out of view must stay at 50 or less, on clips that swing the legs.
+  - "Wrong dance" scores each honest recording against 4 other clips' people. The gap between the honest median and the wrong-dance median should not shrink.
+- **Difficulty:** the bank has no rating, so the report shows a proxy: how fast the clip's limbs turn, in degrees per second.
+- **Why:** a table splits each honest round today into lag, timing, accuracy, what standing still would earn, the moving gate, hidden limbs and the worst limb.
+
+First run (26 honest attempts on 6 clips, Nov 15):
+- **Hands and forearms:** `angles-20-75` (full credit within 20 degrees, none only past 75) is the setting that helps them.
+  - Honest median goes from 81 to 85, and the weak rounds lift most (55 to 73).
+  - Hand credit goes from 0.77 to 0.83. Frozen copies stay at 0.
+  - But copies with the legs hidden also gain: 15 of 22 score over 50, up from 13.
+- **Two leaks today, before any change:**
+  - A copy with the legs hidden scores 57 to 77 on 13 of 22 rounds. The hidden-limb cap only counts limbs the clip moves at least half as much as its busiest, and dances move the arms most. No constant fixes this; it needs a rule change.
+  - On a calm part, where standing still already earns 0.9, anyone who moves scores near 88, whatever the moves. `calm-fallback-off` cuts the worst wrong dance from 89 to 79, but the calm clip's honest rounds drop from 78 to 68.
+- **Ceiling:** `ceiling-0.95` adds about 10 to everything, seated copies included. That is calibration, not fairness.
+- **Difficulty:** no setting changes the order of the clips. The busiest clip (the dougie) scores highest because it has 14 practiced rounds. More players, tagged rounds and a rating per clip would show whether scores follow difficulty.
+
 ## Commands (in `eval/`)
 
 ```
 npm install
 npm run eval                          # re-score frozen cases and local rounds, write report.md
 npm run serve                         # replay honest attempts against ways of serving the bank guides, write serve-report.md
+npm run serve -- --what-ifs           # replay them against engine settings instead (guards included), same report file
 npm run freeze -- --tagged            # copy every tagged local round into cases/ (committed)
 npm run freeze -- r-abc123-xyz789     # or name rounds
 npm run eval -- --save                # save the headline numbers to baseline.json
