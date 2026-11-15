@@ -798,7 +798,7 @@ function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
   if (video) {
     fitCanvas(canvas, scene.width / scene.height);
     const view = blindView(s.guide, canvas, "exact");
-    const style: BlindStyle = { background: "transparent", color: s.color, ...(GUIDE.puppet ? { puppet: GUIDE.puppet } : {}) };
+    const style: BlindStyle = { background: "transparent", color: s.color };
     return { view, stageView: view, style, video };
   }
   // A person fills whatever space the screen gives the role (half the stage while playing); a thing keeps
@@ -1389,7 +1389,13 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   const scene = slowScene({ ...clip, guides: clip.guides.map(fullFigure) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
-  for (const s of seats) { s.original = clip.guides[scene.guides.indexOf(s.guide)]!; s.withClip = !!options.showClip; }
+  for (const s of seats) {
+    s.original = clip.guides[scene.guides.indexOf(s.guide)]!;
+    s.withClip = !!options.showClip;
+    // The 3D jester is Blind mode's guide. In Normal mode the real clip plays and the person is marked on it,
+    // so a jester standing over the real dancer would hide them: those seats keep the plain figure.
+    if (s.withClip && scene.video && s.look === "puppet") s.look = "stick";
+  }
   (window as any).__jesterBlind = { seats, scene, speed };
   for (let i = 0; i < seats.length; i++) {
     const s = seats[i]!;
