@@ -3,6 +3,7 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
+import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
 import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
 // STAND-IN until aaron/video-bank lands: then import listBank, bankScene from "../bank.ts" and submitClip from "../submit.ts".
 import { bankScene, listBank, submitClip, type BankClip } from "./bankStandIn.ts";
@@ -220,6 +221,8 @@ export function initGame(deps: GameDeps) {
     }
   });
 
+  installLinkGrab((s) => { scene = s; openCast(); }, startProblem); // LINK REVEAL (remove with linkReveal.ts)
+
   function startProblem(text: string) {
     $("startProblem").textContent = text;
     $("startProblem").hidden = false;
@@ -411,6 +414,7 @@ export function initGame(deps: GameDeps) {
 
     results(r) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+      linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
     },
 
