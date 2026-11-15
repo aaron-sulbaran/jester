@@ -38,7 +38,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import { readBankIndex } from "./src/bankIndex.ts";
-import { DEFAULT_MODEL, NOTICE_NAMES_LANGSMITH, reviewMode, reviewSubmission, type ReviewInput } from "./review-agent.ts";
+import { DEFAULT_MODEL, NOTICE_NAMES_LANGSMITH, reviewMode, reviewSubmission, tracingRefusal, type ReviewInput } from "./review-agent.ts";
 import { parsePrecedents, precedentFrom, PRECEDENTS_KEPT, type Precedent } from "./review-precedents.ts";
 
 const PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov)$/;
@@ -313,6 +313,9 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
               // Exactly what the Chamberlain reads, precedents included, so a saved case replays as it was judged.
               // A desk review is always a real submission, whatever the request says.
               const judged: ReviewInput = { ...input, synthetic: false, precedents: readPrecedents() };
+              // The refusal comes before anything LangSmith-related is built (reviewSubmission checks again).
+              const refusal = tracingRefusal(judged, { env: process.env, tracer: s.trace !== null, noticeNamesLangSmith: s.noticeNamesLangSmith });
+              if (refusal) return fail(502, `The Chamberlain could not run: ${refusal}`);
               const callbacks = s.trace ? [await tracerFor(s.trace)] : undefined;
               return ok(await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, mode: s.mode, noticeNamesLangSmith: s.noticeNamesLangSmith, ...(callbacks ? { callbacks } : {}) }));
             } catch (err) {
