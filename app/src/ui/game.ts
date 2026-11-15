@@ -14,6 +14,7 @@ import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
+import { DUEL_WINNER_AWARD, duelHeadline, podiumOrder } from "../duelPlay.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -619,7 +620,7 @@ export function initGame(deps: GameDeps) {
       live();
       const standings = keepFinished(finished, room.standings() as Standing[]);
       const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
-        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
+        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? null,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
         // My own pictures are already here at full size; the others' arrive packed.
         cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
@@ -764,6 +765,9 @@ export function initGame(deps: GameDeps) {
       }
       const chips = $("partChips");
       chips.innerHTML = "";
+      // A duel is copied with the whole body only: no part to pick, so a hand is never ranked against a whole body.
+      chips.hidden = !!role.duel;
+      turn.querySelector<HTMLElement>(".part-ask")!.hidden = !!role.duel;
       let chosen: BodyPart = role.parts[0]?.key ?? "body";
       role.parts.forEach((p, i) => {
         const b = document.createElement("button");
@@ -929,7 +933,7 @@ export function initGame(deps: GameDeps) {
     });
     castRow.replaceChildren(...jesters.map((x) => x.slot));
     const winners = winnersOf(rows);
-    const headline = headlineFor(rows);
+    const headline = rows.some((r) => r.duel) ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows);
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
@@ -1046,15 +1050,19 @@ export function initGame(deps: GameDeps) {
 
   function showResults() {
     stopPodium();
-    const winners = winnersOf(rows);
-    letters($("resultsHeadline"), headlineFor(rows));
+    // A duel lists players by their place (timing breaks a tie on score), so the crowned player is first.
+    const duel = rows.some((r) => r.duel);
+    const podium = podiumOrder(rows);
+    const listed = podium.map((p) => p.row);
+    const winners = winnersOf(listed);
+    letters($("resultsHeadline"), duel ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows));
     const list = $("podium");
     list.innerHTML = "";
     // Everyone leaves with something: the crown, or an award from how they played.
-    const awards = awardsFor(rows.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })));
-    rows.forEach((r, i) => {
-      // Tied scores share a place.
-      const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
+    const awards = awardsFor(listed.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })))
+      .map((award, i) => (duel && listed[i]!.winner && !listed[i]!.tied ? DUEL_WINNER_AWARD : award));
+    listed.forEach((r, i) => {
+      const place = podium[i]!.place;
       const li = document.createElement("li");
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);

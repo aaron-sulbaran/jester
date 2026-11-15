@@ -17,6 +17,7 @@
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
 import { boxFromLandmarks, hideUnsureJoints, partName, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
 import { partsWorthOffering } from "./partChoices.ts";
+import { duelGuides, duelPlaces } from "./duelPlay.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
@@ -64,7 +65,7 @@ interface Seat {
   /** A still of the player's face from the start of their turn, for the results badges. Never leaves the device. */
   face: HTMLCanvasElement | null;
   /** `lagMs` is in the clip's own time. */
-  result: { score: number | null; tier: string | null; lagMs: number } | null;
+  result: { score: number | null; tier: string | null; lagMs: number | null } | null;
   /** The performance in Lisa's recorder format (pose only), for her stick figure reveal. */
   recording: unknown;
   /** Normal mode: the clip itself plays under the role during the turn (no effect on a drawn scene with no video). */
@@ -95,6 +96,8 @@ export interface RoleInfo {
   preview(): Promise<void>;
   /** Set when the last try failed (camera did not start), to show above the role. */
   problem?: string;
+  /** A duel (GameOptions.duel): the role is copied with the whole body only, so the look hides the part pick. */
+  duel?: boolean;
 }
 
 export interface ResultRow {
@@ -118,6 +121,9 @@ export interface ResultRow {
   /** The body part they played it with, and their timing lag in the clip's own ms: a game played on several devices sends these so every device can draw the same reveal. */
   part?: BodyPart;
   lagMs?: number;
+  /** A duel (GameOptions.duel): `place` is from duelPlaces (1 is the winner, timing breaks a tie on score). */
+  duel?: boolean;
+  place?: number;
 }
 
 export interface GameOptions {
@@ -150,6 +156,12 @@ export interface GameOptions {
    * video plays as in Blind. Scoring is the same either way.
    */
   showClip?: boolean;
+  /**
+   * Duel (default false): every player copies the clip's one person (never a thing), with the whole body, and the
+   * best copy wins: places by score, timing breaking a tie (duelPlay.ts). Set by the start screen when two or more
+   * players pick Duel on a one-person clip.
+   */
+  duel?: boolean;
 }
 
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -1482,11 +1494,13 @@ function mediaTimeline(s: Seat, scene: Scene, speed: number): ResultRow["timelin
   return { ...rec, frames: rec.frames.map((f) => ({ ...f, t: scene.startMs + f.t * speed })) };
 }
 
-function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number): RoleInfo {
+function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number, duel = false): RoleInfo {
   return {
     look: s.look, text: roleText(),
-    parts: partsWorthOffering(s.original.boxTrack).map((key) => ({ key, label: BODY_PARTS[key].label.toLowerCase() })),
+    // A duel offers the whole body only, so a hand is never ranked against a whole body.
+    parts: partsWorthOffering(s.original.boxTrack).filter((key) => !duel || key === "body").map((key) => ({ key, label: BODY_PARTS[key].label.toLowerCase() })),
     preview: () => previewRole(s, scene, speed, ui, leadMs),
+    ...(duel ? { duel } : {}),
   };
 }
 
@@ -1498,7 +1512,8 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   clip = { ...clip, guides: clip.guides.map(steadyRole) };
   const scene = slowScene({ ...clip, guides: clip.guides.map((g) => steadyMarker(fullFigure(g))) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
-  const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
+  // A duel deals everyone the clip's one person; otherwise each player gets a role.
+  const seats = deal(names, options.duel ? duelGuides(scene.guides) : scene.guides, options.colors ?? PLAYER_COLORS);
   for (const s of seats) {
     s.original = clip.guides[scene.guides.indexOf(s.guide)]!;
     s.withClip = !!options.showClip;
@@ -1514,7 +1529,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     for (;;) {
       drawFirstFrame(s, scene, ui);
       // A preview still playing stops when the player starts, or leaves.
-      try { s.part = await ui.showPart(s, { ...roleOf(s, scene, speed, ui, leadMs), problem }); }
+      try { s.part = await ui.showPart(s, { ...roleOf(s, scene, speed, ui, leadMs, !!options.duel), problem }); }
       finally { stopPreview?.(); }
       try { await playTurn(s, scene, speed, deps, ui, leadMs); break; }
       catch (err) {
@@ -1533,6 +1548,8 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
   const win = winnerIndex(scores);
   const top = win >= 0 ? scores[win] : null;
   const tied = scores.filter((x) => x !== null && x === top).length > 1;
+  // A duel ranks by score with timing breaking a tie; the results and crowning read `winner` and `place` from here.
+  const duel = options.duel ? duelPlaces(scores, seats.map((s) => s.result?.lagMs ?? null)) : null;
   const rows: ResultRow[] = seats.map((s, i) => ({
     name: s.name, color: s.color, look: s.look,
     role: partName(s.guide.subject, s.part),
@@ -1543,6 +1560,7 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
     face: s.face,
     part: s.part,
     lagMs: s.result?.lagMs ?? 0,
+    ...(duel ? { duel: true, place: duel[i]!.place, winner: duel[i]!.winner, tied: duel[i]!.tied } : {}),
   }));
   revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
   // For checking in the console: each turn's score and how many of the player's frames it was scored on.
@@ -1565,7 +1583,8 @@ export interface RemoteResult {
   part: BodyPart;
   score: number | null;
   tier: string | null;
-  lagMs: number;
+  /** Null when their device sent no timing: a duel then never counts them as on the beat. */
+  lagMs: number | null;
   /** Their pose recording in clip media ms (ResultRow.timeline); null if none. */
   timeline: { aspect: number; frames: { t: number; landmarks: unknown[] }[] } | null;
   /** Their real cutouts (play-time clipMs) and face, if they sent them; without cutouts a stick figure stands in. */
