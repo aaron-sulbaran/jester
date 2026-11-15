@@ -28,7 +28,7 @@ import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/po
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
 import { playWithSound, setAloud } from "./sound.ts";
-import { castRowShare } from "./recapRules.ts";
+import { castRowShare, dropShrunkCrops } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
 
@@ -1417,7 +1417,8 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
     seat.face = r.face ?? null;
-    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    // Their own pictures, without frames where the tracker lost the head (dropShrunkCrops), the same on every device.
+    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = dropShrunkCrops(r.cutouts); return seat; }
     // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;
