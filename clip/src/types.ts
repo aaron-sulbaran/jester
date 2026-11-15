@@ -9,14 +9,21 @@ export interface Box { cx: number; cy: number; w: number; h: number }
 /** A closed polygon in normalized image coordinates, first point not repeated, at most 60 points. */
 export type Outline = [number, number][];
 
+/**
+ * Each landmark's depth from the tracker, in landmark order: MediaPipe's z, roughly in units of image
+ * width, 0 at the middle of the hips, smaller is nearer the camera. Kept beside the landmarks because
+ * the engine's `Landmark` holds only x, y and visibility. Optional everywhere: older saves have none.
+ */
+export type Depth = readonly number[];
+
 /** One person found in one frame. `outline` is null when the tracker gave no usable mask. */
-export interface Detection { box: Box; landmarks: readonly Landmark[]; outline: Outline | null }
+export interface Detection { box: Box; landmarks: readonly Landmark[]; outline: Outline | null; depth?: Depth }
 
 /** Everything found in one sampled frame, plus a colour signature used for cut detection. */
 export interface FrameDetections { tMs: number; people: Detection[]; signature: number[] }
 
 /** One person in one frame of a track. `frame` indexes the frames array given to linking. */
-export interface TrackPoint { frame: number; tMs: number; box: Box; landmarks: readonly Landmark[]; outline: Outline | null }
+export interface TrackPoint { frame: number; tMs: number; box: Box; landmarks: readonly Landmark[]; outline: Outline | null; depth?: Depth }
 
 /** One person followed through one shot. */
 export interface Track { id: number; shot: number; points: TrackPoint[] }
@@ -45,11 +52,15 @@ export interface Guide {
   boxTrack: BoxTrack;
   /** The subject's outline at each timeline frame (same times as `boxTrack.frames`); null where absent. */
   outlines: (Outline | null)[];
+  /**
+   * Each timeline frame's landmark depths (same index as `timeline.frames`); null where the subject is
+   * absent or the tracker gave none. Missing on guides saved before depth was kept, and on things.
+   * Only for drawing: the scorer never reads it.
+   */
+  depths?: (Depth | null)[];
   keyMoments: { tMs: number }[];
   /** Finger detail per timeline frame (same indices as `timeline.frames`). Absent on clips analysed without the hands pass. */
   hands?: (GuideHands | null)[];
-  /** Display hint set where a one-frame guide is cut from a whole one: which hand is worth magnifying. */
-  handFocus?: "left" | "right" | null;
   pace: Pace;
   warnings: string[];
   /** The AI form arrives in Version 2. */

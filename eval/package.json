@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "eval": "node src/eval.ts",
+    "serve": "node src/serve.ts",
     "freeze": "node src/freeze.ts",
     "pull": "node src/pull.ts",
     "upload": "node src/upload.ts",
+    "chamberlain": "node src/chamberlain.ts",
     "test": "node --test 'test/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test"

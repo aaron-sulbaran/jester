@@ -20,6 +20,8 @@ const FRESH_GAP = 5;
 const END_POINTS = 5;
 /** A heading is carried across at most this many frames of a gap. */
 const PREDICT_FRAMES = 15;
+/** A track needs this many points before its usual box (see `usualBox`) means anything. */
+const USUAL_MIN_POINTS = 3;
 
 interface LiveTrack {
   track: Track;
@@ -49,6 +51,57 @@ function headedBox(track: Track, frames: number): Box {
   const { vx, vy } = headingOf(track);
   const ahead = Math.min(frames, PREDICT_FRAMES);
   return { ...last, cx: last.cx + vx * ahead, cy: last.cy + vy * ahead };
+}
+
+/** Adds the detection to the track and updates the track's heading. */
+function follow(live: LiveTrack, frameDetections: FrameDetections, detection: number, frame: number) {
+  const person = frameDetections.people[detection]!;
+  const previous = live.track.points[live.track.points.length - 1]!;
+  const elapsed = frame - previous.frame;
+  live.vx = (person.box.cx - previous.box.cx) / elapsed;
+  live.vy = (person.box.cy - previous.box.cy) / elapsed;
+  live.lastFrame = frame;
+  live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline, ...(person.depth ? { depth: person.depth } : {}) });
+}
+
+/** The track's usual box: the median centre and size of its last END_POINTS boxes, so one odd box does not count. */
+function usualBox(track: Track): Box {
+  const recent = track.points.slice(-END_POINTS).map((p) => p.box);
+  return {
+    cx: median(recent.map((b) => b.cx)), cy: median(recent.map((b) => b.cy)),
+    w: median(recent.map((b) => b.w)), h: median(recent.map((b) => b.h)),
+  };
+}
+
+/**
+ * Detections no track took this frame, matched to recently seen tracks that found no one, by
+ * overlap with each track's usual box instead of its last one. Greedy, best overlap first.
+ */
+function secondChance(
+  frameDetections: FrameDetections,
+  frame: number,
+  live: readonly LiveTrack[],
+  usedTracks: Set<LiveTrack>,
+  usedDetections: Set<number>,
+  minIou: number,
+) {
+  const pairs: Pair[] = [];
+  for (const l of live) {
+    if (usedTracks.has(l) || frame - l.lastFrame - 1 > FRESH_GAP || l.track.points.length < USUAL_MIN_POINTS) continue;
+    const usual = usualBox(l.track);
+    frameDetections.people.forEach((person, detection) => {
+      if (usedDetections.has(detection)) return;
+      const overlap = iou(usual, person.box);
+      if (overlap >= minIou) pairs.push({ live: l, detection, overlap, drift: pairDrift(l, person.box, frame) });
+    });
+  }
+  pairs.sort((a, b) => b.overlap - a.overlap || byTieOrder(a, b));
+  for (const pair of pairs) {
+    if (usedTracks.has(pair.live) || usedDetections.has(pair.detection)) continue;
+    usedTracks.add(pair.live);
+    usedDetections.add(pair.detection);
+    follow(pair.live, frameDetections, pair.detection, frame);
+  }
 }
 
 function byTieOrder(a: Pair, b: Pair): number {
@@ -100,21 +153,20 @@ export function linkTracks(
       const chosen = contenders[0]!;
       usedTracks.add(chosen.live);
       usedDetections.add(chosen.detection);
-      const person = frameDetections.people[chosen.detection]!;
-      const previous = chosen.live.track.points[chosen.live.track.points.length - 1]!;
-      const elapsed = frame - previous.frame;
-      chosen.live.vx = (person.box.cx - previous.box.cx) / elapsed;
-      chosen.live.vy = (person.box.cy - previous.box.cy) / elapsed;
-      chosen.live.lastFrame = frame;
-      chosen.live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline });
+      follow(chosen.live, frameDetections, chosen.detection, frame);
     }
+
+    // Second chance before a new track starts: a track that found no one this frame is compared
+    // again with its usual box (the median of its last few), so one odd box (an arm thrown out, a
+    // box that slid onto the next dancer) does not lose the person it was following.
+    secondChance(frameDetections, frame, live, usedTracks, usedDetections, minIou);
 
     frameDetections.people.forEach((person, detection) => {
       if (usedDetections.has(detection)) return;
       const track: Track = {
         id: all.length,
         shot: cuts.filter((c) => c <= frame).length,
-        points: [{ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline }],
+        points: [{ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline, ...(person.depth ? { depth: person.depth } : {}) }],
       };
       all.push(track);
       live.push({ track, lastFrame: frame, vx: 0, vy: 0 });
@@ -247,4 +299,89 @@ export function rejoinTracks(tracks: readonly Track[], options: RejoinOptions = 
     joined.push({ id: head.id, shot: head.shot, points });
   }
   return joined.sort((a, b) => a.id - b.id);
+}
+
+/** Two boxes on the same frame this alike are one person seen twice. */
+const SAME_PERSON_IOU = 0.5;
+/** A point agrees with the other track when its box overlaps that track's box this much (the linking threshold)... */
+const AGREE_IOU = 0.3;
+/** ...on the same frame or up to this many frames either side... */
+const AGREE_FRAMES = 2;
+/** ...and at least this share of the points where the two overlap in time must agree. */
+const AGREE_SHARE = 0.8;
+
+const lastFrame = (track: Track) => track.points[track.points.length - 1]!.frame;
+
+/** The other track's point on `frame`, else the nearest one within AGREE_FRAMES (earlier first). */
+function pointNear(byFrame: ReadonlyMap<number, TrackPoint>, frame: number): TrackPoint | undefined {
+  for (let d = 0; d <= AGREE_FRAMES; d++) {
+    const point = byFrame.get(frame - d) ?? byFrame.get(frame + d);
+    if (point) return point;
+  }
+  return undefined;
+}
+
+/**
+ * How well two tracks that overlap in time read as one person there: the share of their points in
+ * the overlap whose box overlaps the other track's box at about the same time. Null when they do
+ * not overlap, are in different shots, show two different boxes on any frame they share (two
+ * people at once), or agree on less than AGREE_SHARE of the overlap.
+ */
+function overlapAgreement(earlier: Track, later: Track): number | null {
+  if (earlier.shot !== later.shot) return null;
+  const start = later.points[0]!.frame;
+  const end = Math.min(lastFrame(earlier), lastFrame(later));
+  if (end < start) return null;
+  const a = new Map(earlier.points.map((p) => [p.frame, p]));
+  const b = new Map(later.points.map((p) => [p.frame, p]));
+  let checked = 0;
+  let agreed = 0;
+  for (let frame = start; frame <= end; frame++) {
+    const p = a.get(frame);
+    const q = b.get(frame);
+    if (p && q && iou(p.box, q.box) < SAME_PERSON_IOU) return null;
+    for (const [point, other] of [[p, b], [q, a]] as const) {
+      if (!point) continue;
+      const near = pointNear(other, frame);
+      if (!near) continue;
+      checked++;
+      if (iou(point.box, near.box) >= AGREE_IOU) agreed++;
+    }
+  }
+  return checked > 0 && agreed / checked >= AGREE_SHARE ? agreed / checked : null;
+}
+
+/**
+ * Merges tracks that are one person overlapping in time, which re-joining cannot do since it only
+ * joins pieces that follow one another. It happens when the pose model sees someone twice for a few
+ * frames: the second box starts a track, and the two then trade that person's frames. Two tracks
+ * merge when every frame they share shows the same box and nearly all their points in the overlap
+ * agree with the other track. The best agreeing pair merges first, into the track that started
+ * earlier (it keeps its id, and its point on a shared frame); repeated until no pair qualifies.
+ * Tracks come back ordered by id.
+ */
+export function mergeOverlapping(tracks: readonly Track[]): Track[] {
+  let work = tracks.filter((t) => t.points.length > 0).map((t) => ({ ...t, points: [...t.points] }));
+  for (;;) {
+    let best: { into: Track; from: Track; agreement: number } | null = null;
+    for (const into of work) {
+      for (const from of work) {
+        if (into === from) continue;
+        const intoFirst = into.points[0]!.frame;
+        const fromFirst = from.points[0]!.frame;
+        if (intoFirst > fromFirst || (intoFirst === fromFirst && into.id > from.id)) continue;
+        const agreement = overlapAgreement(into, from);
+        if (agreement === null) continue;
+        const better = !best || agreement > best.agreement
+          || (agreement === best.agreement && (into.id < best.into.id || (into.id === best.into.id && from.id < best.from.id)));
+        if (better) best = { into, from, agreement };
+      }
+    }
+    if (!best) break;
+    const { into, from } = best;
+    const taken = new Set(into.points.map((p) => p.frame));
+    into.points = [...into.points, ...from.points.filter((p) => !taken.has(p.frame))].sort((x, y) => x.frame - y.frame);
+    work = work.filter((t) => t !== from);
+  }
+  return work.sort((a, b) => a.id - b.id);
 }

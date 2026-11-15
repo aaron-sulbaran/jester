@@ -19,27 +19,33 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **Secondary:** `.btn-quiet` (the paper tag). A text button: `.link`.
 - **Small label:** `.chip`.
 - **A choice card:** `.mode` with `role=radio`, inside `.modes-pick`. On the start screen only (`#screen-start`), `.mode` is one paper switch with two halves, and the picked mode's line shows under it in `#modeSays`.
+- **Icons:** each control's picture is a `<symbol id="ico-…">` in the sprite inside `svg.defs` at the top of `app/index.html`, drawn in the Home tent's pen: a 4 px ink outline on a 48 grid, round joins, flat token fills. It goes before the words and never replaces them: `<svg class="ico" aria-hidden="true"><use href="#ico-back" /></svg>`. On a `.btn-quiet` the icon takes the punched hole's place (style.css does it); a tag without an icon keeps its hole. One meaning per picture: `tent` the start screen, `back` one step back, `again` do it again, `watch` watch it, `podium` the results, `speed`, `play`, `clapper` a new clip, `save`, `puppet` the computer plays, `cross` no or close, `check` yes, `player-add`, `player-less`, `howto`, `sound-on`, `sound-off`, `search`, `online`, `join` (a key for a room code), `copy`, `send`. A control that needs a new meaning gets a new symbol in the same pen, never a stock icon or emoji.
 - **Top bar:** `.tab-btn` inside `#gameNav`. Home is the tent, top left in the game. `.side-nav` is fixed top right on every screen: it holds the Sound tag (`#soundToggle`, pressed when sound is on) and, on the start screen only, the How to play tag (`#howtoLink`).
 
 ## Pictures and cards
 
 - **A photo print:** `.print` (white border, hard shadow).
 - **A clip card:** `.clip` with `.clip-pic`, `.clip-name`, `.clip-credit`, `.clip-hint`, `.clip-star`, `.clip-q`.
-- **The bank:** `.bank` is one row that scrolls sideways, each `.clip` snapping into place, so the Play ticket stays on screen however many clips there are. On phones a `.clip` is 68vw wide so the next card peeks in at the edge.
+- **The library (start screen):** `#bank` is a grid of small taped `.clip` photos that scrolls up and down. On a laptop `fitRows()` in `ui/game.ts` cuts it to whole rows and sets `#screen-start[data-library="fitted"]`; a phone keeps one sideways row. `#surpriseCard` is Surprise me, its own card, first and picked by default. `.library-head` holds the search (`label.field.library-find` with `#clipSearch`) and the Players chips (`.library-players .chip[data-players]`: 0 is Any, 4 is 4 or more). `#libraryNone` is the "no clip" line.
+- **The start screen's rows:** `.masthead` (wordmark and note), `#startMode` (the mode switch with `#modeSays` beside it), the library, then `#startFoot` with `#startActions` (the Play ticket and `#playOnline`) and the send card.
 - **Your clip is in:** `#clipReady`, a note taped bottom left on laptops and at the top under the corner tags on phones; hidden during a turn.
+- **Send in a clip:** `.send-card` (`#submitOpen`) is a paper card in the Play row with `.send-card-name` and `.send-card-text`; it opens `#screen-submit`. The old `.send-invite` strip is gone.
+- **The Send in a clip screen:** `#sendSteps` is a strip of four numbered steps, built like How to play's `.step`. Each picture is a desk scene made from `.send-step-card` (a clip card with the "?"), `.send-step-tag` (a paper tag with the name in pen), `.send-step-stamp` (the red "Let in" stamp) and `.send-step-jester` (the jester's win pose). `.send-form` is the one form card: `#submitTitle` ("Name your clip") and `#submitCredit` ("Your name (optional)", Anonymous as the placeholder) on the left; what not to send (`.send-dont`), the Anthropic line and the ticket on the right. Every rule for this screen sits under `#screen-submit`, `#sendSteps` or `#submitForm`; `.send-card` belongs to the start screen only.
+- **The wordmark:** `#jester-hat` is one shared drawing of the jester's two-point hat; `.wordmark-hat` places it on the J, tuned by `--hat-x`, `--hat-y`, `--hat-w` and `--hat-r`. The letters' white edge is the `#die-cut-round` filter. The same hat is the stamp on every yellow ticket's stub and the favicon. The crown (`#crown-doodle`, `.wordmark-crown`) is gone.
 - **An illustrated step:** `.step` with `.step-pic`, as on How to play.
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
 - **The stage:** `.box`, the shoebox around any canvas or video. Copy the block from `screen-turn` or `screen-crown`.
 - **Stage size:** each `*-wrap` is `(100dvh - budget) * 16 / 9 + 140px` wide, where the budget is the height of the heading and controls around it, so the main button stays on screen on a laptop. Budgets today: part 500, turn 360, reveal 460, crown 460.
 - **Curtains:** `.drapes > .drape.l` and `.drape.r` close over a `.box` when it has `.closed`. Reveal and crowning only.
 - **Between acts:** `.screen.leaving` and `.screen.arriving` are the fades from one screen to the next.
-- **Framing hint:** `.framing-hint` on the turn stage, with `.late` when it can be clicked to start anyway.
+- **Where to stand:** `#fitFrame` (`.fit-frame`) is the taped frame on the mirror view at the subject's place and size. `data-phase="framing"` is full strength while the player lines up, `data-phase="turn"` is faint during the turn, and `data-fit="good"` marks a good fit. Its logic is `app/src/fitFrame.ts`.
+- **Framing hint:** `.framing-hint` on the turn stage, with `.late` when it can be tapped to start anyway ("Can't fit? Tap here to start.").
 
 ## Forms
 
 - `label.field > span + input`, with an optional `small`.
 - `label.consent > input[type=checkbox] + span`.
-- `.who`: a player name tag.
+- `.who`: a player name tag. On the cast screen its dot is `button.who-dot` (44 px), which moves the player to the next jester colour nobody else is wearing.
 
 ## Motion and characters
 

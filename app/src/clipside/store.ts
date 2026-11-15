@@ -5,7 +5,9 @@ import type { Prepared } from "./analyze.ts";
 
 const DB_NAME = "jester";
 const STORE = "prepared";
-const SCHEMA = "prepared/3";
+// 4: thing tracks are rejoined and barely-seen things dropped, so older saved analyses list split things.
+// 5: people keep the tracker's depth (the 3D jester's turn), so older saved analyses have none.
+const SCHEMA = "prepared/5";
 
 interface PreparedRecord { schema: typeof SCHEMA; fingerprint: string; savedAt: number; prepared: Prepared }
 
