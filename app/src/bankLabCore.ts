@@ -4,6 +4,7 @@
 
 import type { Guide } from "../../clip/src/index.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
+import { addHands } from "./clipside/hands.ts";
 import {
   BANK_SCHEMA, bankEntry, bankIdFor, cleanText, emptyBankIndex, guidesJson, readBankIndex, withClip,
   type BankEntry, type BankIndex,
@@ -122,11 +123,13 @@ export const titleFrom = (name: string) => name.replace(/\.[^.]+$/, "").replace(
 /** People and things in the clip, by the calls blind mode uses. `video` is left pointing at the file. */
 export async function analyseClip(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<Result<Found>> {
   video.pause();
-  const prepared = await prepareVideo(file, video, onProgress, { things: true });
+  const prepared = await prepareVideo(file, video, (share) => onProgress(share * 0.8), { things: true });
   if (prepared.error !== null) return { data: null, error: prepared.error };
   const found = subjectGuides(prepared.data);
   if (found.guides.length === 0) return { data: null, error: found.skipped[0]?.reason ?? "No one to copy in this clip." };
-  return { data: found, error: null };
+  // Finger detail for every person in the clip (a second pass at a larger size).
+  const guides = await addHands(found.guides, file, video, (share) => onProgress(0.8 + share * 0.2));
+  return { data: { ...found, guides }, error: null };
 }
 
 export function whenReady(video: HTMLVideoElement): Promise<void> {
@@ -178,7 +181,7 @@ export function addClip(folder: FileSystemDirectoryHandle, video: HTMLVideoEleme
 
 async function addClipNow(folder: FileSystemDirectoryHandle, video: HTMLVideoElement, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
   // The name players see: refused when nothing is left of it after cleaning (only spaces or invisible characters).
-  if (!cleanText(title, 80)) return { data: null, error: "Name the move or dance first." };
+  if (!cleanText(title, 80)) return { data: null, error: "Give your clip a name." };
   const index = await readIndex(folder);
   if (index.error !== null) return index;
   const g = guides[0]!;
