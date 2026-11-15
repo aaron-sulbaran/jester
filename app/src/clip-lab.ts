@@ -2,7 +2,7 @@
 // URL options: ?clip=<file in /_clips/> runs that file as if picked, ?pick=<number> chooses that
 // person, ?fresh=1 ignores the saved analysis, ?model=lite|heavy times another pose model and
 // ?search=tracking looks for people the old way (MediaPipe VIDEO mode), neither saved,
-// ?overlay=skeleton|outline|both, ?look=outline|stick and ?place=fit|exact set the switches.
+// ?overlay=skeleton|outline|both, ?look=puppet|outline|stick and ?place=fit|exact set the switches.
 // After each run, window.__clipLab holds a summary.
 
 import { linkTracks, pointNearFrame, type Box, type Guide, type Placement, type View } from "../../clip/src/index.ts";
@@ -64,7 +64,7 @@ function radioGroup<T extends string>(name: string, values: readonly T[], fallba
 let view: View | null = null;
 const resetView = () => { view = null; };
 const overlayMode = radioGroup<Overlay>("overlay", ["skeleton", "outline", "both"], "both", () => {});
-const look = radioGroup<Look>("look", ["outline", "stick"], "outline", () => {});
+const look = radioGroup<Look>("look", ["puppet", "outline", "stick"], "puppet", () => {});
 const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
 const askedModel = params.get("model");
 const poseModel: PoseModel = askedModel === "lite" || askedModel === "heavy" ? askedModel : "full";
@@ -226,7 +226,8 @@ function tick() {
   if (box && mode === "skeleton") strokeBox(overlay, box, "", "#f5c542");
 
   view ??= blindView(guide, blindCanvas, place());
-  drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view);
+  // The puppet and the outline stand on the stage, as in the game; the stick figure keeps the old plain look.
+  drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view, { background: "#16161d", color: "#F47FA6", stage: look() !== "stick" });
 }
 
 async function run(file: File) {
