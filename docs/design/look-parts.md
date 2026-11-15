@@ -9,7 +9,7 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **The Jester's lines:** `<div class="note-wrap"><p class="note">` (blue ballpoint on a torn scrap).
 - **Small print:** `.typed` (typewriter). A quiet line under a block: `.aside`.
 - **Errors:** `<p class="problem" role="alert" hidden>`.
-- **Big moments:** `.wins`, filled by `letters(el, text, color?)` in `ui/game.ts` (cut-out letters). The whole word is also carried in hidden text for screen readers.
+- **Big moments:** `.wins`, filled by `letters(el, text, color?)` in `ui/game.ts` (cut-out letters). The whole word is also carried in hidden text for screen readers. `.letters .word` groups the letters of one word, so a name wraps between words and never inside one.
 - **Read aloud but not shown:** `.vh`.
 - **For the team only:** `.dev-only` shows only when `body.dev` is set, which is on a dev server or with `?dev=1`. `?dev=0` shows what a visitor sees.
 
@@ -19,7 +19,7 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **Secondary:** `.btn-quiet` (the paper tag). A text button: `.link`.
 - **Small label:** `.chip`.
 - **A choice card:** `.mode` with `role=radio`, inside `.modes-pick`. On the start screen only (`#screen-start`), `.mode` is one paper switch with two halves, and the picked mode's line shows under it in `#modeSays`.
-- **Top bar:** `.tab-btn` inside `#gameNav`. Home is the tent, top left in the game. On the start screen, `.start-nav` holds the How to play paper tag in the top right corner; a Sound switch will join it there.
+- **Top bar:** `.tab-btn` inside `#gameNav`. Home is the tent, top left in the game. `.side-nav` is fixed top right on every screen: it holds the Sound tag (`#soundToggle`, pressed when sound is on) and, on the start screen only, the How to play tag (`#howtoLink`).
 
 ## Pictures and cards
 
@@ -29,6 +29,9 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
 - **The stage:** `.box`, the shoebox around any canvas or video. Copy the block from `screen-turn` or `screen-crown`.
 - **Stage size:** each `*-wrap` is `(100dvh - budget) * 16 / 9 + 140px` wide, where the budget is the height of the heading and controls around it, so the main button stays on screen on a laptop. Budgets today: part 500, turn 360, reveal 460, crown 460.
+- **Curtains:** `.drapes > .drape.l` and `.drape.r` close over a `.box` when it has `.closed`. Reveal and crowning only.
+- **Between acts:** `.screen.leaving` and `.screen.arriving` are the fades from one screen to the next.
+- **Framing hint:** `.framing-hint` on the turn stage, with `.late` when it can be clicked to start anyway.
 
 ## Forms
 

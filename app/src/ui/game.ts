@@ -20,6 +20,7 @@ import { BANK_PREFIX, UPLOAD_ID, getHostUpload, sceneFromBank, waitForUploadedSc
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
 import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
 import { unpackCutouts, unpackFace } from "../packMedia.ts";
+import { keepFinished, sameDancer } from "../recapRules.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -65,8 +66,9 @@ const MID_GAME: readonly ScreenName[] = ["watch", "handover", "turn", "drumroll"
 function show(name: ScreenName) {
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   document.body.dataset.screen = name;
-  // Home shows everywhere except the start screen and How to play.
+  // Home shows everywhere except the start screen and How to play; How to play's tag only on the start screen.
   $("gameNav").hidden = name === "start" || name === "howto";
+  $("howtoLink").hidden = name !== "start";
   window.scrollTo(0, 0);
 }
 
@@ -110,14 +112,19 @@ function letters(el: HTMLElement, text: string, color?: string) {
   const wrap = document.createElement("span");
   wrap.className = "letters";
   wrap.setAttribute("aria-hidden", "true");
+  // Letters are grouped by word (each word keeps its trailing space), so a long line such as "Lisa and Aaron
+  // tie!" wraps between words on a phone, never in the middle of one.
+  let word: HTMLSpanElement | null = null;
   [...text].forEach((ch, i) => {
+    if (!word) { word = document.createElement("span"); word.className = "word"; wrap.appendChild(word); }
     const span = document.createElement("span");
     span.textContent = ch === " " ? "\u00a0" : ch;
     span.style.setProperty("--c", ch === " " ? "transparent" : color ?? STICKER_COLORS[i % STICKER_COLORS.length]!);
     span.style.setProperty("--r", `${TILT[i % TILT.length]}deg`);
     span.style.setProperty("--y", `${BOB[i % BOB.length]}px`);
     span.style.setProperty("--n", String(i));
-    wrap.appendChild(span);
+    word.appendChild(span);
+    if (ch === " ") word = null;
   });
   el.removeAttribute("aria-label");
   el.replaceChildren(said, wrap);
@@ -178,7 +185,7 @@ export function initGame(deps: GameDeps) {
       b.querySelector(".clip-pic")!.prepend(img);
     }
     const [name, hint, credit] = p.kind === "surprise" ? ["Surprise me", "A clip from the bank. Nobody sees it until the end.", ""]
-      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? `by ${p.clip.credit}` : ""]
+      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? (/^sent in/i.test(p.clip.credit) ? p.clip.credit : `by ${p.clip.credit}`) : ""]
       : [p.starter.title, p.starter.hint, ""];
     b.querySelector(".clip-name")!.textContent = name;
     b.querySelector(".clip-hint")!.textContent = hint;
@@ -411,9 +418,12 @@ export function initGame(deps: GameDeps) {
       await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
+      type Standing = { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null };
+      // Everyone who finished, as of now: the room forgets a player it drops while their pictures are still coming.
+      const finished = room.standings() as Standing[];
       await whenMediaIn(room as never); // their pictures, so the recap and the crowning show real people
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const standings = keepFinished(finished, room.standings() as Standing[]);
       const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
         name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
@@ -422,8 +432,18 @@ export function initGame(deps: GameDeps) {
         face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
       })));
       // What this device got from each player, for finding out why someone is missing from a recap.
-      const summary = results.map((r) => ({ name: r.name, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
+      const summary = results.map((r) => ({ name: r.name, role: r.guideIndex, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
       console.info("[online] recap inputs", summary);
+      // A dealt role with nobody on it in the recap: that dancer stays as filmed, neither covered nor replaced.
+      const dealt = Object.keys(round.extra?.assign ?? {});
+      const missing = dealt.filter((id) => !standings.some((s) => s.id === id));
+      if (missing.length) console.warn("[online] dealt a role but missing from the recap:", missing, "players now:", standings.map((s) => s.id));
+      // Two roles that follow the same dancer (a tracking slip in the clip) stack both players on one dancer.
+      const people = played.guides.map((g, i) => ({ i, g })).filter(({ g }) => g.subject.kind === "person");
+      for (let a = 0; a < people.length; a++) for (let b = a + 1; b < people.length; b++) {
+        const share = sameDancer(people[a]!.g.boxTrack.frames.map((f) => f.box), people[b]!.g.boxTrack.frames.map((f) => f.box));
+        if (share > 0.2) console.warn(`[online] roles ${people[a]!.i} and ${people[b]!.i} are on the same dancer in ${Math.round(share * 100)}% of the clip`);
+      }
       (window as unknown as { __jesterRecap?: unknown }).__jesterRecap = summary;
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
@@ -488,6 +508,17 @@ export function initGame(deps: GameDeps) {
     $("partProblem").hidden = false;
     restart();
   });
+
+  // ---- Sound: one switch for the game's sounds and the host's voice (sfx.ts keeps it, default on) ----
+
+  const soundButton = $<HTMLButtonElement>("soundToggle");
+  const showSound = () => {
+    const on = sfx.soundOn();
+    soundButton.setAttribute("aria-pressed", String(on));
+    soundButton.textContent = on ? "Sound: on" : "Sound: off";
+  };
+  soundButton.addEventListener("click", () => { sfx.setSound(!sfx.soundOn()); showSound(); });
+  showSound();
 
   // ---- How to play ----
 
@@ -649,6 +680,9 @@ export function initGame(deps: GameDeps) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
+      // A fresh show: the curtains open and the picture is up (the last game left them shut).
+      $("screen-reveal").classList.remove("leaving");
+      $("screen-reveal").querySelector(".box")?.classList.remove("closed");
       show("reveal");
     },
 
@@ -657,7 +691,7 @@ export function initGame(deps: GameDeps) {
       videoUrl = url;
       // The game itself has finished; the crowning and results need no leave check.
       running = false;
-      try { await crown(); } catch { return; /* left from the crowning */ }
+      try { await curtainCall(); await crown(); } catch { return; /* left from the curtain call or the crowning */ }
       showResults();
     },
   };
@@ -668,6 +702,26 @@ export function initGame(deps: GameDeps) {
     return variantFor(i < 0 ? rows.indexOf(row) : i);
   }
 
+  // ---- Between the reveal and the crowning: the curtain call ----
+
+  /** How long the curtains take to close or open; style.css uses the same length (.drapes, #revealStage). */
+  const CURTAIN_MS = 900;
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /**
+   * The show is over: the reveal's curtains close while the picture goes dark, a beat with them shut, then the
+   * screen fades out. The crowning then fades in with its own curtains shut and opens them (see crown()).
+   * With reduced motion the crowning simply follows, as before.
+   */
+  async function curtainCall() {
+    if (calm()) return;
+    const screen = $("screen-reveal");
+    screen.querySelector(".box")?.classList.add("closed");
+    await wait(CURTAIN_MS + 250, sig());
+    screen.classList.add("leaving");
+    await wait(220, sig());
+  }
+
   // ---- The crowning ----
 
   /**
@@ -675,6 +729,12 @@ export function initGame(deps: GameDeps) {
    * and lands on the winner, who does the win dance while the rest slump. Resolves on "See the scores".
    */
   async function crown() {
+    // The crowning arrives with its curtains shut, as the reveal left them, and opens them before the drum roll.
+    const crownScreen = $("screen-crown");
+    const crownBox = crownScreen.querySelector(".box");
+    const opening = !calm();
+    crownBox?.classList.toggle("closed", opening);
+    crownScreen.classList.toggle("arriving", opening);
     show("crown");
     // Stand them in seat order, not score order, so the spotlight has somewhere to travel.
     const seated = [...rows].sort((a, b) => playerColors().indexOf(a.color) - playerColors().indexOf(b.color));
@@ -751,9 +811,21 @@ export function initGame(deps: GameDeps) {
 
     const again = () => { cancel = true; void run(); };
     $("crownAgain").addEventListener("click", again);
-    void run();
+    let done = false;
+    // The curtains part once the screen has faded in; the drum roll and spotlight start about two thirds open.
+    const begin = async () => {
+      if (opening) {
+        await wait(220, sig());
+        crownScreen.classList.remove("arriving");
+        crownBox?.classList.remove("closed");
+        await wait(Math.round(CURTAIN_MS * 0.65), sig());
+      }
+      if (!done) void run();
+    };
+    void begin().catch(() => { /* left mid-opening */ });
     try { await clicked($("crownGo"), sig()); }
     finally {
+      done = true;
       cancel = true;
       roll();
       $("crownAgain").removeEventListener("click", again);
