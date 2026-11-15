@@ -13,6 +13,7 @@
   "devDependencies": {
     "@langchain/anthropic": "^1.6.5",
     "@langchain/core": "^1.4.1",
+    "@types/three": "0.187.0",
     "deepagents": "^1.16.5",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
-    "mediabunny": "^1.66.0"
+    "mediabunny": "^1.66.0",
+    "three": "0.187.0"
   }
 }
