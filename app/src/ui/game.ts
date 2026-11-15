@@ -259,12 +259,13 @@ export function initGame(deps: GameDeps) {
     problem.hidden = true;
     if (!file) return say("Pick a clip to send.");
     if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
+    const title = $<HTMLInputElement>("submitTitle").value.trim();
+    if (!title) return say("Name the move or dance in your clip.");
     const send = $<HTMLButtonElement>("submitSend");
     const bar = $<HTMLProgressElement>("submitBar");
     send.disabled = true; bar.hidden = false; bar.value = 0;
-    const title = $<HTMLInputElement>("submitTitle").value.trim();
     const credit = $<HTMLInputElement>("submitCredit").value.trim();
-    const r = await submitClip(file, { ...(title ? { title } : {}), ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
+    const r = await submitClip(file, { title, ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
     send.disabled = false; bar.hidden = true;
     if (r.error !== null) return say(r.error);
     $("submitForm").hidden = true;

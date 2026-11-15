@@ -11,7 +11,7 @@
 <body data-screen="review">
   <section class="screen" id="screen-review">
     <div class="masking"><h2 class="tape">The Chamberlain's desk</h2></div>
-    <div class="note-wrap"><p class="note" id="deskNote">I look at every clip players send in. The ones that play well go straight into the bank. The ones I am not sure about wait here for you.</p></div>
+    <div class="note-wrap"><p class="note" id="deskNote">I look at every clip players send in: is it fit for the court, and does its name fit what is in it? The ones I am sure about go straight into the bank. The ones I am not, and any with no name, wait here for you to name or decide.</p></div>
     <p class="typed" id="deskStatus">Checking the review queue...</p>
     <p class="problem" id="deskProblem" role="alert" hidden></p>
 
@@ -31,12 +31,16 @@
       <div id="workFrames"></div>
       <ol class="steps" id="workPlan"></ol>
       <p class="aside" id="workFinding"></p>
+      <p class="aside" id="workName"></p>
       <p class="aside" id="workSaw"></p>
       <p class="typed" id="workDecision"></p>
     </article>
 
     <div class="masking"><h2 class="tape">Needs you</h2></div>
     <div id="needsYou"><p class="typed">Nothing waiting.</p></div>
+
+    <div class="masking"><h2 class="tape">In the bank</h2></div>
+    <div id="deskBank"><p class="typed">Pick the bank folder to see and rename what is in it.</p></div>
 
     <div class="masking"><h2 class="tape">Latest decisions</h2></div>
     <ul class="how" id="deskLog"></ul>
