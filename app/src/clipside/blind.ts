@@ -31,7 +31,7 @@ export interface BlindStyle { background: string; color: string; stage?: StageLo
 const DEFAULT_STYLE: BlindStyle = { background: "#16161d", color: "#f5c542" };
 
 import { DETAIL_BONES, BODY_BONES, FOOT_BONES, FACE_BONES, FINGER_BONES } from "../../../spikes/pose-match/skeleton.mjs";
-import type { GuideHands, HandPoints } from "../../../clip/src/index.ts";
+import type { HandPoints } from "../../../clip/src/index.ts";
 const MIN_VISIBILITY = 0.5;
 const ANKLES_AND_FEET = [27, 28, 29, 30, 31, 32];
 
@@ -344,57 +344,44 @@ export function drawBlindSubject(
     ctx.stroke();
   }
   if (hands) {
-    for (const hand of [hands.left, hands.right]) if (hand) drawFingers(ctx, hand, map, Math.max(2, sizePx * 0.012), style.color);
-    drawHandInset(canvas, guide, hands, style);
+    for (const hand of [hands.left, hands.right]) if (hand) drawHand(ctx, hand, map, style.color);
   }
 }
 
-/** One hand as 21 points joined by bones, thin enough to read on a hand only a few dozen pixels wide. */
-function drawFingers(ctx: CanvasRenderingContext2D, hand: HandPoints, map: (x: number, y: number) => [number, number], width: number, color: string) {
+/**
+ * One hand drawn in place: a soft palm, then the finger bones and joints. Line width follows the hand's own size
+ * (wrist to the middle finger's base), so fingers stay readable on a hand only a few dozen pixels wide and do not
+ * turn into blobs on a big one. The palm fill reads as a hand shape when the fingers are curled or overlap.
+ */
+function drawHand(ctx: CanvasRenderingContext2D, hand: HandPoints, map: (x: number, y: number) => [number, number], color: string) {
+  const [wx, wy] = map(hand[0]![0], hand[0]![1]), [mx, my] = map(hand[9]![0], hand[9]![1]);
+  const span = Math.hypot(mx - wx, my - wy);
+  const width = Math.max(2, span * 0.075);
   ctx.save();
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  // A dark halo under the fingers, so they stand out from the thick arm line they sit on.
+  ctx.strokeStyle = "rgba(0,0,0,0.65)"; ctx.lineWidth = width * 2.4;
   for (const [a, b] of FINGER_BONES) {
     const [ax, ay] = map(hand[a!]![0], hand[a!]![1]), [bx, by] = map(hand[b!]![0], hand[b!]![1]);
     ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
   }
-  for (const p of hand) { const [x, y] = map(p[0], p[1]); ctx.beginPath(); ctx.arc(x, y, width * 0.9, 0, Math.PI * 2); ctx.fill(); }
-  ctx.restore();
-}
-
-/** How much a hand's fingers move over the clip (spread from the wrist, summed), to pick the hand worth magnifying. */
-const handActivity = new WeakMap<Guide, "left" | "right" | null>();
-export function busierHand(guide: Guide): "left" | "right" | null {
-  if (handActivity.has(guide)) return handActivity.get(guide)!;
-  const total = { left: 0, right: 0 };
-  const prev: Record<"left" | "right", HandPoints | null> = { left: null, right: null };
-  for (const h of guide.hands ?? []) for (const k of ["left", "right"] as const) {
-    const cur = h?.[k] ?? null, before = prev[k];
-    if (cur && before) for (let i = 1; i < 21; i++) total[k] += Math.hypot((cur[i]![0] - cur[0]![0]) - (before[i]![0] - before[0]![0]), (cur[i]![1] - cur[0]![1]) - (before[i]![1] - before[0]![1]));
-    prev[k] = cur;
+  ctx.strokeStyle = color; ctx.lineWidth = width;
+  // The palm.
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  PALM.forEach((i, k) => { const [x, y] = map(hand[i]![0], hand[i]![1]); if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+  for (const [a, b] of FINGER_BONES) {
+    const [ax, ay] = map(hand[a!]![0], hand[a!]![1]), [bx, by] = map(hand[b!]![0], hand[b!]![1]);
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
   }
-  const pick = Math.max(total.left, total.right) < 0.05 ? null : total.left >= total.right ? "left" : "right";
-  handActivity.set(guide, pick);
-  return pick;
-}
-
-/** The busier hand, magnified in a corner of the canvas, so finger shapes read even when the whole body is in view. */
-function drawHandInset(canvas: HTMLCanvasElement, guide: Guide, hands: GuideHands, style: BlindStyle) {
-  const which = guide.handFocus !== undefined ? guide.handFocus : busierHand(guide);
-  const hand = which && hands[which];
-  if (!hand) return;
-  const size = Math.round(Math.min(canvas.width, canvas.height) * 0.3), margin = Math.round(size * 0.08);
-  const x0 = canvas.width - size - margin, y0 = margin;
-  const xs = hand.map((p) => p[0]), ys = hand.map((p) => p[1]);
-  const aspect = guide.source.width / guide.source.height;
-  const w = (Math.max(...xs) - Math.min(...xs)) * aspect, h = Math.max(...ys) - Math.min(...ys);
-  const k = (size * 0.78) / Math.max(w, h, 0.01), cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
-  const map = (x: number, y: number): [number, number] => [x0 + size / 2 + (x - cx) * aspect * k, y0 + size / 2 + (y - cy) * k];
-  const ctx = canvas.getContext("2d")!;
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.strokeStyle = style.color; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(x0, y0, size, size, size * 0.1); ctx.fill(); ctx.stroke();
-  ctx.lineJoin = "round"; ctx.lineCap = "round";
-  drawFingers(ctx, hand, map, Math.max(2, size * 0.025), style.color);
+  // Joints, and a larger dot on each fingertip.
+  for (let i = 0; i < 21; i++) {
+    const [x, y] = map(hand[i]![0], hand[i]![1]);
+    ctx.beginPath(); ctx.arc(x, y, width * (TIPS.has(i) ? 0.95 : 0.6), 0, Math.PI * 2); ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -414,3 +401,6 @@ export function drawBlind(
   drawBlindBackground(canvas, guide, view, style, pose);
   drawBlindSubject(canvas, guide, index, look, view, style, pose);
 }
+
+const PALM = [0, 1, 5, 9, 13, 17];
+const TIPS = new Set([4, 8, 12, 16, 20]);

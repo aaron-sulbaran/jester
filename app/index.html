@@ -182,13 +182,15 @@
             <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /></label>
             <label class="field"><span>Give it a name</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
             <label class="field"><span>Credit (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" /><small>Your name or handle, shown small under the clip.</small></label>
-            <label class="consent"><input id="submitConsent" type="checkbox" required /><span>I filmed this, and everyone in it is fine with it being used.</span></label>
             <p class="aside send-privacy">To check it, a few frames of your clip, what the game measured in it, its name and your credit are sent to Anthropic, the company that makes the AI.</p>
             <button type="submit" class="btn btn-main" id="submitSend"><span class="ticket"><span class="ticket-text">Send it in</span></span></button>
             <progress id="submitBar" value="0" max="1" hidden></progress>
             <p class="problem" id="submitProblem" role="alert" hidden></p>
           </form>
-          <div class="note-wrap" id="submitThanks" hidden><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides. Keep playing; if it's in within the hour, I'll tell you here.</p></div>
+          <div id="submitThanks" hidden>
+            <div class="note-wrap"><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides. Keep playing; if it's in within the hour, I'll tell you here.</p></div>
+            <button type="button" class="btn btn-quiet" id="submitAgain">Send another clip</button>
+          </div>
         </div>
       </div>
       <button type="button" class="btn btn-quiet" id="submitBack">Back to the start</button>

@@ -61,8 +61,6 @@ export interface Guide {
   keyMoments: { tMs: number }[];
   /** Finger detail per timeline frame (same indices as `timeline.frames`). Absent on clips analysed without the hands pass. */
   hands?: (GuideHands | null)[];
-  /** Display hint set where a one-frame guide is cut from a whole one: which hand is worth magnifying. */
-  handFocus?: "left" | "right" | null;
   pace: Pace;
   warnings: string[];
   /** The AI form arrives in Version 2. */
