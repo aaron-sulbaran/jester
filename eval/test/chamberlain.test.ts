@@ -142,12 +142,16 @@ test("cached tokens are priced at their own rates", () => {
 });
 
 test("only synthetic cases may be traced; a case file is always a desk case, whatever it claims", () => {
-  for (const spec of SYNTHETIC) assert.equal(mayTrace(syntheticCase(spec)), true);
-  const claimsSynthetic = { ...deskFile(), source: "synthetic" } as unknown as CaseFile;
+  for (const spec of SYNTHETIC) {
+    assert.equal(mayTrace(syntheticCase(spec)), true);
+    assert.equal(syntheticCase(spec).input.synthetic, true);
+  }
+  const claimsSynthetic = { ...deskFile(), source: "synthetic", input: { ...deskFile().input, synthetic: true } } as unknown as CaseFile;
   const pngFrames = deskFile({ input: { ...deskFile().input, frames: figureFrames("squats") } });
   for (const file of [deskFile(), claimsSynthetic, pngFrames, deskFile({ label: { want: "approve" } })]) {
     const c = deskCase(file);
     assert.equal(c.source, "desk");
     assert.equal(mayTrace(c), false);
+    assert.equal(c.input.synthetic, false);
   }
 });

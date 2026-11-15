@@ -68,7 +68,7 @@ export const SYNTHETIC: SyntheticCase[] = [
 export function syntheticCase(s: SyntheticCase): EvalCase {
   return {
     id: s.id, source: "synthetic", about: s.about,
-    input: { title: s.title, credit: s.credit, facts: { ...CLEAN_FACTS, ...s.facts }, frames: figureFrames(s.move, s.words ? { words: s.words } : {}) },
+    input: { title: s.title, credit: s.credit, facts: { ...CLEAN_FACTS, ...s.facts }, frames: figureFrames(s.move, s.words ? { words: s.words } : {}), synthetic: true },
     truth: { want: s.want, alsoOk: s.alsoOk ?? [], ...(s.nameCheck ? { nameCheck: s.nameCheck } : {}) },
     truthFrom: "written with the case",
     before: null,

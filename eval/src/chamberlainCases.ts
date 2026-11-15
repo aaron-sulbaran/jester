@@ -27,6 +27,8 @@ export interface ReviewInput {
   frames: string[];
   /** The precedents the Chamberlain read with this review (app/review-precedents.ts), replayed as captured. */
   precedents?: unknown[];
+  /** True only for the runner's own made-up cases: PR 128's tracingRefusal() refuses to trace any other. */
+  synthetic?: boolean;
 }
 
 export interface Decision {
@@ -119,7 +121,8 @@ export function outcomeFromLog(log: LogEntry[], id: string): CaseFile["outcome"]
 export const mayTrace = (c: Pick<EvalCase, "source">): boolean => c.source === "synthetic";
 
 export function deskCase(file: CaseFile, log: LogEntry[] = []): EvalCase {
-  const c: CaseFile = file.outcome ? file : { ...file, outcome: outcomeFromLog(log, file.id) };
+  // A case file is a real submission whatever it says: it is never marked synthetic.
+  const c: CaseFile = { ...file, input: { ...file.input, synthetic: false }, outcome: file.outcome ?? outcomeFromLog(log, file.id) };
   const { truth, from } = truthOfDesk(c);
   const when = c.capturedAt.slice(0, 16).replace("T", " ");
   return {
