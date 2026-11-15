@@ -20,9 +20,12 @@ And one honest line about who it is for: it gets a group of friends moving aroun
 - **3, 2, 1, copy.** The part plays on the left, the player's camera on the right. The clip can be slowed to 0.75 or 0.5 speed.
 - **The reveal.** After a drum roll, the original clip plays, then plays again with every player's cutout drawn on their part, with names and scores. It is recorded in the browser as a video you can save or send.
 - **The crown.** Each player's face goes on a jester, a spotlight sweeps across them, and the winner gets crowned.
+- **Play with friends online.** Make a room or join one with its 4-letter code. Each player plays their own part on their own device, and everyone gets the same reveal and results. Online rounds use our two built-in clips for now. [check: tried between two devices]
 - **Submit your own clip.** It goes into a review queue, and a person checks every clip before it joins the bank.
 
 ![How a round runs, from picking a clip to the crown](https://jester-pi.vercel.app/devpost/diagram-round.png)
+
+Online, each player is on their own device, so step 3 is skipped.
 
 ![How we built it](https://jester-pi.vercel.app/devpost/heading-how.png)
 
@@ -44,7 +47,8 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 - MediaPipe Pose Landmarker in video mode. It tries the GPU first, then the CPU, and drops to the lite model below 18 frames a second.
 - Hand Landmarker adds fingers to the mirror view. A One Euro filter smooths both.
 - The models are cached in the browser and start loading on the start screen.
-- Lisa also built the rooms and the recording behind the reveal video. [check]
+- Online rooms run over Supabase Realtime. Each device pings every 2 seconds, so a closed tab drops out after 10 seconds and the host role passes on, and every device starts the round at one time synced to the host's clock.
+- Lisa also built the recording behind the reveal video. [check]
 
 **The scoring engine and the game (Alex)** compare the two motions and run the round.
 
@@ -53,7 +57,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 - It compares the directions of 16 limbs, not positions, so height, body size and distance from the camera do not matter. The player is mirrored.
 - A limb gets full credit within 15 degrees and none past 60.
 - Both timelines are resampled to 30 frames a second, and one reaction delay is found for the whole turn, from 0.2 seconds early to 1.2 seconds late.
-- The score is how much better you did than standing still would, scaled by timing. When the clip travels across the frame, a quarter of the score comes from where you are.
+- The score pays for accuracy above what standing still would earn. When you really move with the clip, accuracy itself counts too, so standing still still scores low. Timing scales the result, and when the clip travels across the frame, a quarter of the score comes from where you are.
 - A limb the clip uses but your camera cannot see caps the score at 50.
 - Things, and single body parts, are scored on their path instead: how well your movement follows theirs, plus jumps, crouches and moves left or right.
 
@@ -88,7 +92,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 
 - **Same clip in, same guide out.** Our first stand-in read the clip from a playing video, timed by the wall clock, so the same file gave different guides. Now frames are decoded at fixed times and the analysis is saved under the file's fingerprint.
 - **One dancer, many tracks.** People cross, turn and hide behind each other, and a tracker loses them. Early runs split one dancer into a pile of short tracks. Rejoining after gaps of up to 3 seconds, plus cut detection, fixed most of it. [check]
-- **Standing still must not score.** A naive pose score gives points for doing nothing. The engine works out what standing still would earn on each clip and scores only what you add above it.
+- **Standing still must not score, but moving must.** A naive pose score gives points for doing nothing, so the engine scores only what you add above standing still. Then blind mode scored every player 0 on gentle dance clips, where standing still already matches most of the pose. Engine 0.9.0 measures how much you actually moved with the clip, and when you did, counts your accuracy directly.
 - **Laptop cameras rarely see legs.** Whole-body parts wait until you fit in frame. A hidden limb caps the score instead of being skipped, and you can choose to play a part with a hand, your head or a foot.
 - **Fast motion.** At 15 frames a second, a sudden move can fall between frames. [check]
 - **Clips we are allowed to use.** Most fun clips belong to someone else. No video lives in our repo, and the bank only takes clips that pass review. [check]
@@ -98,7 +102,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 - A clip nobody prepared becomes a playable level in the browser. No server ever analyses video.
 - Things count, not just people: a dog or a ball can be your secret part.
 - The reveal puts everyone's cutout on the original clip and records it to a video you can send.
-- 235 automated tests pass: 104 on the clip side, 63 in the engine, 62 in our first prototype and 6 in the evaluation tools.
+- 249 automated tests pass: 104 on the clip side, 71 in the engine, 66 in our first prototype and rooms, and 8 in the evaluation tools.
 - A jester host of our own, from a Blender script, who wears each player's face at the crown.
 
 ![What we learned](https://jester-pi.vercel.app/devpost/heading-learned.png)
@@ -112,7 +116,8 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 
 - **An AI check for new clips.** One vision model call per clip would name it, pick the main subject and word the refusals. It is designed, not built.
 - **Paste a link instead of a file.** Grabbing a YouTube or Instagram clip from a browser tab already works on our lab page, but not yet in the game.
-- **Duels online.** Head-to-head rounds over the internet are built on a lab page, not yet in the game.
+- **Any clip online.** Online rounds use our two built-in clips today; next is any clip from the bank.
+- **Duels.** Head-to-head rounds, best of several, are built on a lab page, not yet in the game.
 - **A bigger bank,** filled by players through Submit your own.
 
 ## Links

@@ -25,7 +25,6 @@
   --floor-c: #93613A;
   --backdrop: #2E4593;
   --wood: #EDCB8E;
-  --soft: #6B5A48;
   --hand: "Gaegu", "Comic Sans MS", cursive;
   --type: "Special Elite", "Courier New", serif;
   --sticker: "Titan One", "Arial Black", sans-serif;
@@ -57,7 +56,6 @@ body { background: #FFFFFF; color: var(--ink); font: 400 22px/1.35 var(--type); 
 .w-pink { background: repeating-linear-gradient(-45deg, #F47FA6 0 7px, #FCD5E2 7px 15px); }
 .w-mint { background-color: #BFE6D3; background-image: linear-gradient(rgba(36, 120, 88, .38) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(36, 120, 88, .38) 1.5px, transparent 1.5px); background-size: 10px 10px; }
 .w-dots { background: #FFE69A radial-gradient(circle, #E9A800 2.6px, transparent 3.1px) 0 0 / 12px 12px; }
-.w-blue { background: #C9D6FA repeating-linear-gradient(90deg, rgba(79, 123, 240, .55) 0 6px, transparent 6px 14px); }
 
 /* ---------- Masking tape heading, in marker ---------- */
 .masking { position: relative; display: inline-block; filter: drop-shadow(4px 5px 0 var(--shade)); rotate: -1.5deg; }

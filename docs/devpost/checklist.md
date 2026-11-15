@@ -12,7 +12,7 @@ Our submit target is **7:30 AM Sunday**; Devpost closes at 8:30 AM.
    - https://jester-pi.vercel.app/devpost/track-entertainment.png
    - https://jester-pi.vercel.app/devpost/diagram-round.png and diagram-clip-to-guide.png
 2. Open https://jester-pi.vercel.app/devpost/preview.html and read the story top to bottom.
-3. Every line marked `[check]` (yellow in the preview) is one I could not confirm from the code. Confirm it, reword it or delete it, and remove the marker. There are 11.
+3. Every line marked `[check]` (yellow in the preview) is one I could not confirm from the code. Confirm it, reword it or delete it, and remove the marker. There are 12.
 
 ## 2. The fields
 

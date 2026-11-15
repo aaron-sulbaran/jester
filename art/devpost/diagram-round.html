@@ -13,10 +13,10 @@
   .card h2 { font-size: 48px; }
   .card p { font-size: 28px; }
   .card .art { height: 150px; }
-  .sil { position: absolute; color: #F3EEE4; }
+  .sil { position: absolute; color: var(--paper); }
   .sil svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .mini { position: absolute; width: 30%; padding: 5px 5px 8px; background: var(--photo); box-shadow: 3px 4px 0 rgba(0,0,0,.35); }
-  .mini i { display: grid; place-items: center; aspect-ratio: 16 / 10; background: #3A55AE repeating-linear-gradient(-35deg, transparent 0 6px, rgba(255,255,255,.08) 6px 7px); font: 400 28px/1 var(--sticker); font-style: normal; color: var(--ticket); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+  .mini i { display: grid; place-items: center; aspect-ratio: 16 / 10; background: var(--backdrop) repeating-linear-gradient(-35deg, transparent 0 6px, rgba(255,255,255,.08) 6px 7px); font: 400 28px/1 var(--sticker); font-style: normal; color: var(--ticket); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
   .chips { position: absolute; display: flex; gap: 8px; }
   .chips span { padding: 4px 10px; background: var(--photo); font: 400 16px/1.2 var(--type); box-shadow: 2px 3px 0 rgba(0,0,0,.35); white-space: nowrap; }
   .chips span.on { background: var(--ticket); box-shadow: 2px 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px var(--ink); }
@@ -27,7 +27,7 @@
   .look-away { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 700 26px/1 var(--hand); color: var(--photo); letter-spacing: -.03em; }
   .count { position: absolute; left: 50%; top: 50%; translate: -50% -50%; font: 400 92px/1 var(--sticker); color: var(--stamp); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; filter: url(#die-cut); rotate: -4deg; }
   .split::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; background: rgba(255,255,255,.3); }
-  .blur { position: absolute; border-radius: 50%; background: rgba(243, 238, 228, .28); filter: blur(10px); }
+  .blur { position: absolute; border-radius: 50%; background: rgba(255, 255, 255, .28); filter: blur(10px); }
   .score-tag { position: absolute; padding: 2px 8px; background: var(--photo); font: 400 15px/1.3 var(--type); white-space: nowrap; box-shadow: 2px 3px 0 rgba(0,0,0,.35); }
   .spot { position: absolute; inset: 0; background: radial-gradient(ellipse 34% 70% at 50% 62%, rgba(255, 244, 200, .32) 0 60%, rgba(10, 12, 30, .55) 100%); }
   .crown-j { position: absolute; top: -14px; width: 150px; left: calc(50% - 75px); filter: url(#sticker); }
@@ -120,7 +120,7 @@
     </section>
 
     <section class="card" data-n="4" style="grid-row:1;grid-column:4">
-      <span class="num" style="--c:var(--p4)">4</span><i class="washi w-blue"></i>
+      <span class="num" style="--c:var(--p4)">4</span><i class="washi w-mint"></i>
       <h2>See your part</h2>
       <div class="art" style="background:#16161D">
         <span class="sil" style="left:8%;top:8%;width:28%;height:84%;color:var(--p2)"><svg><use href="#stick" /></svg></span>
@@ -134,7 +134,7 @@
       <h2>Play</h2>
       <div class="art split" style="background:#16161D">
         <span class="sil" style="left:10%;top:8%;width:28%;height:84%;color:var(--p2)"><svg><use href="#stick" /></svg></span>
-        <span class="sil" style="left:62%;top:12%;width:26%;height:96%;color:#8C93AE"><svg><use href="#player" /></svg></span>
+        <span class="sil" style="left:62%;top:12%;width:26%;height:96%;color:var(--photo);opacity:.55"><svg><use href="#player" /></svg></span>
         <span class="count">3</span>
       </div>
       <p>3, 2, 1, then copy it live: your part left, you right.</p>
@@ -145,13 +145,13 @@
       <h2>Score</h2>
       <div class="art">
         <svg viewBox="0 0 320 150" style="position:absolute;inset:0;width:100%;height:100%">
-          <circle cx="70" cy="110" r="9" fill="#F3EEE4"/>
+          <circle cx="70" cy="110" r="9" fill="#FFFEFA"/>
           <path d="M70 110 L250 42" stroke="#4F7BF0" stroke-width="10" stroke-linecap="round"/>
           <path d="M70 110 L262 82" stroke="#F47FA6" stroke-width="10" stroke-linecap="round"/>
           <path d="M190 72 A 124 124 0 0 1 193 92" fill="none" stroke="#FFC93C" stroke-width="5"/>
-          <text x="146" y="140" style="font: 400 20px 'Special Elite'; fill: #F3EEE4">12 degrees off</text>
-          <text x="16" y="34" style="font: 400 18px 'Special Elite'; fill: #9FB2F2">clip's limb</text>
-          <text x="16" y="138" style="font: 400 18px 'Special Elite'; fill: #F7B1C9">your limb</text>
+          <text x="146" y="140" style="font: 400 20px 'Special Elite'; fill: #FFFEFA">12 degrees off</text>
+          <text x="16" y="34" style="font: 400 18px 'Special Elite'; fill: #FFFEFA">clip's limb</text>
+          <text x="16" y="138" style="font: 400 18px 'Special Elite'; fill: #F47FA6">your limb</text>
         </svg>
       </div>
       <p>Limb directions, mirrored. Full credit within 15 degrees, none past 60. Kept secret.</p>
@@ -172,7 +172,7 @@
     </section>
 
     <section class="card" data-n="8" style="grid-row:2;grid-column:1">
-      <span class="num" style="--c:var(--p2)">8</span><i class="washi w-blue"></i>
+      <span class="num" style="--c:var(--p2)">8</span><i class="washi w-mint"></i>
       <h2>The crown</h2>
       <div class="art" style="background:var(--backdrop) linear-gradient(transparent 78%, #93613A 78%)">
         <img class="side-j" style="left:2%" src="../../app/public/look/jester/alex-still.webp" alt="" />

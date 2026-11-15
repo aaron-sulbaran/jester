@@ -45,7 +45,7 @@
   .s-challenges .problem { position: absolute; padding: 12px 20px; background: var(--photo); color: var(--stamp); box-shadow: var(--lift); font: 400 26px/1.2 var(--type); white-space: nowrap; }
   .s-challenges .p1 { right: 96px; top: 40px; rotate: 3deg; }
   .s-challenges .p2 { right: 130px; top: 134px; rotate: -2.5deg; }
-  .s-challenges .stampmark { position: absolute; right: 455px; top: 62px; white-space: nowrap; rotate: -12deg; padding: 6px 16px 4px; border: 5px solid var(--stamp); border-radius: 8px; color: var(--stamp); font: 400 38px/1 var(--sticker); letter-spacing: .04em; opacity: .9; }
+  .s-challenges .stampmark { position: absolute; right: 455px; top: 62px; white-space: nowrap; rotate: -12deg; padding: 6px 16px 6px; border: 5px solid var(--stamp); border-radius: 8px; color: var(--stamp); font: 400 40px/1 var(--sticker); opacity: .9; }
 
   /* Accomplishments: the score sticker everyone chases. */
   .s-wins .score { position: absolute; right: 110px; top: 44px; rotate: 6deg; font-size: 124px; }
@@ -80,21 +80,21 @@
     what: { act: "Act 2", title: "What it does", tapes: ["w-mint", "w-pink"], prop: `
       <div class="scrap note-wrap"><p class="note">Copy me.<br>I'm watching.</p></div>
       <div class="puppet"><span class="stick"></span><img src="../../app/public/look/jester/classic-still.webp" alt="" /></div>` },
-    how: { act: "Act 3", title: "How we built it", tapes: ["w-dots", "w-blue"], prop: `
+    how: { act: "Act 3", title: "How we built it", tapes: ["w-dots", "w-mint"], prop: `
       <div class="parts">
         <span class="tag" style="font-size:26px"><i class="dot" style="--c:var(--p3)"></i>the clip side</span>
         <span class="tag" style="font-size:26px"><i class="dot" style="--c:var(--p1)"></i>the player side</span>
         <span class="tag" style="font-size:26px"><i class="dot" style="--c:var(--p2)"></i>the scoring engine</span>
       </div>` },
-    stack: { act: "Act 4", title: "Tech stack", tapes: ["w-blue", "w-mint"], prop: `
+    stack: { act: "Act 4", title: "Tech stack", tapes: ["w-pink", "w-mint"], prop: `
       <div class="pile">
         <span class="tag" style="left:250px;top:8px;rotate:4deg">MediaPipe</span>
         <span class="tag" style="left:30px;top:30px;rotate:-5deg">TypeScript</span>
         <span class="tag" style="left:120px;top:110px;rotate:2deg">WebCodecs</span>
         <span class="tag" style="left:340px;top:100px;rotate:-3deg">Supabase</span>
       </div>` },
-    challenges: { act: "Act 5", title: "Challenges", tapes: ["w-pink", "w-blue"], prop: `
-      <span class="stampmark">TRY AGAIN</span>
+    challenges: { act: "Act 5", title: "Challenges", tapes: ["w-pink", "w-dots"], prop: `
+      <span class="stampmark">Try again</span>
       <span class="problem p1">That did not work.</span>
       <span class="problem p2">No person found in this clip.</span>` },
     wins: { act: "Act 6", title: "Accomplishments", tapes: ["w-dots", "w-pink"], prop: `
@@ -102,8 +102,8 @@
       <span class="score big-sticker">100%</span>` },
     learned: { act: "Act 7", title: "What we learned", tapes: ["w-mint", "w-dots"], prop: `
       <div class="scrap note-wrap"><p class="note">Same clip in,<br>same guide out.</p></div>` },
-    next: { act: "Act 8", title: "What's next", tapes: ["w-blue", "w-pink"], prop: `
-      <div class="ticket-wrap"><div class="ticket"><span><small>ADMIT ONE</small>Next show</span><i class="stub"></i></div></div>` },
+    next: { act: "Act 8", title: "What's next", tapes: ["w-mint", "w-pink"], prop: `
+      <div class="ticket-wrap"><div class="ticket"><span><small>Admit one</small>Next show</span><i class="stub"></i></div></div>` },
   };
   const key = new URLSearchParams(location.search).get("s") || "inspiration";
   const s = SECTIONS[key];
