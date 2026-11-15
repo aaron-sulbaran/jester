@@ -9,7 +9,7 @@ export interface BlindStyle { background: string; color: string }
 
 const DEFAULT_STYLE: BlindStyle = { background: "#16161d", color: "#f5c542" };
 
-import { DETAIL_BONES, BODY_BONES, FOOT_BONES, FACE_BONES, FINGER_BONES } from "../../../spikes/pose-match/skeleton.mjs";
+import { DETAIL_BONES, BODY_BONES, FOOT_BONES, FACE_BONES, FINGER_BONES, HAND_BONES } from "../../../spikes/pose-match/skeleton.mjs";
 import type { HandPoints } from "../../../clip/src/index.ts";
 const MIN_VISIBILITY = 0.5;
 
@@ -78,8 +78,11 @@ export function drawBlind(
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   if (!landmarks) return;
   const hands = guide.hands?.[index] ?? null;
-  // With finger data the pose model's 4-point hands are left out: the fingers replace them.
-  const BONES = hands ? [...BODY_BONES, ...FOOT_BONES, ...FACE_BONES] : DETAIL_BONES;
+  // A hand with finger data is drawn from its fingers, so the pose model's 4-point hand is left out for that side only:
+  // a hand the finger pass missed in this frame keeps its simple hand instead of vanishing.
+  const BONES = hands
+    ? [...BODY_BONES, ...FOOT_BONES, ...FACE_BONES, ...(hands.left ? [] : HAND_BONES.filter(([a]) => a! < 16)), ...(hands.right ? [] : HAND_BONES.filter(([a]) => a! >= 16))]
+    : DETAIL_BONES;
   ctx.strokeStyle = style.color;
   ctx.lineWidth = lineWidth * 2;
   for (const [a, b] of BONES) {
