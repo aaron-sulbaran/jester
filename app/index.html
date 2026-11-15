@@ -38,7 +38,20 @@
   <main id="game">
     <!-- Home: on every screen once you leave the start. Mid-game it asks first. -->
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
-      <button type="button" class="tab-btn" id="home">Home</button>
+      <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
+        <svg class="tent" viewBox="0 0 120 100" aria-hidden="true" focusable="false">
+          <path d="M60 4 V16" stroke="#1E1B18" stroke-width="4" stroke-linecap="round"/>
+          <path d="M60 4 L82 10 L60 16 Z" fill="#D93A2B" stroke="#1E1B18" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M60 14 L14 52 H106 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M60 14 L37 52 H55 Z M60 14 L83 52 H65 Z" fill="#D93A2B"/>
+          <path d="M14 52 H106 V88 H14 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M14 52 H34 V88 H14 Z M54 52 H74 V88 H54 Z M94 52 H106 V88 H94 Z" fill="#2848C8"/>
+          <path d="M14 52 Q24 64 34 52 Q44 64 54 52 Q64 64 74 52 Q84 64 94 52 Q100 60 106 52" fill="none" stroke="#1E1B18" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M48 88 V70 Q60 56 72 70 V88 Z" fill="#1E1B18"/>
+          <path d="M14 52 H106 V88 H14 Z" fill="none" stroke="#1E1B18" stroke-width="4" stroke-linejoin="round"/>
+        </svg>
+        <span class="tent-label">Home</span>
+      </button>
     </nav>
     <dialog class="leave" id="leaveDialog" aria-labelledby="leaveAsk">
       <div class="note-wrap"><p class="note" id="leaveAsk">Leave this game? Nobody's scores are kept.</p></div>

@@ -363,9 +363,11 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 /* ---------- Home, the leave check, Start over ---------- */
 /* Home: a paper tab taped to the top left of every screen once you leave the start. */
 .game-nav { position: fixed; z-index: 20; top: 14px; left: 14px; }
-.tab-btn { min-height: 44px; padding: 8px 18px 8px 16px; border: 0; cursor: pointer; background: var(--photo); box-shadow: 3px 4px 0 var(--shade); font: 400 17px var(--type); rotate: -2deg; transition: transform .15s var(--ease); }
-.tab-btn::before { content: ""; display: inline-block; width: 0; height: 0; margin-right: 8px; border: 7px solid transparent; border-right: 9px solid var(--ink); border-left: 0; vertical-align: -1px; }
-.tab-btn:hover { transform: translateY(-2px) rotate(-1deg); }
+.tab-btn { display: grid; justify-items: center; gap: 0; min-height: 44px; padding: 0 6px 2px; border: 0; cursor: pointer; background: none; font: 400 15px var(--type); color: var(--ink); rotate: -3deg; filter: drop-shadow(3px 4px 0 var(--shade)); transition: transform .15s var(--ease); }
+.tab-btn .tent { width: 76px; height: auto; display: block; }
+.tent-label { margin-top: -2px; padding: 0 8px; background: var(--photo); box-shadow: 0 1px 0 var(--shade); }
+.tab-btn:focus-visible { outline: 3px solid var(--pen); outline-offset: 3px; }
+.tab-btn:hover { transform: translateY(-2px) rotate(2deg) scale(1.06); }
 .leave { border: 0; padding: 0; background: none; overflow: visible; }
 .leave::backdrop { background: rgba(30, 27, 24, .45); }
 .leave[open] { display: grid; gap: 18px; justify-items: center; }
