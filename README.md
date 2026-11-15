@@ -12,17 +12,18 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 
 - **Any clip becomes a level.** Jester finds the people (up to 4) and the things that move in a short video (a dancer, a dog, a ball) and turns each one into a part someone can play. No level design, no markers, no training.
 - **Play it blind, or dance along.** In Blind, each player sees only their own part's outline or stick figure, never the clip and never who they are, and finds out what they actually did at the reveal. In Normal, the clip plays during your turn and your part is marked on it with a thin outline in your colour and your name above.
+- **One to four players.** The start screen asks how many are playing. One player plays alone. Two or more take turns on one laptop, play a Duel (everyone copies the same person, best copy wins), or play online, each on their own phone or laptop.
 - **The reveal is the payoff.** The real video plays with every player's cutout on their part, the jester crowns the winner, and the reveal saves as a video you can keep.
 
-**A fairer judge without retraining a model.** The scorer is computer vision and fixed code: MediaPipe's body points turned into limb directions, the same recording always getting the same score, and no model to retrain. We make it fairer by testing it instead: every round played on the live site is recorded as pose data automatically, `npm run eval` replays them all through the real scorer when someone runs it, and each good round becomes six altered copies whose right answer is known. That is how we found that standing completely still scored 66 on a real round; the engine fix shipped the same night ([jester#82](https://github.com/aaron-sulbaran/jester/pull/82)), and guard cases keep it fixed. LangChain deep agents work on top of this: [the Chamberlain](#the-chamberlain-our-clip-reviewer) reviews the clips players submit, and a referee coach that investigates scoring with the real scorer is in review ([jester#106](https://github.com/aaron-sulbaran/jester/pull/106)).
+**A fairer judge without retraining a model.** The scorer is computer vision and fixed code: MediaPipe's body points turned into limb directions, the same recording always getting the same score, and no model to retrain. We make it fairer by testing it instead: every round played on the live site is recorded as pose data automatically, `npm run eval` replays them all through the real scorer when someone runs it, and each good round becomes six altered copies whose right answer is known. That is how we found that standing completely still scored 66 on a real round; the engine fix shipped the same night ([jester#82](https://github.com/aaron-sulbaran/jester/pull/82)), and guard cases keep it fixed. LangChain deep agents work on top of this: [the Chamberlain](#the-chamberlain-our-clip-reviewer) reviews the clips players submit, and a [referee coach](#more-deep-agents) investigates scoring from recorded rounds, and a [cast checker](#more-deep-agents) checks each bank clip's cast against its frames.
 
 ## How it works
 
 ![How a round runs: pick a clip, deal the secret parts, pass the laptop, see your part, play, score, the reveal, the crown.](https://aaronsulbaran.com/hack-princeton/brand/devpost/diagram-round.png)
 
-1. **Pick a clip and a mode.** The video bank holds eight clips, or play a file from your computer; with an empty bank the game falls back to two built-in starter clips that also work offline. Then pick Blind or Normal.
+1. **Pick a clip and a mode.** The video bank holds ten clips, or play a file from your computer; with an empty bank the game falls back to two built-in starter clips that also work offline. Then pick Blind or Normal.
 2. **Jester reads the moves.** The clip side finds up to 4 people per frame and the things that move, notices cuts, follows each subject through the clip, and writes a guide for each: the pose over time (33 body points), the box over time and an outline. A clip it cannot use is refused with a sentence a player can read.
-3. **Copy your secret part.** Pass the laptop, or play online with a room code, each on your own device. In Blind you see only your part's shape; in Normal the clip plays too. Pick how to copy it: with your whole body, or with one hand, your head or one foot following it. Slower speeds (0.75 and 0.5) are scored in the clip's own time.
+3. **Copy your secret part.** Pass the laptop, or play online with a room code, each on your own device. In Blind you see only your part's shape; in Normal the clip plays too. The mirror view shows where to stand: the subject's place and size, never who it is. The guide is a stick figure; `?guide=d` swaps in a 3D jester. Pick how to copy it: with your whole body, or with one hand, your head or one foot following it. Slower speeds (0.75 and 0.5) are scored in the clip's own time.
 4. **Score and reveal.** The engine scores each copy from 0 to 100 limb by limb, then the reveal plays: a title card, the cast over the clip, the busiest few seconds beside the original, and a cast card with every score.
 
 <!-- PICTURE SLOT: a blind turn (the outline a player copies) and the reveal (players over the real clip). Real screenshots only. -->
@@ -33,15 +34,17 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 
 | Part | Where | What it does | Tests |
 |---|---|---|---|
-| Clip side | `clip/`, `app/src/clipside/` | Reads the video's frames, finds people (MediaPipe Pose Landmarker) and moving things (EfficientDet-Lite0), detects cuts, follows and rejoins each subject, ranks them, refuses clips it cannot use, and turns each subject into a guide. Saved under a fingerprint of the file, so the same video gives the same result. | 170 |
+| Clip side | `clip/`, `app/src/clipside/` | Reads the video's frames, finds people (MediaPipe Pose Landmarker) and moving things (EfficientDet-Lite0), detects cuts, follows and rejoins each subject, ranks them, refuses clips it cannot use, and turns each subject into a guide. Saved under a fingerprint of the file, so the same video gives the same result. | 172 |
 | Webcam side | `spikes/pose-match/webcam.mjs` and its helpers | Tracks the player's 33 body points live, smooths them (One Euro filter), and keeps a person mask and outline for the reveal cutout. | 53 |
 | Engine | `engine/` | Scores a copy: 12 limb directions (so height, size and distance do not matter), the round read both as a mirror image and the same way round with the better kept, one lag for the round, and credit only for accuracy that beats standing still or for moving the way the clip moves, so standing still scores near 0. Things are scored by how the player's body follows the thing's box. Same inputs, same score, bit for bit. Engine 0.12.0. | 88 |
-| Rooms | `spikes/pose-match/rooms.mjs`, `app/src/ui/room.ts`, `app/src/supabaseTransport.ts` | Four letter room codes over Supabase Realtime: presence, host handoff, a start synced to the host's clock, late joiners sit out one round, shared results. | 21 |
-| Eval | `eval/`, `app/round-log-plugin.ts` | Records every scored round on the live site automatically (pose points only, no video). `npm run eval` replays them all against the engine on disk when someone runs it, so a scoring change shows what got better or worse. Each good round also becomes six altered copies with known answers (late, frozen, seated, walked out, jittered, mirrored), with no AI and no extra play, and frozen guard cases with a saved baseline make `npm run eval` fail if a fix comes undone. | 25 |
+| Rooms | `spikes/pose-match/rooms.mjs`, `app/src/ui/room.ts`, `app/src/supabaseTransport.ts` | Four letter room codes over Supabase Realtime: presence, host handoff, a start synced to the host's clock, late joiners sit out one round, shared results. | 27 |
+| Eval | `eval/`, `app/round-log-plugin.ts` | Records every scored round on the live site automatically (pose points only, no video). `npm run eval` replays them all against the engine on disk when someone runs it, so a scoring change shows what got better or worse. Each good round also becomes six altered copies with known answers (late, frozen, seated, walked out, jittered, mirrored), with no AI and no extra play, and frozen guard cases with a saved baseline make `npm run eval` fail if a fix comes undone. | 29 |
 | Chamberlain | `app/review-agent.ts`, `app/review-dev-server.ts`, `app/src/review.ts` | Reviews the clips players submit and decides which join the bank ([below](#the-chamberlain-our-clip-reviewer)). Bank ids and title cleaning are tested with the clip side, and the "your clip is in" matcher with the game. | its code rules: playability, what an approval needs, precedents, and never tracing a real submission (`app/test/reviewAgent.test.ts`); its judgments are replayed by `npm run chamberlain` in `eval/` |
-| Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | 87, plus typecheck and build |
+| Referee coach | `agent/` | A deep agent a person runs to investigate scoring from recorded rounds and report; it never edits the engine ([below](#more-deep-agents)). | typecheck |
+| Cast checker | `app/cast-checker.ts`, `app/scripts/check-cast.ts` | A deep agent run by hand that checks each bank clip's cast against its frames and says "clear for play" or "ask Aaron"; it never changes the bank ([below](#more-deep-agents)). | with the game |
+| Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | 161, plus typecheck and build |
 
-444 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
+530 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
 
 ## The Chamberlain: our clip reviewer
 
@@ -61,6 +64,10 @@ A LangChain deep agent that reviews every clip players send with Send in a clip 
 
 **Learning.** Each decision a person makes on a hand-off becomes a precedent it reads on its next review, so similar cases stop coming back ([jester PR 128](https://github.com/aaron-sulbaran/jester/pull/128)). Precedents never come from content or steering cases, and code never lets one approve a name that has nothing to do with the clip. An eval replays submissions through it and reports agreement with people, false approvals and the hand-off rate: `npm run chamberlain` in `eval/` ([jester PR 124](https://github.com/aaron-sulbaran/jester/pull/124)). Its cases are synthetic so far, so we quote no accuracy number.
 
+**Eval results, on synthetic cases** (`npm run chamberlain`, main at 454dc3b, tracing off): 21 cases, 17 synthetic, 3 cast cases and 1 stick-figure route check, no real submissions. Deep mode: 21 of 21 agree, 0 false approvals, 0 false rejections, 4 model calls, 9.8 s and about $0.013 a review. Fast mode: 21 of 21, 0 false approvals, 0 false rejections, 1 model call, 4.0 s and about $0.009 a review, with the same verdict as deep mode on every case. Cast cases: 3 of 3 in both modes. It asked a person on 52 percent of cases, by design: most cases are ones a person should see. These are not accuracy on real submissions.
+
+**Cast check.** It also compares the computer vision's cast with the frames and can leave out a thing that is only a piece of another thing or is not really in the frames; it never leaves out a person, and code checks every drop against the game's own measurements ([PR 160](https://github.com/aaron-sulbaran/jester/pull/160)). The desk shows the steps the deep agent took on each review ([PR 168](https://github.com/aaron-sulbaran/jester/pull/168)).
+
 **So far.** Its first real run took 4 clips: it let 1 in on its own, caught a title that tried to steer it and handed that one over, and handed 2 over needlessly (fixed in [PR 111](https://github.com/aaron-sulbaran/jester/pull/111)). Later two clips, "not even a lil bit" and "hoppity", went from submission to the public bank with no person involved.
 
 **Limits.** It runs only while the desk is open on Aaron's laptop, where the keys stay; a hosted, login protected Chamberlain is the next step. Prompt injection is reduced, not closed, and the desk's "Ask me before adding a clip" switch holds every approval for a person. Only exact copies are caught, not near duplicates. For each review, four frames, the game's measurements, the title and the credit go to Anthropic, and the submit form says so; so do the names of its recent precedents.
@@ -72,6 +79,12 @@ A LangChain deep agent that reviews every clip players send with Send in a clip 
 - [`app/review.html`](app/review.html) and [`app/src/review.ts`](app/src/review.ts): the desk.
 - [`app/src/submissionWatch.ts`](app/src/submissionWatch.ts): "your clip is in".
 - [`supabase/migrations/20261115_submissions_queue.sql`](supabase/migrations/20261115_submissions_queue.sql): the table and bucket rules.
+
+## More deep agents
+
+**The referee coach** ([`agent/`](agent/README.md), [PR 106](https://github.com/aaron-sulbaran/jester/pull/106)) is a second deep agent that investigates scoring from recorded rounds and reports what it finds; it never edits the engine. A person runs it with `npm run coach` in `agent/`, and `npm run watch` keeps checking new live rounds every 3 minutes on a laptop, starting a coach run only on cases that newly fail. It works on simulated-player rounds unless a switch in the git-ignored `agent/.env.local` is turned on. Its earlier findings were made on real rounds, before that rule. Claude Opus 5.5 leads it, with Muse Spark 1.3 subagents, and its runs are traced in LangSmith.
+
+**The cast checker** ([`app/cast-checker.ts`](app/cast-checker.ts), [PR 191](https://github.com/aaron-sulbaran/jester/pull/191)) is a third deep agent, run by hand with `npm run check-cast` in `app/`. For each bank clip it writes a short plan, hands the looking to three subagents (a person checker, a thing checker and a recounter), compares the computer vision's cast with 12 frames from across the whole video, and ends with "clear for play" or "ask Aaron". It never changes the bank and never reads a clip's title or credit, and code checks its result: a person is always kept. On the 10 bank clips it cleared 7 and asked Aaron about 3.
 
 ## Challenges
 
@@ -93,7 +106,7 @@ make dev
 
 Then open http://localhost:5173. No settings file is needed: the dev server takes the two public Supabase settings from the live site by itself, and without a network the game still runs in one browser. Every setting is named in [`app/.env.example`](app/.env.example). Add `?nocam=1` to play with simulated players and no camera.
 
-`make test` runs the type checks and all 444 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
+`make test` runs the type checks and all 530 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
 
 ## Team and how we built it
 
@@ -121,4 +134,5 @@ Then open http://localhost:5173. No settings file is needed: the dev server take
 - For the hackathon demo the bank holds short clips the team picked. The bank's files are copied in at deploy time and never committed.
 - The link lab never downloads a video: it reads each captured frame once for people and drops it.
 - Send in a clip: whoever sends a clip gives it a name, and it goes to a private bucket. The Chamberlain reviews it first and lets it into the bank on its own only when it is safe and the name fits; anything unsure waits for a person. The form says what goes to Anthropic for the review.
+- The settings screen's "What Jester saves" tells players what the game keeps.
 - The round log keeps pose points, the score, and the camera and engine details. No video, no images, no masks.
