@@ -2,8 +2,11 @@
 // a player is scored against. "as-served" is what blind mode does today (steadyRole in app/src/blind.ts); the
 // others are ideas to try. `npm run serve` replays real players' recordings against each one.
 
-import { smoothTimeline, type PoseTimeline } from "../../engine/src/index.ts";
+import { LIMBS, smoothTimeline, type PoseTimeline } from "../../engine/src/index.ts";
+import { setConstant } from "./judge.ts";
 import type { RoundRecord } from "./record.ts";
+
+type Result<T> = { data: T; error: null } | { data: null; error: string };
 
 export interface Variant {
   name: string;
@@ -76,4 +79,75 @@ export function median(values: readonly number[]): number | null {
   if (s.length === 0) return null;
   const m = s.length >> 1;
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+
+// ---- Engine what-ifs ----
+//
+// Settings the engine could use instead of today's, tried for this run only (nothing in engine/ changes; the
+// engine is Alex's). "GROUP.name=value" is a number in engine/src/constants.ts, as in `npm run eval -- --what-if`.
+// "LIMB.<limb or group>=value" is a limb's weight in engine/src/geometry.ts (groups: hands, forearms, feet).
+
+export interface WhatIf {
+  name: string;
+  /** One line on what it changes, for the report. */
+  about: string;
+  settings: readonly string[];
+}
+
+const LIMB_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  hands: ["leftHand", "rightHand"],
+  forearms: ["leftForearm", "rightForearm"],
+  feet: ["leftFoot", "rightFoot"],
+};
+
+/** Applies "GROUP.name=value" and "LIMB.<limb or group>=value" settings. Returns a function that puts them all back. */
+export function applySettings(settings: readonly string[]): Result<() => void> {
+  const undo: (() => void)[] = [];
+  const restore = () => { for (const u of undo.reverse()) u(); };
+  for (const setting of settings) {
+    const [path, text] = setting.split("=");
+    const value = Number(text);
+    if (!path || text === undefined || !Number.isFinite(value)) {
+      restore();
+      return { data: null, error: `"${setting}" is not GROUP.name=number or LIMB.name=number` };
+    }
+    if (path.startsWith("LIMB.")) {
+      const key = path.slice("LIMB.".length);
+      const names = LIMB_GROUPS[key] ?? [key];
+      const limbs = LIMBS as Record<string, { weight: number } | undefined>;
+      if (names.some((n) => !limbs[n])) {
+        restore();
+        return { data: null, error: `${key} is not a limb (${Object.keys(LIMBS).join(", ")}) or a group (${Object.keys(LIMB_GROUPS).join(", ")})` };
+      }
+      for (const n of names) {
+        const limb = limbs[n]!;
+        const old = limb.weight;
+        limb.weight = value;
+        undo.push(() => { limb.weight = old; });
+      }
+      continue;
+    }
+    const set = setConstant(path, value);
+    if (set.error !== null) { restore(); return { data: null, error: set.error }; }
+    const old = set.data;
+    undo.push(() => { setConstant(path, old); });
+  }
+  return { data: restore, error: null };
+}
+
+export const WHAT_IFS: readonly WhatIf[] = [
+  { name: "today", about: "The engine as it is (0.12.0).", settings: [] },
+  { name: "angles-20", about: "Full credit for a limb within 20 degrees of the clip instead of 15.", settings: ["POSE.thetaInDeg=20"] },
+  { name: "angles-20-75", about: "Full credit within 20 degrees and none only past 75 instead of 60.", settings: ["POSE.thetaInDeg=20", "POSE.thetaOutDeg=75"] },
+  { name: "hands-light", about: "Hands count half as much (weight 0.25 instead of 0.5).", settings: ["LIMB.hands=0.25"] },
+  { name: "hands-off", about: "Hands not scored at all.", settings: ["LIMB.hands=0"] },
+  { name: "forearms-light", about: "Forearms count like thighs (weight 1 instead of 1.5).", settings: ["LIMB.forearms=1"] },
+  { name: "ends-light", about: "Hands half, forearms like thighs.", settings: ["LIMB.hands=0.25", "LIMB.forearms=1"] },
+  { name: "credit-from-0.5", about: "Accuracy starts earning at 0.5 instead of 0.55 (a gentler score curve).", settings: ["MOTION.accuracyFloor=0.5"] },
+  { name: "ceiling-0.95", about: "Accuracy 0.95 maps to 100 instead of 1.0 (the calibration constants.ts expects).", settings: ["MOTION.accuracyFull=0.95"] },
+  { name: "late-ok-900", about: "Full timing credit up to 900 ms late instead of 650 (blind players lag 0.5 to 1.2 s).", settings: ["TIMING.freeMs=900"] },
+];
+
+export function whatIfNamed(name: string): WhatIf | null {
+  return WHAT_IFS.find((w) => w.name === name) ?? null;
 }
