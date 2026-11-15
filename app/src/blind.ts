@@ -105,6 +105,9 @@ export interface ResultRow {
   face: HTMLCanvasElement | null;
   /** The player's cutouts placed on their role, in reveal ms from the start of the stretch: drawLayers takes it (used by linkReveal.ts). */
   layer?: RevealLayer;
+  /** The body part they played it with, and their timing lag in the clip's own ms: a game played on several devices sends these so every device can draw the same reveal. */
+  part?: BodyPart;
+  lagMs?: number;
 }
 
 export interface GameOptions {
@@ -1106,7 +1109,11 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     }
   }
   await ui.beat?.();
+  return finishGame(seats, scene, speed, ui, options);
+}
 
+/** The end of a game: scores, the results screen and the recorded reveal. */
+async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindUi, options: GameOptions): Promise<ResultRow[]> {
   const scores = seats.map((s) => s.result?.score ?? null);
   const win = winnerIndex(scores);
   const top = win >= 0 ? scores[win] : null;
@@ -1119,6 +1126,8 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     guide: s.original,
     timeline: mediaTimeline(s, scene, speed),
     face: s.face,
+    part: s.part,
+    lagMs: s.result?.lagMs ?? 0,
   }));
   revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
   ui.results(rows);
@@ -1128,4 +1137,49 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
   return rows;
+}
+
+/** One player's finished turn, played on another device: what a room sends so every device can draw the same reveal. */
+export interface RemoteResult {
+  name: string;
+  color: string;
+  /** Which of the scene's roles they played. */
+  guideIndex: number;
+  part: BodyPart;
+  score: number | null;
+  tier: string | null;
+  lagMs: number;
+  /** Their pose recording in clip media ms (ResultRow.timeline); null if none. */
+  timeline: { aspect: number; frames: { t: number; landmarks: unknown[] }[] } | null;
+}
+
+/**
+ * The reveal and results for a game whose turns were played on several devices. Each remote player is drawn as
+ * their own stick figure (their camera picture never leaves their device), placed on their role like a local
+ * player's cutout, so the title card, the cast over the clip, the side by side and the cast card all work.
+ */
+export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui: BlindUi, options: GameOptions = {}): Promise<ResultRow[]> {
+  const speed = options.speed ?? 1;
+  const steady = { ...clip, guides: clip.guides.map(steadyRole) };
+  const scene = slowScene({ ...steady, guides: steady.guides.map(fullFigure) }, speed);
+  theme = { ...REVEAL_THEME, ...options.theme };
+  const seats: Seat[] = results.map((r) => {
+    const guide = scene.guides[r.guideIndex]!;
+    const seat: Seat = {
+      name: r.name, color: r.color, guide, original: steady.guides[r.guideIndex]!,
+      look: isThing(guide) ? "outline" : "stick", part: r.part, cutouts: [], face: null,
+      result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
+    };
+    // Stick-figure cutouts from the recording: media ms back to play ms, about 15 a second like a local turn.
+    const aspect = r.timeline?.aspect || 4 / 3;
+    let last = -Infinity;
+    for (const f of r.timeline?.frames ?? []) {
+      const clipMs = (f.t - scene.startMs) / speed;
+      if (clipMs < 0 || clipMs - last < 60) continue;
+      const image = cutFrame(null, Math.round(aspect * 1000), 1000, f.landmarks as LandmarkObject[], r.part, null);
+      if (image) { seat.cutouts.push({ clipMs, image }); last = clipMs; }
+    }
+    return seat;
+  });
+  return finishGame(seats, scene, speed, ui, options);
 }
