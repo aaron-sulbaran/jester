@@ -331,6 +331,16 @@
 
     <!-- Start: pick a mode and a clip from the bank, play in one click. -->
     <section class="screen" id="screen-start">
+      <!-- The start screen's drifting props: paper stickers floating slowly beside the title, like a stage frame.
+           Decoration only, laptop widths only; still under reduced motion and Calm motion (body.calm). -->
+      <div class="home-drift" id="homeDrift" aria-hidden="true">
+        <svg class="drift-prop" style="left:7%;top:4%;--s:84px;--r:-14deg;--d:8.5s;--t:-2s"><use href="#jester-hat" /></svg>
+        <svg class="drift-prop" style="left:13%;top:14%;--s:44px;--r:10deg;--d:11s;--t:-6s"><use href="#star" /></svg>
+        <svg class="drift-prop" style="left:3%;top:18%;--s:50px;--r:8deg;--d:9.5s;--t:-4s"><use href="#ico-clapper" /></svg>
+        <svg class="drift-prop" style="right:8%;top:10%;--s:56px;--r:12deg;--d:10s;--t:-1s"><use href="#ico-watch" /></svg>
+        <svg class="drift-prop" style="right:4%;top:19%;--s:46px;--r:-10deg;--d:12s;--t:-7s"><use href="#ico-sound-on" /></svg>
+        <svg class="drift-prop" style="right:20%;top:7%;--s:38px;--r:-18deg;--d:7.5s;--t:-3s"><use href="#star" /></svg>
+      </div>
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
         <div class="note-wrap"><p class="note start-title">The party game that gets you off your chair.</p></div>
@@ -392,15 +402,21 @@
       <div class="start-foot" id="startFoot">
         <div class="start-actions" id="startActions">
           <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
-          <!-- One way online: "Each on your own device" in How? presses this for you (ui/room.ts listens on it). -->
-          <button type="button" class="btn btn-quiet" id="playOnline" hidden>Play online</button>
         </div>
 
-        <!-- Send in a clip: its own card in the Play row; the form has its own screen (#screen-submit). -->
-        <button type="button" class="send-card" id="submitOpen" aria-describedby="sendInviteText">
+        <!-- The two other ways in, as matching paper cards beside the ticket: the online room (ui/room.ts listens on
+             #playOnline; "Each on your own device" in How? opens the same room), and Send in a clip (#screen-submit). -->
+        <button type="button" class="send-card start-door" id="playOnline" aria-describedby="playOnlineText">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <svg class="ico start-door-ico" aria-hidden="true"><use href="#ico-online" /></svg>
+          <b class="send-card-name">Play online</b>
+          <span class="send-card-text" id="playOnlineText">Each on your own phone or laptop. Make a room or join one with a code.</span>
+        </button>
+        <button type="button" class="send-card start-door" id="submitOpen" aria-describedby="sendInviteText">
           <span class="washi w-dots" aria-hidden="true"></span>
+          <svg class="ico start-door-ico" aria-hidden="true"><use href="#ico-send" /></svg>
           <b class="send-card-name">Send in a clip</b>
-          <span class="send-card-text" id="sendInviteText">Got a dance or a trick on your phone? Everyone gets to play it.</span>
+          <span class="send-card-text" id="sendInviteText">Got a dance on your phone? Add it to the library.</span>
         </button>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>

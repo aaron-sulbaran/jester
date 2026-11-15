@@ -314,6 +314,13 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 .send-card-name { font: 700 32px/1 var(--hand); letter-spacing: -.045em; }
 .send-card-text { font: 700 20px/1.2 var(--hand); letter-spacing: -.03em; color: var(--pen); }
 .send-card:hover { transform: translateY(-2px) rotate(-.6deg); box-shadow: 7px 9px 0 var(--shade); }
+/* Play online and Send in a clip: two matching cards, each with its icon at the left in place of the punched hole. */
+.start-door { grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; padding-left: 18px; align-self: stretch; }
+.start-door::before { display: none; }
+.start-door .start-door-ico { grid-row: 1 / 3; width: 46px; height: 46px; }
+.start-door .send-card-name, .start-door .send-card-text { grid-column: 2; }
+#playOnline { rotate: -.5deg; }
+.start-door .washi { top: -9px; }
 .send-card:active { transform: translateY(2px); box-shadow: 1px 1px 0 var(--shade); }
 #startActions { justify-content: flex-start; gap: 18px; }
 
@@ -339,24 +346,23 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
   /* Room for the Send in a clip card's tape under the library's last row. */
   #startFoot { flex-wrap: nowrap; margin-top: 10px; }
   #startActions { flex-wrap: nowrap; }
-  .send-card { flex: 0 1 420px; min-width: 260px; }
+  .send-card { flex: 1 1 0; min-width: 0; max-width: 450px; }
   /* The ticket keeps a short name on one line; the Send in a clip card gives way first. */
   #startActions { flex: 0 0 auto; }
   #play .ticket-text { max-width: 14em; text-wrap: balance; }
-  #playOnline { white-space: nowrap; }
 }
 /* Short laptop screens (1024 by 768): everything above the library a little tighter, so a whole row of clips and the
    Play ticket still fit with How? showing. */
 @media (min-width: 761px) and (max-height: 820px) {
-  #screen-start { padding-top: 8px; padding-bottom: 12px; row-gap: 8px; }
+  #screen-start { padding-top: 6px; padding-bottom: 10px; row-gap: 6px; }
   #screen-start .masthead { padding-top: 14px; gap: 2px; }
   #screen-start .wordmark { font-size: clamp(52px, min(7.5vw, 8vh), 96px); padding-bottom: 2px; }
   #screen-start .masthead .note { --lh: 28px; font-size: 22px; padding: 12px 20px 6px 50px; }
   .start-how, .start-says { font-size: 14px; line-height: 1.3; }
-  #startMode { row-gap: 6px; }
+  #startMode { row-gap: 4px; }
   #screen-start .mode { min-height: 46px; padding: 6px 14px 8px; }
   .start-pick .chip { min-height: 40px; padding-top: 5px; padding-bottom: 5px; }
-  #startFoot { margin-top: 10px; }
+  #startFoot { margin-top: 20px; }
   /* Cards stop holding a second line for every name, so a whole row fits. */
   #bank .clip-name { min-height: 0; font-size: 20px; }
   .btn-main .ticket { min-height: 74px; }
@@ -364,10 +370,11 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 @media (min-width: 761px) and (max-width: 1180px) {
   #libraryHead { row-gap: 6px; }
   #libraryHead .library-find { flex-basis: 100%; justify-content: flex-start; margin: 0; }
-  .send-card { padding-left: 46px; }
-  .send-card::before { left: 17px; }
-  .send-card-name { font-size: 28px; }
-  .send-card-text { font-size: 18px; }
+  .send-card { padding: 10px 14px 12px; }
+  .send-card-name { font-size: 26px; }
+  .send-card-text { font-size: 16px; }
+  .start-door { column-gap: 10px; }
+  .start-door .start-door-ico { width: 38px; height: 38px; }
 }
 
 /* Its own screen: how it works as four steps, then one form card. On laptops the fields fill its left half and
@@ -861,3 +868,18 @@ body[data-screen="turn"] #clipReady { display: none; }
 /* Start over stays one line beside its loop; a little smaller on a phone so it fits a 320 px screen. */
 .restart .btn-quiet { white-space: nowrap; }
 @media (max-width: 760px) { .restart .btn-quiet { font-size: 20px; } }
+
+/* ---------- The start screen's drifting props (#homeDrift) ---------- */
+/* Paper stickers beside the title, each bobbing on its own slow clock so they never move in step. Behind the
+   content, laptop widths only, start screen only. Still under prefers-reduced-motion and Calm motion (body.calm). */
+#screen-start { position: relative; isolation: isolate; }
+.home-drift { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.drift-prop { position: absolute; width: var(--s); height: var(--s); overflow: visible; rotate: var(--r); filter: url(#die-cut); }
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.calm) .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
+}
+@keyframes home-drift {
+  from { translate: -4px -10px; transform: rotate(-4deg); }
+  to { translate: 5px 10px; transform: rotate(5deg); }
+}
+@media (max-width: 1100px) { .home-drift { display: none !important; } }

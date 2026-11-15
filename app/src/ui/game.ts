@@ -307,7 +307,9 @@ export function initGame(deps: GameDeps) {
     const look = getComputedStyle(bankBox);
     const gap = parseFloat(look.rowGap) || 0;
     const pad = (parseFloat(look.paddingTop) || 0) + (parseFloat(look.paddingBottom) || 0);
-    const row = first.offsetHeight + gap;
+    // The tallest card in the first row sets the row (a name on two lines makes its card taller).
+    const firstRow = [...bankBox.querySelectorAll<HTMLElement>(".clip")].filter((c) => c.offsetTop === first.offsetTop);
+    const row = Math.max(...firstRow.map((c) => c.offsetHeight)) + gap;
     const rows = Math.max(1, Math.floor((bankBox.clientHeight - pad + gap) / row));
     bankBox.style.maxHeight = `${rows * row - gap + pad}px`;
     start.dataset.library = "fitted";
