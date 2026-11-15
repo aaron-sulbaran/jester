@@ -2,7 +2,7 @@
 // game runs end to end before Aaron's look (app/src/ui/) replaces it. The game itself is in blind.ts.
 
 import type { BodyPart } from "../../engine/src/index.ts";
-import { demoScene, runBlindGame, videoScene, type BlindDeps, type BlindUi, type Scene } from "./blind.ts";
+import { demoScene, dribbleScene, runBlindGame, videoScene, type BlindDeps, type BlindUi, type Scene } from "./blind.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const show = (id: string, on: boolean) => $(id).classList.toggle("hidden", !on);
@@ -49,6 +49,7 @@ export function initBlindScreens(deps: ScreenDeps) {
     $<HTMLButtonElement>("blindDeal").disabled = false;
   };
   $("blindDemo").addEventListener("click", () => sceneReady(demoScene()));
+  $("blindDribble").addEventListener("click", () => sceneReady(dribbleScene()));
   $("blindFile").addEventListener("change", async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -69,7 +70,7 @@ export function initBlindScreens(deps: ScreenDeps) {
       show("turnStart", false); show("turnPartRow", false);
       $("turnTitle").textContent = `${player.name}'s turn`;
       $("turnText").textContent = `${previous ? `Done, ${previous.name}. Your score stays secret until the reveal. ` : ""}Pass the laptop to ${player.name}. Everyone else, look away from the screen.`;
-      $("turnReveal").textContent = `I'm ${player.name}: show my role`;
+      $("turnReveal").textContent = `I'm ${player.name}: show me`;
       show("turnReveal", true);
       await click("turnReveal");
     },
