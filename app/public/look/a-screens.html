@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester, Parlor Cards</title>
+<style>
+@font-face { font-family: "Young Serif"; src: url("fonts/young-serif.woff2") format("woff2"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Schibsted Grotesk"; src: url("fonts/schibsted-grotesk.woff2") format("woff2"); font-weight: 400 900; font-display: block; }
+
+/* Parlor Cards. The table is ink blue felt; everything you hold is a card. Colours are the flat inks of an
+   old printed deck. Players: Lisa red, Alex blue, Aaron gold. */
+:root {
+  --table: #1C2C66;
+  --table-deep: #15214F;
+  --card: #F3ECDF;
+  --card-edge: #E2D6C1;
+  --ink: #1D1B19;
+  --red: #CC3326;
+  --blue: #2F55C8;
+  --gold: #E8B931;
+  --sky: #A9C4E6;
+  --leaf: #3D8B5F;
+  --display: "Young Serif", Georgia, serif;
+  --text: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --r-card: 14px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font: 500 17px/1.45 var(--text); color: var(--card); background-color: var(--table);
+  /* Felt: a fine noise, the only texture in the direction. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.screen { min-height: 100vh; min-height: 100dvh; padding: 28px 40px; display: grid; }
+.screen[hidden] { display: none; }
+svg { display: block; }
+
+/* ---------- Shared pieces ---------- */
+.wordmark { font: 400 clamp(64px, 8.4vw, 132px)/.86 var(--display); letter-spacing: -.02em; margin: 0; color: var(--card); }
+.voice { font: 400 clamp(20px, 1.9vw, 27px)/1.25 var(--display); color: var(--card); max-width: 22ch; margin: 18px 0 0; }
+.voice small { display: block; font: 500 16px/1.4 var(--text); color: #C9CFE6; margin-top: 8px; }
+
+.btn {
+  min-height: 52px; padding: 0 26px; border-radius: 999px; border: 0;
+  font: 650 18px/1 var(--text); letter-spacing: .005em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+}
+.btn-main { background: var(--red); color: var(--card); box-shadow: 0 3px 0 #8E1F16; }
+.btn-main:hover { transform: translateY(-2px); box-shadow: 0 5px 0 #8E1F16; }
+.btn-main:active { transform: translateY(1px); box-shadow: 0 1px 0 #8E1F16; }
+.btn-quiet { background: transparent; color: var(--card); box-shadow: inset 0 0 0 2px #F3ECDF66; }
+.btn-quiet:hover { box-shadow: inset 0 0 0 2px var(--card); }
+
+/* A card: stock, a thin inner rule, corner indices. */
+.card {
+  position: relative; background: var(--card); color: var(--ink); border-radius: var(--r-card);
+  box-shadow: 0 1px 0 var(--card-edge), 0 18px 30px -16px #0009;
+}
+.card::after { content: ""; position: absolute; inset: 7px; border: 1.5px solid #1D1B1933; border-radius: 9px; pointer-events: none; }
+.idx { position: absolute; font: 400 26px/1 var(--display); color: var(--ink); text-align: center; }
+.idx small { display: block; font: 600 10.5px/1.1 var(--text); letter-spacing: .02em; margin-top: 3px; }
+.idx.tl { top: 14px; left: 15px; }
+.idx.br { bottom: 14px; right: 15px; transform: rotate(180deg); }
+
+/* ---------- Start ---------- */
+#start { grid-template-columns: minmax(320px, 0.9fr) 1.6fr; grid-template-rows: 1fr auto; column-gap: 48px; align-items: center; }
+.start-left { align-self: center; }
+.start-left .more { margin-top: 38px; display: grid; gap: 12px; max-width: 360px; }
+.more button {
+  display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 14px; text-align: left;
+  min-height: 60px; padding: 8px 18px 8px 10px; border-radius: 12px; border: 0;
+  background: var(--table-deep); color: var(--card); box-shadow: inset 0 0 0 1.5px #F3ECDF33;
+}
+.more button:hover { box-shadow: inset 0 0 0 1.5px #F3ECDFAA; }
+.more b { font-weight: 650; display: block; }
+.more span { font-size: 14px; color: #C9CFE6; }
+.more svg { width: 40px; height: 40px; }
+
+.seat { display: flex; align-items: center; gap: 14px; margin-top: 26px; cursor: pointer; max-width: 360px; }
+.seat input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.track { flex: none; width: 54px; height: 32px; border-radius: 99px; background: var(--table-deep); box-shadow: inset 0 0 0 1.5px #F3ECDF55; position: relative; transition: background .2s var(--ease); }
+.track::after { content: ""; position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 50%; background: var(--card); transition: transform .22s var(--ease); }
+.seat input:checked + .track { background: var(--gold); }
+.seat input:checked + .track::after { transform: translateX(22px); background: var(--ink); }
+.seat input:focus-visible + .track { outline: 3px solid var(--gold); outline-offset: 3px; }
+.seat b { display: block; font-weight: 650; }
+.seat span { font-size: 14px; color: #C9CFE6; }
+
+.deal { position: relative; height: min(64vh, 560px); display: flex; justify-content: center; align-items: flex-end; padding-bottom: 20px; }
+.clip {
+  --rot: 0deg; --lift: 0px;
+  width: clamp(190px, 15vw, 236px); aspect-ratio: 5 / 7.4; margin: 0 -26px; padding: 0; border: 0;
+  transform: translateY(var(--lift)) rotate(var(--rot)); transform-origin: 50% 120%;
+  transition: transform .3s var(--ease); display: block; text-align: left;
+}
+.clip:nth-child(1) { --rot: -11deg; --lift: 34px; }
+.clip:nth-child(2) { --rot: -3.5deg; --lift: -6px; z-index: 3; }
+.clip:nth-child(3) { --rot: 4deg; --lift: 8px; z-index: 2; }
+.clip:nth-child(4) { --rot: 11deg; --lift: 40px; z-index: 1; }
+.clip:hover { --lift: -14px; }
+.clip[aria-pressed="true"] { --lift: -38px; z-index: 4; box-shadow: 0 0 0 4px var(--gold), 0 26px 40px -18px #000c; }
+.clip .art { position: absolute; left: 18px; right: 18px; top: 46px; bottom: 94px; border-radius: 80px 80px 6px 6px; overflow: hidden; background: var(--sky); }
+.clip .art svg { width: 100%; height: 100%; }
+.clip h3 { position: absolute; left: 20px; right: 20px; bottom: 44px; margin: 0; font: 400 25px/1 var(--display); text-align: center; }
+.clip p { position: absolute; left: 16px; right: 16px; bottom: 22px; margin: 0; font: 550 12.5px/1.2 var(--text); text-align: center; color: #5A544C; }
+.start-cta { grid-column: 2; justify-self: center; display: flex; align-items: center; gap: 18px; margin-top: 8px; }
+.start-cta .btn-main { min-height: 62px; padding: 0 40px; font-size: 21px; }
+.start-cta span { color: #C9CFE6; font-size: 15px; }
+
+/* ---------- Play ---------- */
+#play { grid-template-columns: 300px 1fr; grid-template-rows: auto 1fr auto; column-gap: 36px; row-gap: 18px; }
+.turns { grid-column: 1 / -1; display: flex; align-items: center; gap: 22px; }
+.turns h2 { margin: 0; font: 400 34px/1 var(--display); }
+.turns .of { color: #C9CFE6; font-size: 15px; margin-right: auto; }
+.chips { display: flex; gap: 10px; }
+.chip { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 14px 0 6px; border-radius: 99px; background: var(--table-deep); font-weight: 600; font-size: 15px; color: #C9CFE6; }
+.chip i { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; }
+.chip.done i { background: #F3ECDF22; }
+.chip.now { background: var(--card); color: var(--ink); }
+.chip.now i { background: var(--gold); }
+.role { align-self: start; padding: 18px; aspect-ratio: 5 / 7.6; display: flex; flex-direction: column; }
+.role .art { margin: 30px 6px 0; flex: 1; border-radius: 90px 90px 6px 6px; background: var(--table); display: grid; place-items: center; overflow: hidden; }
+.role .art svg { width: 82%; }
+.role h3 { margin: 18px 0 2px; font: 400 32px/1 var(--display); text-align: center; }
+.role p { margin: 0 0 22px; text-align: center; font-size: 14px; color: #5A544C; font-weight: 550; }
+.role-note { margin-top: 16px; font: 400 21px/1.3 var(--display); }
+.role-note small { display: block; font: 500 15px/1.4 var(--text); color: #C9CFE6; margin-top: 6px; }
+.camera { position: relative; min-height: 0; align-self: stretch; padding: 12px; }
+.camera .feed { position: relative; height: 100%; border-radius: 9px; overflow: hidden; background: #2A3350; }
+.camera .feed svg { width: 100%; height: 100%; }
+.camera .idx { color: var(--ink); z-index: 2; }
+.camera .idx.tl { top: 18px; left: 22px; } .camera .idx.br { bottom: 18px; right: 22px; }
+.count { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.count span {
+  width: 190px; height: 190px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card); color: var(--ink); font: 400 130px/1 var(--display); padding-bottom: 12px;
+  box-shadow: 0 0 0 10px #F3ECDF44, 0 20px 40px -10px #000a;
+}
+.hint { grid-column: 2; display: flex; justify-content: space-between; align-items: center; color: #C9CFE6; font-size: 15px; }
+.hint b { color: var(--card); font-weight: 650; }
+.fit { display: flex; align-items: center; gap: 10px; }
+.fit .bar { width: 160px; height: 8px; border-radius: 9px; background: #F3ECDF22; overflow: hidden; }
+.fit .bar i { display: block; width: 18%; height: 100%; background: var(--gold); }
+
+/* ---------- Reveal ---------- */
+#reveal { grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr auto; column-gap: 36px; row-gap: 18px; align-content: start; }
+.reveal-head { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 20px; }
+.reveal-head h2 { margin: 0; font: 400 34px/1 var(--display); }
+.reveal-head p { margin: 0; color: #C9CFE6; }
+.film { padding: 12px; align-self: start; }
+.film .scene { border-radius: 9px; overflow: hidden; aspect-ratio: 16 / 9; background: var(--sky); }
+.film .scene svg { width: 100%; height: 100%; }
+.controls { display: flex; align-items: center; gap: 14px; padding: 12px 6px 2px; color: var(--ink); }
+.controls button { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--ink); display: grid; place-items: center; }
+.controls .line { flex: 1; height: 6px; border-radius: 9px; background: #1D1B1922; position: relative; }
+.controls .line i { position: absolute; inset: 0 auto 0 0; width: 46%; background: var(--red); border-radius: 9px; }
+.controls .line i::after { content: ""; position: absolute; right: -7px; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: var(--red); }
+.controls time { font: 600 14px/1 var(--text); font-variant-numeric: tabular-nums; color: #5A544C; }
+.scores { display: grid; gap: 14px; align-content: start; }
+.score { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; gap: 14px; padding: 14px 18px 14px 14px; min-height: 92px; }
+.score::after { inset: 6px; }
+.score .rank { font: 400 30px/1 var(--display); text-align: center; }
+.score .who b { display: block; font: 400 25px/1.05 var(--display); }
+.score .who span { font-size: 14px; color: #5A544C; font-weight: 550; }
+.score .pts { font: 400 46px/1 var(--display); font-variant-numeric: tabular-nums; }
+.score .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.score.win { box-shadow: 0 0 0 4px var(--gold), 0 18px 30px -16px #0009; }
+.verdict { font: 400 22px/1.3 var(--display); margin: 6px 0 0; }
+.ends { grid-column: 1 / -1; display: flex; gap: 14px; justify-content: flex-end; align-items: center; }
+.ends .btn-main { min-height: 60px; padding: 0 36px; font-size: 20px; }
+
+/* ---------- Motion: one moment per screen ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .clip { animation: deal .7s var(--ease) both; }
+  .clip:nth-child(1) { animation-delay: .05s; } .clip:nth-child(2) { animation-delay: .14s; }
+  .clip:nth-child(3) { animation-delay: .23s; } .clip:nth-child(4) { animation-delay: .32s; }
+  @keyframes deal { from { transform: translate(0, 60vh) rotate(0deg); opacity: 0; } }
+  .count span { animation: flip 1s var(--ease) infinite; }
+  @keyframes flip { 0% { transform: rotateY(90deg) scale(.9); } 22%, 80% { transform: rotateY(0) scale(1); } 100% { transform: scale(1.04); opacity: .9; } }
+  .score { animation: turn .6s var(--ease) both; transform-origin: 50% 50%; }
+  .score:nth-child(1) { animation-delay: .5s; } .score:nth-child(2) { animation-delay: .7s; } .score:nth-child(3) { animation-delay: .9s; }
+  @keyframes turn { from { transform: rotateY(-90deg); opacity: 0; } }
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  .screen { padding: 18px 16px 24px; }
+  #start { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; row-gap: 0; align-content: start; }
+  .wordmark { font-size: 68px; }
+  .voice { font-size: 21px; margin-top: 10px; }
+  .deal { height: auto; margin: 22px -16px 0; padding: 26px 16px 20px; justify-content: flex-start; align-items: stretch; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; }
+  .clip, .clip:nth-child(n) { --rot: 0deg; --lift: 0px; flex: none; width: 168px; margin: 0; scroll-snap-align: start; }
+  .clip[aria-pressed="true"] { --lift: -10px; }
+  .clip .art { top: 38px; bottom: 82px; left: 14px; right: 14px; }
+  .clip h3 { font-size: 21px; bottom: 40px; }
+  .clip p { font-size: 11.5px; bottom: 18px; }
+  .start-cta { grid-column: 1; grid-row: auto; justify-self: stretch; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 6px; order: 3; }
+  .start-cta span { text-align: center; }
+  .start-left { display: contents; }
+  .start-left .more { order: 4; margin-top: 22px; max-width: none; }
+  .seat { order: 5; max-width: none; }
+  .deal { order: 2; }
+
+  #play { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; row-gap: 14px; align-content: start; }
+  .turns { flex-wrap: wrap; gap: 6px 12px; }
+  .turns h2 { font-size: 28px; }
+  .chips { width: 100%; order: 3; }
+  .chip { flex: 1; justify-content: center; padding: 0 10px 0 4px; font-size: 14px; }
+  .camera { aspect-ratio: 3 / 4; order: 2; }
+  .count span { width: 120px; height: 120px; font-size: 82px; padding-bottom: 8px; }
+  .camera .idx { font-size: 20px; }
+  .role { order: 3; aspect-ratio: auto; flex-direction: row; align-items: center; gap: 14px; padding: 12px 14px; }
+  .role .art { margin: 0; flex: none; width: 92px; height: 92px; border-radius: 46px 46px 6px 6px; }
+  .role .idx { display: none; }
+  .role h3 { margin: 0; font-size: 26px; text-align: left; }
+  .role p { margin: 2px 0 0; text-align: left; }
+  .role-note { order: 4; margin-top: 0; font-size: 19px; }
+  .hint { grid-column: 1; order: 5; flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  #reveal { grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
+  .reveal-head { flex-direction: column; gap: 4px; }
+  .reveal-head h2 { font-size: 28px; }
+  .film { padding: 8px; }
+  .score { min-height: 76px; grid-template-columns: 40px 1fr auto; }
+  .score .pts { font-size: 38px; }
+  .ends { flex-direction: column-reverse; align-items: stretch; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- An outer outline of any shape: grow the alpha, cut the shape out of it, paint it card white. -->
+    <filter id="outline" x="-10%" y="-10%" width="120%" height="120%">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="grown" />
+      <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+      <feFlood flood-color="#F3ECDF" />
+      <feComposite in2="ring" operator="in" />
+    </filter>
+    <!-- A cutout glued into the clip: card white border, ink edge, hard shadow. -->
+    <filter id="cut" x="-15%" y="-15%" width="130%" height="130%">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="9" result="edge" />
+      <feMorphology in="SourceAlpha" operator="dilate" radius="7" result="border" />
+      <feOffset in="edge" dx="6" dy="8" result="shadowA" />
+      <feFlood flood-color="#1D1B19" flood-opacity=".35" /><feComposite in2="shadowA" operator="in" result="shadow" />
+      <feFlood flood-color="#1D1B19" /><feComposite in2="edge" operator="in" result="edgeInk" />
+      <feFlood flood-color="#F3ECDF" /><feComposite in2="border" operator="in" result="borderCard" />
+      <feMerge><feMergeNode in="shadow" /><feMergeNode in="edgeInk" /><feMergeNode in="borderCard" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<!-- ================= Start ================= -->
+<main class="screen" id="start" data-screen="start">
+  <div class="start-left">
+    <div>
+      <h1 class="wordmark">Jester</h1>
+      <p class="voice">Pick a clip. I'll give each of you a part from it, in secret.</p>
+    </div>
+    <div class="more">
+      <button type="button">
+        <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="6" y="9" width="28" height="22" rx="4" fill="none" stroke="#F3ECDF" stroke-width="2.5"/><path d="M17 15 L25 20 L17 25 Z" fill="#E8B931"/></svg>
+        <div><b>Upload a video</b><span>Any short clip with people or things in it</span></div>
+      </button>
+      <button type="button">
+        <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="13" fill="none" stroke="#F3ECDF" stroke-width="2.5"/><circle cx="20" cy="20" r="6.5" fill="#CC3326"/></svg>
+        <div><b>Record one now</b><span>Film a friend, then everyone copies it</span></div>
+      </button>
+    </div>
+    <label class="seat">
+      <input type="checkbox" />
+      <span class="track" aria-hidden="true"></span>
+      <div><b>Playing seated</b><span>Only your upper body is scored.</span></div>
+    </label>
+  </div>
+
+  <div class="deal" role="group" aria-label="Starter clips">
+    <button type="button" class="card clip" aria-pressed="false">
+      <span class="idx tl">2<small>parts</small></span>
+      <div class="art"><svg viewBox="0 0 200 220"><rect width="200" height="220" fill="#A9C4E6"/><rect y="170" width="200" height="50" fill="#3D8B5F"/>
+        <svg x="18" y="58" width="80" height="120" viewBox="0 0 200 300" style="color:#CC3326"><use href="art.svg#throw"/></svg>
+        <svg x="102" y="58" width="80" height="120" viewBox="0 0 200 300" style="color:#2F55C8"><g transform="translate(200 0) scale(-1 1)"><use href="art.svg#throw"/></g></svg></svg></div>
+      <h3>Handshake</h3><p>Two people</p>
+    </button>
+    <button type="button" class="card clip" aria-pressed="true">
+      <span class="idx tl">3<small>parts</small></span>
+      <div class="art"><svg viewBox="0 0 200 220"><rect width="200" height="220" fill="#A9C4E6"/><circle cx="170" cy="40" r="18" fill="#E8B931"/><rect y="176" width="200" height="44" fill="#3D8B5F"/>
+        <svg x="6" y="70" width="74" height="111" viewBox="0 0 200 300" style="color:#CC3326"><use href="art.svg#throw"/></svg>
+        <svg x="104" y="58" width="22" height="22" viewBox="0 0 100 100" style="color:#E8B931;--seam:#F3ECDF"><use href="art.svg#ball"/></svg>
+        <svg x="96" y="128" width="96" height="58" viewBox="0 0 300 180" style="color:#1D1B19"><use href="art.svg#dog"/></svg></svg></div>
+      <h3>Fetch</h3><p>A thrower, a dog, a ball</p>
+    </button>
+    <button type="button" class="card clip" aria-pressed="false">
+      <span class="idx tl">1<small>part</small></span>
+      <div class="art"><svg viewBox="0 0 200 220"><rect width="200" height="220" fill="#A9C4E6"/><rect y="176" width="200" height="44" fill="#3D8B5F"/>
+        <path d="M30 170 Q60 40 100 120 Q130 60 170 170" fill="none" stroke="#1D1B19" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+        <svg x="84" y="86" width="34" height="34" viewBox="0 0 100 100" style="color:#CC3326;--seam:#F3ECDF"><use href="art.svg#ball"/></svg></svg></div>
+      <h3>Bounce</h3><p>A ball</p>
+    </button>
+    <button type="button" class="card clip" aria-pressed="false">
+      <span class="idx tl">1<small>part</small></span>
+      <div class="art"><svg viewBox="0 0 200 220"><rect width="200" height="220" fill="#A9C4E6"/><rect y="176" width="200" height="44" fill="#3D8B5F"/>
+        <svg x="52" y="40" width="96" height="144" viewBox="0 0 200 300" style="color:#2F55C8"><use href="art.svg#throw"/></svg></svg></div>
+      <h3>Wave</h3><p>A person</p>
+    </button>
+  </div>
+
+  <div class="start-cta">
+    <button type="button" class="btn btn-main">Play Fetch</button>
+    <span>3 players, about a minute each</span>
+  </div>
+</main>
+
+<!-- ================= Blind play ================= -->
+<main class="screen" id="play" data-screen="play">
+  <div class="turns">
+    <h2>Aaron's turn</h2>
+    <span class="of">3 of 3</span>
+    <div class="chips" aria-label="Turns">
+      <span class="chip done"><i><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7.5 L5.5 11 L12 3.5" fill="none" stroke="#F3ECDF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Lisa</span>
+      <span class="chip done"><i><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7.5 L5.5 11 L12 3.5" fill="none" stroke="#F3ECDF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Alex</span>
+      <span class="chip now"><i></i>Aaron</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="card role">
+      <span class="idx tl">3<small>of 3</small></span>
+      <div class="art"><svg viewBox="-20 -20 340 220" style="color:#E8B931"><use href="art.svg#dog" filter="url(#outline)"/></svg></div>
+      <h3>The dog</h3>
+      <p>Your secret part</p>
+    </div>
+    <p class="role-note">You are the dog. Don't tell anyone.<small>Everyone else, look away from the screen.</small></p>
+  </div>
+
+  <div class="card camera">
+    <div class="feed">
+      <svg viewBox="0 0 960 720" preserveAspectRatio="xMidYMid slice" aria-label="Your camera, with the dog's outline to fit into">
+        <rect width="960" height="720" fill="#2A3350"/>
+        <rect y="560" width="960" height="160" fill="#20284A"/>
+        <rect x="620" y="80" width="230" height="270" rx="4" fill="#6F86B8"/>
+        <path d="M735 80 V350 M620 215 H850" stroke="#2A3350" stroke-width="10"/>
+        <path d="M120 560 V250" stroke="#151B33" stroke-width="8"/><path d="M80 250 H160 L140 200 H100 Z" fill="#C9B27A" opacity=".75"/>
+        <ellipse cx="120" cy="300" rx="120" ry="80" fill="#C9B27A" opacity=".08"/>
+        <svg x="250" y="130" width="450" height="600" viewBox="0 0 300 400" style="color:#11162B"><g transform="translate(300 0) scale(-1 1)"><use href="art.svg#player"/></g></svg>
+        <svg x="160" y="380" width="600" height="360" viewBox="-12 -12 324 204" style="color:#F3ECDF">
+          <use href="art.svg#dog" opacity=".12"/>
+          <use href="art.svg#dog" filter="url(#outline)"/>
+        </svg>
+      </svg>
+      <div class="count" aria-live="polite"><span>3</span></div>
+    </div>
+    <span class="idx tl">3</span><span class="idx br">3</span>
+  </div>
+
+  <div class="hint">
+    <span><b>Get inside the outline.</b> Move when it moves.</span>
+    <span class="fit">In the outline <span class="bar"><i></i></span></span>
+  </div>
+</main>
+
+<!-- ================= Reveal and results ================= -->
+<main class="screen" id="reveal" data-screen="reveal">
+  <div class="reveal-head">
+    <h2>Here's what you were.</h2>
+    <p>Fetch, played by Lisa, Alex and Aaron</p>
+  </div>
+
+  <div class="card film">
+    <div class="scene">
+      <svg viewBox="0 0 1600 900" aria-label="The Fetch clip with each player standing where their part was">
+        <rect width="1600" height="900" fill="#A9C4E6"/>
+        <circle cx="1390" cy="150" r="74" fill="#E8B931"/>
+        <path d="M0 700 Q300 600 640 660 T1300 640 T1600 660 V900 H0 Z" fill="#7FB08C"/>
+        <path d="M0 760 H1600 V900 H0 Z" fill="#3D8B5F"/>
+        <rect x="1470" y="420" width="34" height="360" fill="#1D1B19"/>
+        <circle cx="1490" cy="380" r="120" fill="#2E6E4A"/><circle cx="1400" cy="440" r="80" fill="#2E6E4A"/>
+        <path d="M480 420 Q700 120 900 260" fill="none" stroke="#1D1B19" stroke-width="5" stroke-dasharray="3 16" stroke-linecap="round" opacity=".5"/>
+        <svg x="230" y="350" width="280" height="420" viewBox="0 0 200 300" style="color:#CC3326" filter="url(#cut)"><use href="art.svg#throw"/></svg>
+        <svg x="840" y="200" width="160" height="160" viewBox="0 0 160 160" style="color:#2F55C8" filter="url(#cut)"><use href="art.svg#tuck"/></svg>
+        <svg x="1050" y="560" width="330" height="198" viewBox="0 0 300 180" style="color:#E8B931" filter="url(#cut)"><use href="art.svg#crawl"/></svg>
+        <g font-family="Schibsted Grotesk, sans-serif" font-weight="650" font-size="30">
+          <g transform="translate(250 300)"><rect width="168" height="52" rx="26" fill="#1D1B19"/><text x="22" y="35" fill="#F3ECDF">Lisa 91</text></g>
+          <g transform="translate(1010 200)"><rect width="176" height="52" rx="26" fill="#1D1B19"/><text x="22" y="35" fill="#F3ECDF">Alex 64</text></g>
+          <g transform="translate(1110 490)"><rect width="198" height="52" rx="26" fill="#1D1B19"/><text x="22" y="35" fill="#F3ECDF">Aaron 82</text></g>
+        </g>
+      </svg>
+    </div>
+    <div class="controls">
+      <button type="button" aria-label="Pause"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="2" width="3.5" height="12" rx="1" fill="#F3ECDF"/><rect x="9.5" y="2" width="3.5" height="12" rx="1" fill="#F3ECDF"/></svg></button>
+      <div class="line"><i></i></div>
+      <time>0:04 / 0:09</time>
+    </div>
+  </div>
+
+  <div>
+    <div class="scores">
+      <div class="card score win"><span class="rank">1</span><div class="who"><b>Lisa</b><span><i class="dot" style="background:#CC3326"></i>the thrower</span></div><span class="pts">91</span></div>
+      <div class="card score"><span class="rank">2</span><div class="who"><b>Aaron</b><span><i class="dot" style="background:#E8B931"></i>the dog</span></div><span class="pts">82</span></div>
+      <div class="card score"><span class="rank">3</span><div class="who"><b>Alex</b><span><i class="dot" style="background:#2F55C8"></i>the ball</span></div><span class="pts">64</span></div>
+    </div>
+    <p class="verdict">Lisa wins. Alex, that was a brave ball.</p>
+  </div>
+
+  <div class="ends">
+    <button type="button" class="btn btn-quiet">Play again</button>
+    <button type="button" class="btn btn-main">Send this to someone</button>
+  </div>
+</main>
+
+<script>
+  const s = new URLSearchParams(location.search).get("s");
+  if (s) for (const m of document.querySelectorAll("[data-screen]")) m.hidden = m.dataset.screen !== s;
+  for (const b of document.querySelectorAll(".clip")) b.addEventListener("click", () => {
+    for (const o of document.querySelectorAll(".clip")) o.setAttribute("aria-pressed", String(o === b));
+    document.querySelector(".start-cta .btn-main").textContent = "Play " + b.querySelector("h3").textContent;
+  });
+</script>
+</body>
+</html>
