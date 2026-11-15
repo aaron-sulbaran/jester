@@ -356,10 +356,11 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
 .crown-head .drum { width: 120px; height: 110px; }
 .crown-head .drum i { height: 70px; }
 .crown-head .drum b { height: 70px; }
-.crown-wrap { width: min(100%, 1180px, calc((100vh - 460px) * 16 / 9 + 140px)); width: min(100%, 1180px, calc((100dvh - 460px) * 16 / 9 + 140px)); }
+/* max(320px, ...): in a short window the calc went to nothing and the jesters piled up on one spot. */
+.crown-wrap { width: min(100%, 1180px, max(320px, calc((100vh - 460px) * 16 / 9 + 140px))); width: min(100%, 1180px, max(320px, calc((100dvh - 460px) * 16 / 9 + 140px))); }
 .crown-stage { background: #2E4593 linear-gradient(transparent 82%, #93613A 82%); }
 .cast-row { position: absolute; inset: 2% 6% 3%; display: flex; align-items: flex-end; justify-content: space-evenly; gap: 2%; }
-.cast-slot { margin: 0; flex: 1 1 0; max-width: min(40%, 72vh); display: grid; justify-items: center; gap: 2px; transition: transform .5s var(--ease), opacity .5s var(--ease); }
+.cast-slot { margin: 0; flex: 1 1 0; min-width: 110px; max-width: min(40%, 72vh); display: grid; justify-items: center; gap: 2px; transition: transform .5s var(--ease), opacity .5s var(--ease); }
 .crown-stage .cast-slot .face-jester { position: static; inset: auto; width: 100%; height: auto; aspect-ratio: 1; filter: url(#sticker); }
 .cast-slot .tape { font-size: clamp(18px, 2.2vw, 28px); padding: 4px 16px 6px 12px; background-color: color-mix(in srgb, var(--who) 50%, #EADDB9); }
 /* The spotlight: the stage goes dark except one soft circle of light that moves. */
