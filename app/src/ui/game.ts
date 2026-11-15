@@ -724,9 +724,37 @@ export function initGame(deps: GameDeps) {
 
   // ---- Results ----
 
-  /** The podium's animated jesters, stopped when the results screen is left. */
+  /** The podium's animated jesters and the looping reveal video, stopped when the results screen is left. */
   let podiumJesters: FaceJester[] = [];
-  const stopPodium = () => { for (const j of podiumJesters) j.stop(); podiumJesters = []; };
+  const stopPodium = () => {
+    for (const j of podiumJesters) j.stop();
+    podiumJesters = [];
+    // The video loops with its sound: without this it keeps playing under the next game.
+    $<HTMLVideoElement>("resultsVideo").pause();
+  };
+
+  /**
+   * Starts the reveal video on the results: with its sound, or muted where the browser will not allow sound
+   * yet (the controls can unmute it). The recording normally has its length written in (cutout.ts); if it
+   * does not, one jump to the end makes the browser find it, so the seek bar still works.
+   */
+  async function playResultsVideo(video: HTMLVideoElement) {
+    const src = video.src;
+    const findLength = () => {
+      if (video.src !== src || Number.isFinite(video.duration)) return;
+      const back = () => {
+        if (!Number.isFinite(video.duration)) return;
+        video.removeEventListener("durationchange", back);
+        if (video.src === src) video.currentTime = 0;
+      };
+      video.addEventListener("durationchange", back);
+      video.currentTime = 1e9;
+    };
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) findLength();
+    else video.addEventListener("loadedmetadata", findLength, { once: true });
+    // Straight away, still inside the click on "See the scores", so browsers that want a click allow the sound.
+    await playWithSound(video);
+  }
 
   function showResults() {
     stopPodium();
@@ -764,13 +792,7 @@ export function initGame(deps: GameDeps) {
       video.hidden = false;
       save.href = videoUrl;
       save.hidden = false;
-      // Recorded WebM has no length in its header: jump far ahead once so the seek bar works, then back.
-      video.addEventListener("loadedmetadata", () => {
-        if (video.duration !== Infinity) return;
-        video.currentTime = 1e9;
-        video.addEventListener("timeupdate", () => { video.currentTime = 0; void video.play().catch(() => {}); }, { once: true });
-      }, { once: true });
-      void video.play().catch(() => {});
+      void playResultsVideo(video);
     } else {
       video.hidden = true;
       save.hidden = true;
