@@ -1,0 +1,27 @@
+{
+  "name": "@jester/agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jester's referee coach: a LangChain deep agent that investigates the round log with the deterministic scorer. Reports only; a person approves any change.",
+  "type": "module",
+  "scripts": {
+    "spike": "node --env-file=.env.local src/spike.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^1.6.5",
+    "@langchain/core": "^1.4.1",
+    "@langchain/openai": "^1.8.4",
+    "deepagents": "^1.16.5",
+    "langchain": "^1.6.6",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
