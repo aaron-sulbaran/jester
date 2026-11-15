@@ -118,19 +118,21 @@ export async function captureTab(which: "this" | "other", cropTo?: Element): Pro
     }
   }
 
+  const Processor = env.MediaStreamTrackProcessor!;
+  const reader = new Processor({ track, maxBufferSize: 2 }).readable.getReader();
+  let reading = false;
+
   let stopped = false;
   const endedCallbacks: (() => void)[] = [];
   const end = () => {
     if (stopped) return;
     stopped = true;
     track.stop();
+    // A read waiting for the next frame resolves as done instead of hanging.
+    reader.cancel().catch(() => {});
     for (const callback of endedCallbacks.splice(0)) callback();
   };
   track.addEventListener("ended", end);
-
-  const Processor = env.MediaStreamTrackProcessor!;
-  const reader = new Processor({ track, maxBufferSize: 2 }).readable.getReader();
-  let reading = false;
 
   return {
     error: null,
@@ -168,7 +170,6 @@ export async function captureTab(which: "this" | "other", cropTo?: Element): Pro
           }
         } finally {
           reading = false;
-          reader.releaseLock();
         }
       },
       stop: end,
