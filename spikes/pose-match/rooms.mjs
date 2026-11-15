@@ -25,7 +25,8 @@ export class Room {
     this.listeners = { update: [], start: [] };
     this.skew = 0;              // estimated (my clock - sender clock), updated from each message
     this.joinedAt = this.now();
-    this.players.set(this.me, { id: this.me, name: this.name, joinedAt: this.joinedAt });
+    this.ready = false;
+    this.players.set(this.me, { id: this.me, name: this.name, joinedAt: this.joinedAt, ready: false });
     this.unsubscribe = transport.onMessage((m) => this.#receive(m));
   }
 
@@ -33,7 +34,17 @@ export class Room {
   #emit(event, arg) { for (const fn of this.listeners[event]) fn(arg ?? this); }
   #send(msg) { this.transport.send({ ...msg, room: this.code, from: this.me, sentAt: this.now() }); }
 
-  join() { this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt }); }
+  join() { this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready }); }
+
+  // Tell the room whether I am ready to play (for example: my whole body is in view). Sent only on change.
+  setReady(ready) {
+    if (this.ready === ready) return;
+    this.ready = ready;
+    this.players.get(this.me).ready = ready;
+    this.#send({ type: "ready", ready });
+    this.#emit("update");
+  }
+  get allReady() { return this.roster().every((p) => p.ready); }
   leave() { this.#send({ type: "leave" }); this.unsubscribe?.(); this.transport.close?.(); }
 
   // The host is the player who joined first (ties broken by id), so everyone agrees without a server.
@@ -42,29 +53,29 @@ export class Room {
   roster() { return [...this.players.values()].sort((a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1)); }
 
   // Host only. Everyone starts at the same moment: delayMs from now on the host's clock.
-  start(clipId, delayMs = 3000) {
+  start(clipId, delayMs = 3000, extra = {}) {
     if (!this.isHost) throw new Error("Only the host can start the round");
     const roundNo = (this.round?.roundNo ?? 0) + 1;
     const startAt = this.now() + delayMs;
     this.results = new Map();
-    this.round = { clipId, startAt, roundNo };
-    this.#send({ type: "start", clipId, startAt, roundNo });
+    this.round = { clipId, startAt, roundNo, extra };
+    this.#send({ type: "start", clipId, startAt, roundNo, extra });
     this.#emit("start", this.round);
     this.#emit("update");
     return this.round;
   }
 
   // Send my score and compact timeline once my round is over.
-  submitResult({ score, timeline }) {
-    const entry = { score, timeline: timeline ?? null, at: this.now() };
+  submitResult({ score, timeline, extra }) {
+    const entry = { score, timeline: timeline ?? null, extra: extra ?? null, at: this.now() };
     this.results.set(this.me, entry);
-    this.#send({ type: "result", roundNo: this.round?.roundNo ?? 0, score, timeline: timeline ?? null });
+    this.#send({ type: "result", roundNo: this.round?.roundNo ?? 0, score, timeline: timeline ?? null, extra: extra ?? null });
     this.#emit("update");
   }
 
   // Players with a result, best first; players still playing are listed after, with score null.
   standings() {
-    const rows = this.roster().map((p) => ({ id: p.id, name: p.name, score: this.results.get(p.id)?.score ?? null, timeline: this.results.get(p.id)?.timeline ?? null }));
+    const rows = this.roster().map((p) => ({ id: p.id, name: p.name, score: this.results.get(p.id)?.score ?? null, timeline: this.results.get(p.id)?.timeline ?? null, extra: this.results.get(p.id)?.extra ?? null }));
     return rows.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
   }
   get allDone() { return this.roster().every((p) => this.results.has(p.id)); }
@@ -75,20 +86,21 @@ export class Room {
     switch (m.type) {
       case "join": {
         const isNew = !this.players.has(m.from);
-        this.players.set(m.from, { id: m.from, name: m.name || m.from, joinedAt: m.joinedAt ?? this.now() });
-        if (isNew) this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt }); // so the newcomer sees me
+        this.players.set(m.from, { id: m.from, name: m.name || m.from, joinedAt: m.joinedAt ?? this.now(), ready: !!m.ready });
+        if (isNew) this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready }); // so the newcomer sees me
         break;
       }
+      case "ready": { const p = this.players.get(m.from); if (p) p.ready = !!m.ready; break; }
       case "leave": this.players.delete(m.from); this.results.delete(m.from); break;
       case "start": {
         // translate the host's start time into my clock (skew includes network delay, fine for a party game)
-        this.round = { clipId: m.clipId, startAt: m.startAt + this.skew, roundNo: m.roundNo };
+        this.round = { clipId: m.clipId, startAt: m.startAt + this.skew, roundNo: m.roundNo, extra: m.extra ?? {} };
         this.results = new Map();
         this.#emit("start", this.round);
         break;
       }
       case "result":
-        if (m.roundNo === (this.round?.roundNo ?? 0)) this.results.set(m.from, { score: m.score, timeline: m.timeline ?? null, at: this.now() });
+        if (m.roundNo === (this.round?.roundNo ?? 0)) this.results.set(m.from, { score: m.score, timeline: m.timeline ?? null, extra: m.extra ?? null, at: this.now() });
         break;
     }
     this.#emit("update");

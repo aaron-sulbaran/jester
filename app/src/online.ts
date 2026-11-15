@@ -14,6 +14,7 @@ import { recordingPlayer } from "./recording.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { drawReveal, type RevealRole } from "./composite.ts";
 import { hostedTransportFromEnv } from "./supabaseTransport.ts";
+import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clip = starterClip();
@@ -28,6 +29,7 @@ let player: Player | null = null;
 let playing = false;
 let revealTimer = 0;
 let revealedRound = -1;
+const calibrator = new Calibrator();
 
 const simulated = () => $<HTMLInputElement>("sim").checked;
 const status = (t: string) => { $("status").textContent = t; };
@@ -36,6 +38,23 @@ const clipPoseAt = (ms: number) => (sampleAt(clip.samples, Math.max(0, ms) / 100
 async function getPlayer(): Promise<Player> {
   if ($<HTMLInputElement>("sim").checked) return simulatedPlayer(clip, () => 10);
   return cameraPlayer($<HTMLVideoElement>("cam"));
+}
+
+/** While waiting (not playing), run the tracker with a sink that only checks that your whole body is in frame. */
+function startLobbyTracking() {
+  const el = $("calib");
+  if (!player) return;
+  if (simulated()) { el.textContent = ""; room?.setReady(true); return; }
+  calibrator.reset();
+  room?.setReady(false);
+  let notInView = 0;
+  player.start((f) => {
+    const r = calibrator.update(f.landmarks as never, 30);
+    notInView = r.ok ? 0 : notInView + 1;
+    if (notInView >= 15) { calibrator.reset(); notInView = 0; } // moved out of view: hold the pose again
+    room?.setReady(calibrator.passed);                          // tells the room; the host cannot start until all are ready
+    el.textContent = calibrator.passed ? "Ready: your whole body is in view." : r.message;
+  }, () => -1);
 }
 
 async function enter(rawCode: string) {
@@ -47,6 +66,7 @@ async function enter(rawCode: string) {
   const name = $<HTMLInputElement>("name").value || me;
   const hosted = hostedTransportFromEnv(code);
   room = new Room({ transport: hosted ?? broadcastChannelTransport(code), code, playerId: me, name });
+  (window as unknown as { __room?: unknown }).__room = room; // for checking in the console
   room.on("update", render);
   room.on("start", onStart);
   room.join();
@@ -57,6 +77,7 @@ async function enter(rawCode: string) {
   fitCanvas(clipCanvas, clipAspect); fitCanvas(playerCanvas, clipAspect);
   drawFrame(clipCanvas, null, clipPoseAt(0));
   render();
+  startLobbyTracking();
   // Live preview of yourself while you wait, so you can check you are in frame.
   const preview = () => {
     if (!playing && !simulated()) drawFrame(playerCanvas, $<HTMLVideoElement>("cam"), null, { mirror: true });
@@ -68,9 +89,15 @@ async function enter(rawCode: string) {
 function render() {
   if (!room) return;
   $("role").textContent = room.isHost ? "(you are the host)" : "";
-  $<HTMLButtonElement>("start").disabled = !room.isHost || playing;
-  $("roster").innerHTML = room.roster().map((p: { id: string; name: string }) => `<li>${p.name}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""}</li>`).join("");
+  $<HTMLButtonElement>("start").disabled = !room.isHost || playing || !room.allReady;
+  $("roster").innerHTML = room.roster().map((p: { id: string; name: string; ready?: boolean }) => `<li>${p.name}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""} ${(p as { ready?: boolean }).ready ? "&#10003; ready" : "(not in view yet)"}</li>`).join("");
   $("standings").innerHTML = (room.standings() as Standing[]).map((r) => `<li>${r.name}: ${r.score ?? "playing..."}</li>`).join("");
+  const waiting = (room.standings() as Standing[]).filter((r) => r.score === null).map((r) => r.name);
+  const notReady = (room.roster() as { name: string; ready?: boolean }[]).filter((p) => !p.ready).map((p) => p.name);
+  if ((!room.round || room.allDone) && room.isHost && notReady.length) status("Waiting for " + notReady.join(", ") + " to get their whole body in view before you can start.");
+  else if (room.round && !playing && waiting.length && waiting.length < room.roster().length) status("Waiting for " + waiting.join(", ") + " to finish...");
+  else if (room.round && room.allDone && !playing) status("Everyone finished. Standings and reveal are below.");
+  else if (!room.round && !room.isHost) status("In the room. Waiting for the host (" + room.roster().find((p: { id: string }) => p.id === room!.hostId)?.name + ") to start.");
   if (room.round && room.allDone && room.round.roundNo !== revealedRound && !playing) showReveal();
 }
 
@@ -84,6 +111,7 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
     await new Promise((r) => setTimeout(r, 100));
   }
   el.classList.add("hidden");
+  player!.stop(); // stop the lobby check; the round starts its own tracking
   playing = true; render();
   status("Go! Copy the clip as if it were a mirror.");
   const rec = recordingPlayer(player!);
@@ -92,7 +120,8 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
     drawFrame(playerCanvas, simulated() ? null : $<HTMLVideoElement>("cam"), f.player as never, { mirror: true, color: "#4cc9f0" });
   });
   playing = false;
-  room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs) });
+  startLobbyTracking();
+  room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs), extra: null });
   status(result.result.score == null ? "Tracking was too poor to score. Stand back so your whole body is in view." : "Your score: " + result.result.score + ". Waiting for the others...");
   render();
 }

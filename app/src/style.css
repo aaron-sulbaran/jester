@@ -240,3 +240,12 @@ progress { width: min(100%, 480px); height: 12px; accent-color: var(--ink); }
 #solo td { padding: 2px 12px 2px 0; }
 .bar { display: inline-block; height: 8px; background: var(--ink); border-radius: 4px; }
 #revealCanvas, #revealVideo { width: 100%; max-width: 640px; display: block; border-radius: 10px; background: #000; }
+
+/* Practice area tabs and Alex's blind and online screens (plain on purpose until rooms get the look). */
+#solo .modes { display: flex; gap: 8px; margin: 0 0 12px; }
+#solo .tab:not(.on) { background: var(--paper); }
+#solo #blind h3 { margin: 18px 0 8px; }
+#solo #blindNames input, #solo #onlineName, #solo #onlineCode { margin-right: 6px; padding: 6px 8px; border: 2px solid var(--ink); border-radius: 8px; background: var(--paper); }
+#blindCanvas, #blindVideo { width: 100%; max-width: 960px; border-radius: 8px; background: #000; }
+#blindBoard td { padding: 4px 12px 4px 0; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
