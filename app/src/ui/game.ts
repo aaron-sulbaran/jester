@@ -12,6 +12,10 @@ import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
+import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
+import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
+import { playMyRole, revealRoles } from "../onlineBlind.ts";
+import { drawReveal } from "../composite.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -48,7 +52,7 @@ const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((re
   signal?.addEventListener("abort", stop, { once: true });
 });
 
-const SCREENS = ["howto", "start", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "start", "room", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 /** Screens where a game is under way: leaving from these asks first. */
 const MID_GAME: readonly ScreenName[] = ["watch", "handover", "turn", "drumroll", "reveal"];
@@ -345,6 +349,75 @@ export function initGame(deps: GameDeps) {
     }
   }
 
+  // ---- Play with friends online ----
+  // Each player plays their own part on their own device, so there is no "pass the laptop" screen: the handover
+  // is skipped, nobody's results are shown until everyone is in, then everyone sees the same reveal and results.
+
+  const lobby = initRoomLobby({ show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+
+  async function runOnline(room: LobbyRoom, round: OnlineRound) {
+    const make = ONLINE_SCENES[round.clipId as OnlineSceneId];
+    if (!make) return;
+    const played = make();
+    scene = played;
+    await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
+    rows = [];
+    videoUrl = null;
+    game = new AbortController();
+    restartsLeft.clear();
+    restartsLeft.set(room.name, RESTARTS_PER_PLAYER);
+    running = true;
+    const colors = playerColors();
+    const roster = room.roster() as { id: string; name: string }[];
+    const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
+    const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
+    try {
+      await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      // Wait for the others, on the drum roll screen.
+      while (!room.allDone) { live(); await ui.beat?.(); }
+      live();
+      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string } | null }[];
+      const top = Math.max(-1, ...standings.map((s) => s.score ?? -1));
+      const tied = standings.filter((s) => s.score === top).length > 1;
+      rows = standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map((s) => {
+        const guide = played.guides[s.extra!.guideIndex]!;
+        return {
+          name: s.name, color: colorOf(s.id), role: s.extra!.role, look: guide.subject.kind === "thing" ? "outline" : "stick",
+          score: s.score, tier: null, winner: top >= 0 && s.score === top, tied, guide,
+          timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as ResultRow["timeline"]) : null, face: null,
+        } as ResultRow;
+      });
+      ui.results(rows);
+      // The reveal: everyone's stick figure (or disc, for a thing) on their part, replayed once.
+      const roles = revealRoles(room as never, played);
+      revealCanvas.width = 960;
+      revealCanvas.height = Math.round(960 * (played.height / played.width));
+      setPace(1);
+      const clipAspect = played.width / played.height;
+      const total = Math.max(1000, played.durationMs);
+      let at = 0, last = performance.now();
+      await new Promise<void>((done) => {
+        const timer = window.setInterval(() => {
+          if (game?.signal.aborted) { clearInterval(timer); return done(); }
+          const t = performance.now();
+          at += (t - last) * revealControl.speed; last = t;
+          drawReveal(revealCanvas, roles, Math.min(at, total), { clipAspect });
+          ui.progress(Math.min(1, at / total));
+          if (at >= total) { clearInterval(timer); done(); }
+        }, 1000 / 30);
+      });
+      live();
+      ui.revealReady(null);
+    } catch (err) {
+      if (game?.signal.aborted) return; // they left on purpose
+      console.error("The online game stopped:", err);
+      $("oopsText").textContent = (err as Error).message;
+      show("oops");
+    } finally {
+      running = false;
+    }
+  }
+
   // ---- Home, leaving, and starting a turn over ----
 
   /** The game under way: leaving aborts it, so its pending screens stop waiting and a new game never collides. */
@@ -364,6 +437,7 @@ export function initGame(deps: GameDeps) {
   }
 
   function goHome() {
+    lobby.leave(); // out of any room too
     if (game && !game.signal.aborted) {
       game.abort();
       activeRestart?.(); // ends a turn in progress straight away
@@ -650,9 +724,37 @@ export function initGame(deps: GameDeps) {
 
   // ---- Results ----
 
-  /** The podium's animated jesters, stopped when the results screen is left. */
+  /** The podium's animated jesters and the looping reveal video, stopped when the results screen is left. */
   let podiumJesters: FaceJester[] = [];
-  const stopPodium = () => { for (const j of podiumJesters) j.stop(); podiumJesters = []; };
+  const stopPodium = () => {
+    for (const j of podiumJesters) j.stop();
+    podiumJesters = [];
+    // The video loops with its sound: without this it keeps playing under the next game.
+    $<HTMLVideoElement>("resultsVideo").pause();
+  };
+
+  /**
+   * Starts the reveal video on the results: with its sound, or muted where the browser will not allow sound
+   * yet (the controls can unmute it). The recording normally has its length written in (cutout.ts); if it
+   * does not, one jump to the end makes the browser find it, so the seek bar still works.
+   */
+  async function playResultsVideo(video: HTMLVideoElement) {
+    const src = video.src;
+    const findLength = () => {
+      if (video.src !== src || Number.isFinite(video.duration)) return;
+      const back = () => {
+        if (!Number.isFinite(video.duration)) return;
+        video.removeEventListener("durationchange", back);
+        if (video.src === src) video.currentTime = 0;
+      };
+      video.addEventListener("durationchange", back);
+      video.currentTime = 1e9;
+    };
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) findLength();
+    else video.addEventListener("loadedmetadata", findLength, { once: true });
+    // Straight away, still inside the click on "See the scores", so browsers that want a click allow the sound.
+    await playWithSound(video);
+  }
 
   function showResults() {
     stopPodium();
@@ -690,13 +792,7 @@ export function initGame(deps: GameDeps) {
       video.hidden = false;
       save.href = videoUrl;
       save.hidden = false;
-      // Recorded WebM has no length in its header: jump far ahead once so the seek bar works, then back.
-      video.addEventListener("loadedmetadata", () => {
-        if (video.duration !== Infinity) return;
-        video.currentTime = 1e9;
-        video.addEventListener("timeupdate", () => { video.currentTime = 0; void video.play().catch(() => {}); }, { once: true });
-      }, { once: true });
-      void video.play().catch(() => {});
+      void playResultsVideo(video);
     } else {
       video.hidden = true;
       save.hidden = true;

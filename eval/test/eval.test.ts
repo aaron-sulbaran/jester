@@ -23,6 +23,30 @@ test("a packed round replays to the same score", () => {
   assert.equal(again.lagMs, r.result.lagMs);
 });
 
+test("smoothed points and clip times come back exactly, and the replay is identical", () => {
+  // Times on a 15 Hz grid end exactly on the engine's 30 Hz grid; rounding them once dropped the last grid frame.
+  const reference = timeline(dance, { fps: 15, durationS: 20 });
+  const wobble = (t: number) => { const p = mirrorCopy(dance(t)); return p; };
+  const raw = timeline(wobble);
+  const player = { ...raw, frames: raw.frames.map((f) => ({ tMs: f.tMs + Math.PI / 7, landmarks: f.landmarks && f.landmarks.map(([x, y, v]) => [x + Math.E * 1e-7, y - Math.SQRT2 * 1e-7, v * 0.987654321] as const) })) };
+  const r = record("nailed", reference, player);
+  const back = JSON.parse(JSON.stringify(r)) as RoundRecord;
+  assert.deepEqual(unpackPose(back.player), player);
+  assert.deepEqual(unpackPose(back.reference as typeof r.player), reference);
+  assert.deepEqual(rescore(back), r.result);
+});
+
+test("version 1 rounds still read, with the same clip key", () => {
+  const reference = timeline(dance);
+  const v1 = {
+    schema: "packed-pose/1" as const, source: { ...reference.source },
+    t: reference.frames.map((f) => Math.round(f.tMs * 100)),
+    lm: reference.frames.map((f) => f.landmarks ? f.landmarks.flatMap(([x, y, v]) => [Math.round(x * 1e5), Math.round(y * 1e5), Math.round(v * 1e4)]) : null),
+  };
+  assert.equal(fingerprint(v1), fingerprint(packPose(reference)));
+  assert.equal(unpackPose(v1).frames.length, reference.frames.length);
+});
+
 test("packing keeps frames where nobody was found", () => {
   const player = fromWebcamFrames([
     { t: 0, landmarks: null, aspect: 4 / 3, clipTimeMs: 0 },
