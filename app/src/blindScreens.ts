@@ -131,7 +131,14 @@ export function initBlindScreens(deps: ScreenDeps) {
     if (!scene) return;
     $<HTMLButtonElement>("blindDeal").disabled = true;
     const names = [...$("blindNames").querySelectorAll("input")].map((i, k) => i.value.trim() || `Player ${k + 1}`);
-    await runBlindGame(scene, names, ui, deps, { speed: Number($<HTMLSelectElement>("blindSpeed").value) });
+    try {
+      await runBlindGame(scene, names, ui, deps, { speed: Number($<HTMLSelectElement>("blindSpeed").value) });
+    } catch (err) {
+      // Never stall silently: say what broke and offer a way back to the start.
+      console.error("Blind mode stopped:", err);
+      show("blindTurn", false); show("blindEnd", true);
+      $("blindEndStatus").textContent = `Something went wrong: ${(err as Error).message}. Press Play again to start over.`;
+    }
     $<HTMLButtonElement>("blindDeal").disabled = false;
   });
 
