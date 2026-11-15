@@ -38,7 +38,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import { readBankIndex } from "./src/bankIndex.ts";
-import { DEFAULT_MODEL, NOTICE_NAMES_LANGSMITH, reviewSubmission, type ReviewInput } from "./review-agent.ts";
+import { DEFAULT_MODEL, NOTICE_NAMES_LANGSMITH, reviewMode, reviewSubmission, type ReviewInput } from "./review-agent.ts";
 import { parsePrecedents, precedentFrom, PRECEDENTS_KEPT, type Precedent } from "./review-precedents.ts";
 
 const PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov)$/;
@@ -200,6 +200,8 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
     const anthropicKey = env.ANTHROPIC_API_KEY;
     const model = env.JESTER_REVIEW_MODEL || DEFAULT_MODEL;
+    // "deep" unless the env file says JESTER_REVIEW_MODE=fast (review-agent.ts reviewMode).
+    const mode = reviewMode(env.JESTER_REVIEW_MODE);
     const langsmithKey = env.LANGSMITH_API_KEY;
     // Tracing desk reviews sends real submissions' frames, titles and credits to LangSmith, which the Submit
     // your own notice does not name yet. So it takes two deliberate settings, and goes only to this run's
@@ -216,7 +218,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     const judgeMissing = anthropicKey ? [] : ["ANTHROPIC_API_KEY"];
     /** No key value may ever leave in a message, whatever the libraries put in their errors. */
     const scrub = (text: string) => [serviceKey, anthropicKey, langsmithKey].reduce((t, k) => (k ? t.split(k).join("[key]") : t), text);
-    return { url, serviceKey, anthropicKey, model, trace, noticeNamesLangSmith, queueMissing, judgeMissing, scrub };
+    return { url, serviceKey, anthropicKey, model, mode, trace, noticeNamesLangSmith, queueMissing, judgeMissing, scrub };
   };
 
   /** The bank's own index, so a row is marked approved only once its clip is really in the bank. */
@@ -266,7 +268,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
           if (route === "status") {
             return ok({
               missing: [...s.queueMissing, ...s.judgeMissing], canQueue: s.queueMissing.length === 0, canJudge: s.queueMissing.length === 0 && s.judgeMissing.length === 0,
-              model: s.model, bankFolder: bankDir ? basename(bankDir) : null, envFile: options.envFile ? basename(options.envFile) : null,
+              model: s.model, mode: s.mode, bankFolder: bankDir ? basename(bankDir) : null, envFile: options.envFile ? basename(options.envFile) : null,
               publish,
             });
           }
@@ -312,7 +314,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
               // A desk review is always a real submission, whatever the request says.
               const judged: ReviewInput = { ...input, synthetic: false, precedents: readPrecedents() };
               const callbacks = s.trace ? [await tracerFor(s.trace)] : undefined;
-              return ok(await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, noticeNamesLangSmith: s.noticeNamesLangSmith, ...(callbacks ? { callbacks } : {}) }));
+              return ok(await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, mode: s.mode, noticeNamesLangSmith: s.noticeNamesLangSmith, ...(callbacks ? { callbacks } : {}) }));
             } catch (err) {
               return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
