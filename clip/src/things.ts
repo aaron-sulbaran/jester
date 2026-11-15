@@ -266,6 +266,14 @@ export function rankThings(
   });
 }
 
+/** An ellipse inside the box as a closed outline of `points` points (24, as the blind mode game draws a thing). */
+export function boxEllipse(box: Box, points = 24): Outline {
+  return Array.from({ length: points }, (_, i) => {
+    const angle = (2 * Math.PI * i) / points;
+    return [box.cx + (box.w / 2) * Math.cos(angle), box.cy + (box.h / 2) * Math.sin(angle)] as [number, number];
+  });
+}
+
 /** The box as a closed four point outline, clockwise from top left. */
 export function boxPolygon(box: Box): Outline {
   const left = box.cx - box.w / 2;
@@ -289,7 +297,7 @@ export function thingPace(track: ThingTrack, sampleHz: number, aspect = 1): Pace
 /**
  * The guide for one thing in its shot. Like a person's guide, time starts at 0 at the shot's
  * first frame, and frames where the thing is not on screen have a null box and outline. The
- * outline is the box as four points (the detector gives no mask). A thing whose box never moves
+ * outline is an ellipse in the box (the detector gives no mask). A thing whose box never moves
  * is refused with THING_STILL.
  */
 export function buildThingGuide(input: {
@@ -312,7 +320,7 @@ export function buildThingGuide(input: {
     const tMs = frames[f]!.tMs - startMs;
     const box = pointByFrame.get(f)?.box ?? null;
     boxFrames.push({ tMs, box });
-    outlines.push(box ? boxPolygon(box) : null);
+    outlines.push(box ? boxEllipse(box) : null);
   }
   const guide: Guide = {
     schema: "guide/1",

@@ -16,6 +16,6 @@ export { placeSubject } from "./view.ts";
 export type { Placement, View } from "./view.ts";
 export {
   linkThings, withoutPeople, rankThings, thingMotionPerFrame, thingMoves, thingName, thingPace,
-  boxPolygon, buildThingGuide, thingGuides, THING_STILL, THING_OTHER_SHOT, thingObjectName, thingHint, boxTrackAt,
+  boxPolygon, boxEllipse, buildThingGuide, thingGuides, THING_STILL, THING_OTHER_SHOT, thingObjectName, thingHint, boxTrackAt,
 } from "./things.ts";
 export type { ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingLinkOptions } from "./things.ts";

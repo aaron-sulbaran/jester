@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { scoreTrajectoryRound } from "../../engine/src/index.ts";
 import { playerCopyingSprite, spritePath, timeline } from "../../engine/test/synth.ts";
 import {
-  boxPolygon, boxTrackAt, buildThingGuide, linkThings, rankThings, THING_OTHER_SHOT, THING_STILL, thingGuides, thingHint,
+  boxEllipse, boxTrackAt, buildThingGuide, linkThings, rankThings, THING_OTHER_SHOT, THING_STILL, thingGuides, thingHint,
   thingName, thingObjectName, withoutPeople,
 } from "../src/index.ts";
 import type { Box, ClipSource, ThingFrame } from "../src/index.ts";
@@ -86,7 +86,7 @@ test("buildThingGuide: a thing that never moves is refused", () => {
   assert.equal(THING_STILL, "This one does not move, so there is nothing to copy.");
 });
 
-test("buildThingGuide: a moving thing gives a trajectory guide with a box track and a four point outline", () => {
+test("buildThingGuide: a moving thing gives a trajectory guide with a box track and an ellipse outline", () => {
   const frames = thingFrames(30, (f) => (f >= 6 ? [{ box: dogAt(f), category: "dog" }] : []));
   const track = linkThings(frames, [], { aspect })[0]!;
   const result = buildThingGuide({ fingerprint: "f", source, frames, track, shot: { start: 0, end: 30 }, label: "Dog 1", warnings: [] });
@@ -102,7 +102,8 @@ test("buildThingGuide: a moving thing gives a trajectory guide with a box track 
   assert.deepEqual(guide.boxTrack.frames[6]!.box, dogAt(6));
   assert.equal(guide.outlines.length, 30);
   assert.equal(guide.outlines[0], null);
-  assert.deepEqual(guide.outlines[6], boxPolygon(dogAt(6)));
+  assert.deepEqual(guide.outlines[6], boxEllipse(dogAt(6)));
+  assert.equal(guide.outlines[6]!.length, 24);
 });
 
 test("a thing's box track scores against a player through the engine's trajectory channel", () => {

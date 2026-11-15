@@ -54,7 +54,7 @@ for (const guide of guides) {
 }
 ```
 
-A thing guide has `subject.label` like "Dog 1" or "Ball 2", `timeline` null, `channel` "trajectory", a `box-track/1` the engine scores as is, and `outlines` that are the box as four points (the detector gives no mask). `thingObjectClip(guide)` in `src/clip.ts` returns the shape of `ObjectClip` in `src/objectClips.ts`: `track` is the guide's box track, `boxAt(ms)` for the reveal, `name` ("dog"), and a `hint` from the ways the box moves. Draw a thing's blind view with the "outline" look. A thing that never moves goes to `skipped` with "This one does not move, so there is nothing to copy." Check it in `things-lab.html` (`?clip=<name>`, `?fresh=1`).
+A thing guide has `subject.label` like "Dog 1" or "Ball 2", `timeline` null, `channel` "trajectory", a `box-track/1` the engine scores as is, and `outlines` that are a 24 point ellipse in the box (the detector gives no mask), the same shape `blind.ts` draws for a thing. `thingObjectClip(guide)` in `src/clip.ts` returns the shape of `ObjectClip` in `src/objectClips.ts`: `track` is the guide's box track, `boxAt(ms)` for the reveal, `name` ("dog"), and a `hint` from the ways the box moves. Draw a thing's blind view with the "outline" look. A thing that never moves goes to `skipped` with "This one does not move, so there is nothing to copy." Check it in `things-lab.html` (`?clip=<name>`, `?fresh=1`).
 
 ## How the engine is wired
 
