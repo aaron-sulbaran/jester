@@ -122,8 +122,9 @@ export async function reviewSubmission(input: ReviewInput, apiKey: string): Prom
   ];
 
   const run = agent.invoke({ messages: [{ role: "user", content }] }, { recursionLimit: 60 });
-  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The reviewer took too long.")), TIMEOUT_MS));
-  const state = (await Promise.race([run, timeout])) as { todos?: { content?: string }[] };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("The reviewer took too long.")), TIMEOUT_MS); });
+  const state = (await Promise.race([run, timeout]).finally(() => clearTimeout(timer))) as { todos?: { content?: string }[] };
 
   const steps = (state.todos ?? []).map((t) => t.content ?? "").filter((s) => s !== "");
   const final = decided as Omit<Decision, "steps"> | null;
