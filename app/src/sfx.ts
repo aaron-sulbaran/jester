@@ -5,6 +5,8 @@
 // here and is never muted or lowered: these sounds sit under it. One switch, soundOn and setSound, turns these
 // sounds and the spoken host (host.ts) off and on; the clip's sound does not follow it.
 
+import { getSettings, onSettings, setSetting } from "./settings.ts";
+
 /** How loud the whole channel is. Kept low so the clip always sits on top. */
 const VOLUME = 0.22;
 
@@ -14,40 +16,34 @@ let ctx: AudioContext | null = null;
 let out: AudioNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
 
-// ---- The switch: the game's sounds and the host, on by default, remembered on this browser ----
-
-const SOUND_KEY = "jester.sound";
-
-function storedSound(): boolean {
-  try { return globalThis.localStorage?.getItem(SOUND_KEY) !== "off"; } catch { return true; }
-}
-
-let on = storedSound();
+// ---- The switch and volume: from the settings store (settings.ts), which keeps jester.sound as it always was ----
 
 /** True when the game's own sounds and the spoken host play. */
 export function soundOn(): boolean {
-  return on;
+  return getSettings().sound;
 }
 
 /** Turns the game's own sounds and the spoken host on or off, and remembers it. The clip's sound is not touched. */
 export function setSound(next: boolean) {
-  on = next;
-  try { globalThis.localStorage?.setItem(SOUND_KEY, next ? "on" : "off"); } catch { /* private window: it lasts for this visit */ }
-  if (!next) {
-    try { globalThis.speechSynthesis?.cancel(); } catch { /* no speech here */ }
-  }
+  setSetting("sound", next);
 }
+
+// Switching off stops a line still being spoken; the volume follows the setting at once.
+onSettings((s) => {
+  if (!s.sound) { try { globalThis.speechSynthesis?.cancel(); } catch { /* no speech here */ } }
+  if (out instanceof GainNode) out.gain.value = VOLUME * s.volume;
+});
 
 /** The sound channel, made on first use. Null when the browser has no Web Audio, or the switch is off. */
 function channel(): Channel | null {
-  if (!on) return null;
+  if (!soundOn()) return null;
   try {
     if (!ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return null;
       ctx = new Ctor();
       const level = ctx.createGain();
-      level.gain.value = VOLUME;
+      level.gain.value = VOLUME * getSettings().volume;
       // Stacked sounds (a crash on top of a roll) are evened out instead of clipping.
       const even = ctx.createDynamicsCompressor();
       even.threshold.value = -18;
@@ -194,7 +190,7 @@ export function drumRoll(ms?: number): () => void {
   let stopped = false;
   // Hits are booked a little ahead on the audio clock, so a busy page does not make the roll stumble.
   const book = () => {
-    if (!on) return end(); // switched off mid-roll
+    if (!soundOn()) return end(); // switched off mid-roll
     const horizon = ch.ctx.currentTime + 0.25;
     while (next < horizon) {
       const swell = Math.min(1, 0.3 + (next - start) / 2.5);

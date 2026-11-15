@@ -258,6 +258,7 @@
     <nav class="side-nav" id="sideNav" aria-label="Help and sound">
       <button type="button" class="btn btn-quiet" id="howtoLink"><svg class="ico" aria-hidden="true"><use href="#ico-howto" /></svg>How to play</button>
       <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true"><svg class="ico ico-on" aria-hidden="true"><use href="#ico-sound-on" /></svg><svg class="ico ico-off" aria-hidden="true"><use href="#ico-sound-off" /></svg><span id="soundSay">Sound: on</span></button>
+      <button type="button" class="btn btn-quiet" id="settingsOpen">Settings</button>
     </nav>
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
       <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
@@ -309,11 +310,71 @@
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 300 180"><use href="/art.svg#crawl" /></svg></span><b>See what you did.</b><span>Everyone is cut out into the clip, then the best jester gets the spotlight.</span></li>
       </ol>
       <p class="typed">Not ready when your turn starts? You can start over once, in the first 5 seconds.</p>
+      <p class="typed">What Jester saves is in Settings.</p>
       <button type="button" class="btn btn-main" id="howtoGo"><span class="ticket"><span class="ticket-text">Got it</span></span></button>
     </section>
 
     <!-- Start: pick a mode and a clip from the bank, play in one click. -->
+    <!-- Settings: settings.ts binds the controls by id and remembers them in this browser (game feel session's store). -->
+    <section class="screen" id="screen-settings" hidden>
+      <div class="masking"><h2 class="tape">Settings</h2></div>
+      <div class="set-grid">
+        <section class="set-card set-saved" aria-labelledby="setHeadSaved">
+          <span class="washi w-dots" aria-hidden="true"></span>
+          <h3 id="setHeadSaved"><svg class="ico" aria-hidden="true"><use href="#ico-save" /></svg>What Jester saves</h3>
+          <ul class="how">
+            <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's name and size, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
+            <li>A clip you send in is kept private until it's reviewed. To check it, a few frames, what the game measured, its name and your name go to Anthropic, the company that makes the AI.</li>
+            <li>In an online room, your face picture and a short cut-out of you go to the others in the room for the recap and the crowning. They aren't stored.</li>
+            <li>Your settings and how many of you play stay in this browser.</li>
+          </ul>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadSound">
+          <span class="washi w-pink" aria-hidden="true"></span>
+          <h3 id="setHeadSound"><svg class="ico" aria-hidden="true"><use href="#ico-sound-on" /></svg>Sound</h3>
+          <label class="set-row"><span>Sound effects</span><input type="checkbox" class="set-switch" id="setSound" /></label>
+          <label class="set-row"><span>Volume</span><input type="range" class="set-range" id="setVolume" min="0" max="100" step="5" /></label>
+          <p class="aside">The clip's own sound never changes.</p>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadVoice">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <h3 id="setHeadVoice"><svg class="ico" aria-hidden="true"><use href="#ico-podium" /></svg>The announcer</h3>
+          <label class="set-row"><span>Voice</span><select class="set-select" id="setVoice"><option value="off">Off</option><option value="browser">Your browser's voice</option></select></label>
+          <p class="aside">Calls the drum roll and the winner out loud, in your browser's own built-in voice.</p>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadMotion">
+          <span class="washi w-dots" aria-hidden="true"></span>
+          <h3 id="setHeadMotion"><svg class="ico" aria-hidden="true"><use href="#ico-speed" /></svg>Motion</h3>
+          <label class="set-row"><span>Motion</span><select class="set-select" id="setMotion"><option value="system">Like my device</option><option value="calm">Calm</option><option value="full">Full</option></select></label>
+          <p class="aside">Calm keeps the floating stickers and the big moves still.</p>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadRules">
+          <span class="washi w-pink" aria-hidden="true"></span>
+          <h3 id="setHeadRules"><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Please don't send</h3>
+          <!-- Filled from the Send in a clip screen's list (#sendRules), so the two can never say different things. -->
+          <ul class="how set-rules" id="setRules"></ul>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadDev">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <h3 id="setHeadDev"><svg class="ico" aria-hidden="true"><use href="#ico-clapper" /></svg>For the team</h3>
+          <label class="set-row"><span>Developer mode</span><input type="checkbox" class="set-switch" id="setDev" /></label>
+          <p class="aside">Shows the testing links, the build stamp and the refresh notice.</p>
+        </section>
+      </div>
+      <button type="button" class="btn btn-main" id="settingsBack"><span class="ticket"><span class="ticket-text">Done</span></span></button>
+    </section>
+
     <section class="screen" id="screen-start">
+      <!-- The start screen's drifting props: paper stickers floating slowly beside the title, like a stage frame.
+           Decoration only, laptop widths only; still under reduced motion and Calm motion (body.calm). -->
+      <div class="home-drift" id="homeDrift" aria-hidden="true">
+        <svg class="drift-prop" style="left:7%;top:4%;--s:84px;--r:-14deg;--d:8.5s;--t:-2s"><use href="#jester-hat" /></svg>
+        <svg class="drift-prop" style="left:13%;top:14%;--s:44px;--r:10deg;--d:11s;--t:-6s"><use href="#star" /></svg>
+        <svg class="drift-prop" style="left:3%;top:18%;--s:50px;--r:8deg;--d:9.5s;--t:-4s"><use href="#ico-clapper" /></svg>
+        <svg class="drift-prop" style="right:8%;top:10%;--s:56px;--r:12deg;--d:10s;--t:-1s"><use href="#ico-watch" /></svg>
+        <svg class="drift-prop" style="right:4%;top:19%;--s:46px;--r:-10deg;--d:12s;--t:-7s"><use href="#ico-sound-on" /></svg>
+        <svg class="drift-prop" style="right:20%;top:7%;--s:38px;--r:-18deg;--d:7.5s;--t:-3s"><use href="#star" /></svg>
+      </div>
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
@@ -407,7 +468,7 @@
           <div class="send-go">
             <section class="send-dont" aria-labelledby="sendCannot">
               <h3 id="sendCannot"><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Please don't send</h3>
-              <ul class="how">
+              <ul class="how" id="sendRules">
                 <li><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Anything sexual, violent or hateful.</li>
                 <li><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Anything meant to shock or bully.</li>
                 <li><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Writing in the video that tries to talk the reviewer into something.</li>
@@ -429,40 +490,98 @@
     </section>
 
     <section class="screen" id="screen-room" hidden>
-      <div class="masking"><h2 class="tape">Play with friends, anywhere</h2></div>
+      <div class="masking" id="roomHead"><h2 class="tape" id="roomHeadText">Play with friends online</h2></div>
       <div class="room-box">
+        <!-- Before a room: your name, then make a room, or join one with a friend's code. Opened from a join link
+             (?room=CODE), the code is filled in and Join is the main action. -->
         <div id="roomJoin">
-          <label class="field"><span>Your name</span><input id="roomName" type="text" maxlength="14" autocomplete="off" /></label>
-          <div class="row-actions">
+          <div class="room-invite" id="roomInvite" hidden>
+            <p class="room-code-label">Room code</p>
+            <p class="room-code" id="roomInviteCode"></p>
+          </div>
+          <label class="field room-name"><span>Your name</span><input id="roomName" type="text" maxlength="14" autocomplete="off" autocapitalize="words" /></label>
+          <div class="row-actions" id="roomCreateRow">
             <button type="button" class="btn btn-main" id="roomCreate"><span class="ticket"><span class="ticket-text">Make a room</span></span></button>
           </div>
-          <label class="field"><span>Or join a friend's room with their code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" placeholder="ABCD" /></label>
-          <button type="button" class="btn btn-quiet" id="roomEnter">Join</button>
+          <div class="room-have-code" id="roomHaveCode">
+            <label class="field"><span>Or join with a friend's code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></label>
+            <button type="button" class="btn btn-quiet" id="roomEnter"><span class="ticket"><span class="ticket-text">Join</span></span></button>
+          </div>
         </div>
+        <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
+             ticket, and a chat that lives only on each device until you leave. -->
         <div id="roomLobby" hidden>
-          <p class="note">Room code <b id="roomCodeText"></b> <span id="roomWhere"></span>. Tell your friends.</p>
-          <ul id="roomRoster" class="how"></ul>
-          <p class="aside">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
-          <div id="roomHostRow" hidden>
-            <div class="field"><span>Pick what you will play (the host chooses for everyone)</span>
-              <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick what you will play">
-                <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
-              </div>
-              <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
-              <div class="field" id="roomUploadRow" hidden>
-                <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
-                <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
+          <div class="room-side" id="roomSideWho">
+          <div class="room-door">
+            <div class="room-code-card">
+              <div class="masking room-code-tape"><p class="tape">Room code</p></div>
+              <h2 class="room-code" id="roomCodeText"></h2>
+              <div class="room-link-row">
+                <p class="room-link" id="roomLinkLine" hidden><span id="roomLinkText" hidden></span> <span id="roomWhere"></span></p>
+                <button type="button" class="btn btn-quiet" id="roomCopy">Copy link</button>
               </div>
             </div>
-            <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
-            <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
+            <figure class="print room-qr" id="roomQr">
+              <span class="washi w-dots" aria-hidden="true"></span>
+              <span class="room-qr-code" id="roomQrCode" role="img" aria-label="QR code with the link to this room"></span>
+              <figcaption>Scan to join</figcaption>
+            </figure>
           </div>
-          <p id="roomGuestRow" class="note" hidden>Waiting for the host to deal the parts...</p>
+          <div class="room-cast-wrap">
+            <ul id="roomRoster" class="room-cast" aria-label="Players in the room"></ul>
+          </div>
+          </div>
+          <div class="room-side" id="roomSidePlay">
+          <div class="room-table">
+            <div id="roomHostRow" hidden>
+              <div class="field room-pick"><span class="room-step">Pick the clip</span>
+                <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick the clip">
+                  <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+                </div>
+                <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
+                <div class="field" id="roomUploadRow" hidden>
+                  <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
+                  <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
+                </div>
+              </div>
+              <div class="room-switch">
+                <div class="modes-pick" id="roomPlayMode" role="radiogroup" aria-label="How everyone plays">
+                  <button type="button" class="mode" role="radio" data-play="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
+                  <button type="button" class="mode" role="radio" data-play="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+                </div>
+                <p class="room-play-says" id="roomPlaySays" aria-hidden="true"></p>
+              </div>
+              <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
+              <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
+              <p class="aside" id="roomReadyLine" aria-live="polite" hidden></p>
+            </div>
+            <div id="roomGuestRow" hidden>
+              <div class="note-wrap"><p class="note" id="roomGuestNote">The host picks the clip and deals the parts.</p></div>
+              <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
+              <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
+            </div>
+            <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
+          </div>
+          </div>
+          <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->
+          <section class="room-chat" id="roomChat" aria-labelledby="roomChatHead">
+            <div class="room-chat-page">
+              <h3 class="room-chat-head" id="roomChatHead">Chat</h3>
+              <div class="room-chat-lines" id="roomChatLines">
+                <p class="room-chat-empty" id="roomChatEmpty">No messages yet. Say hi to the room.</p>
+                <ol class="room-chat-log" id="roomChatLog" aria-live="polite"></ol>
+              </div>
+              <form class="room-chat-form" id="roomChatForm">
+                <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
+                <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
+              </form>
+            </div>
+          </section>
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
         <button type="button" class="link" id="roomBack">Back</button>
