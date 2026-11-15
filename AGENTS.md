@@ -12,6 +12,10 @@ Team hub rule (HackPrinceton, Nov 13 to 15, hacking ends Sun 8:30 AM Eastern). O
 6. Once the project repo exists (its URL is in <HUB>/kb/project-repo.md), clone it beside the hub and run `node <HUB>/scripts/install-hooks.mjs <that clone>`.
 ```
 
+## What lives in this repo
+
+Decided by Aaron on Nov 15. This public repo holds the product and what judges should see. Research, design reviews, plans, decision notes and mockups go to the hub's `jester/` folder when teammates share them, or stay off git when they are temporary. That includes design research a skill would normally save under `docs/research/`. The Devpost kit lives in the hub's `devpost/` folder.
+
 ## Design changes: one look
 
 Approved by Aaron on Nov 14. It binds Aaron's sessions; for everyone else it is a request, and the hub rule "merge without waiting" still holds.
