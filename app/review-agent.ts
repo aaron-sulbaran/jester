@@ -12,6 +12,7 @@
 // What leaves the laptop for each review: the four frames, the facts, the submitter's title and credit, and
 // the recent precedents' titles and one-line reasons.
 
+import { createHash } from "node:crypto";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { precedentsBlock, type Precedent } from "./review-precedents.ts";
 
@@ -260,6 +261,77 @@ export function finalize(input: Pick<ReviewInput, "title" | "facts">, recorded: 
   return why ? { ...decided, verdict: "ask_a_person", reason: `${recorded.reason} ${why}` } : decided;
 }
 
+/**
+ * A short hash of the prompts one mode uses, saved with every eval case so a report can say which judged it:
+ * the Chamberlain's prompt, and the playability-checker's prompt in deep mode or the playability thresholds in
+ * fast mode. The two modes hash differently.
+ */
+export function promptVersion(mode: ReviewMode = "deep"): string {
+  const playability = mode === "deep" ? PLAYABILITY : `${SEEN_AT_LEAST} ${MIN_STRETCH_MS}`;
+  return createHash("sha256").update(`${mode}\n${systemPrompt(mode)}\n---\n${playability}`).digest("hex").slice(0, 10);
+}
+
+/** Every variable LangChain reads to trace on its own (@langchain/core utils/callbacks). */
+export const INHERITED_TRACING = ["LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING_V2", "LANGSMITH_TRACING", "LANGCHAIN_TRACING"];
+
+/**
+ * A tracing variable left in the shell that started the dev server or a script would make LangChain trace every
+ * review on its own. A real submission never gets this far with one set: tracingRefusal() runs first, against
+ * the environment as inherited, and refuses it. For a review that passed (a synthetic case, or no tracing at
+ * all) the variables are then removed, so tracing happens only through a tracer passed in.
+ */
+export function stopInheritedTracing(): string[] {
+  const removed = INHERITED_TRACING.filter((k) => process.env[k] !== undefined);
+  for (const k of removed) delete process.env[k];
+  return removed;
+}
+
+interface TraceClient { awaitPendingTraceBatches?: () => Promise<void>; getRunUrl?: (o: { runId: string; projectOpts?: { projectName?: string } }) => Promise<string> }
+const tracers: { client: TraceClient; projectName: string }[] = [];
+
+/** A LangSmith tracer for one review, with its own client: nothing is set in the process environment. */
+export async function tracerFor(trace: { apiKey: string; project: string }) {
+  const [{ LangChainTracer }, { Client }] = await Promise.all([import("@langchain/core/tracers/tracer_langchain"), import("langsmith")]);
+  const client = new Client({ apiKey: trace.apiKey });
+  tracers.push({ client: client as unknown as TraceClient, projectName: trace.project });
+  return new LangChainTracer({ projectName: trace.project, client });
+}
+
+/** Waits for LangChain's background callbacks and every LangSmith upload to finish, before a script exits. */
+export async function flushTraces(): Promise<void> {
+  const { awaitAllCallbacks } = await import("@langchain/core/callbacks/promises");
+  await awaitAllCallbacks();
+  await Promise.all(tracers.map((t) => t.client.awaitPendingTraceBatches?.()));
+}
+
+/** The LangSmith page of a traced run, or null when it cannot be looked up. Call after flushTraces(). */
+export async function traceUrl(runId: string): Promise<string | null> {
+  const t = tracers[0];
+  if (!t?.client.getRunUrl) return null;
+  try {
+    return await t.client.getRunUrl({ runId, projectOpts: { projectName: t.projectName } });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How one review runs. The desk passes callbacks only when tracing is on; the eval also passes tags, metadata,
+ * a run name and a run id, so a trace or a token count can be tied to its case.
+ */
+export interface ReviewSettings {
+  apiKey: string;
+  model: string;
+  /** deep (the default): a plan and the playability-checker subagent; fast: one model call. */
+  mode?: ReviewMode;
+  callbacks?: Callbacks;
+  noticeNamesLangSmith?: boolean;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  runName?: string;
+  runId?: string;
+}
+
 /** Text of a LangChain message's content, whether a string or a list of blocks. */
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -268,11 +340,15 @@ function textOf(content: unknown): string {
 }
 
 /** One review. Throws when the model cannot be reached (a wrong key, no network); the caller says so. */
-export async function reviewSubmission(input: ReviewInput, settings: { apiKey: string; model: string; mode?: ReviewMode; callbacks?: Callbacks; noticeNamesLangSmith?: boolean }): Promise<Decision> {
+export async function reviewSubmission(input: ReviewInput, settings: ReviewSettings): Promise<Decision> {
   const mode = settings.mode ?? "deep";
-  // Before anything is loaded or sent.
+  // Before anything is loaded or sent. The refusal comes first, against the environment as inherited: a real
+  // submission is refused while any tracing switch or tracer is on (a parent run could otherwise trace it through
+  // its context). Only a review that passed has the inherited switches removed.
   const refusal = tracingRefusal(input, { env: process.env, callbacks: settings.callbacks, noticeNamesLangSmith: settings.noticeNamesLangSmith });
   if (refusal) throw new Error(refusal);
+  const removed = stopInheritedTracing();
+  if (removed.length) console.warn(`[review] Ignored ${removed.join(", ")} from the environment: this review is traced only through a tracer passed in.`);
   // Loaded only when a review runs, so the dev server and `vite build` start without the agent packages.
   const [{ createDeepAgent }, { ChatAnthropic }, { tool }, { z }] = await Promise.all([
     import("deepagents"),
@@ -352,7 +428,9 @@ export async function reviewSubmission(input: ReviewInput, settings: { apiKey: s
   const timer = setTimeout(() => controller.abort(new Error("The Chamberlain took too long.")), TIMEOUT_MS);
   let state: { todos?: { content?: string }[]; messages?: StateMessage[] };
   try {
-    state = (await agent.invoke({ messages: [{ role: "user", content }] }, { recursionLimit: 20, signal: controller.signal, ...(settings.callbacks ? { callbacks: settings.callbacks } : {}) })) as typeof state;
+    const { callbacks, tags, metadata, runName, runId } = settings;
+    const runConfig = { ...(callbacks ? { callbacks } : {}), ...(tags ? { tags } : {}), ...(metadata ? { metadata } : {}), ...(runName ? { runName } : {}), ...(runId ? { runId } : {}) };
+    state = (await agent.invoke({ messages: [{ role: "user", content }] }, { ...runConfig, recursionLimit: 20, signal: controller.signal })) as typeof state;
   } catch (err) {
     if (controller.signal.aborted) throw new Error("The Chamberlain took too long.");
     throw err;

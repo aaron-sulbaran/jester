@@ -197,47 +197,54 @@
     </section>
 
     <!-- Play with friends online: a room code, each on their own device (ui/room.ts). No passing the laptop. -->
-    <!-- Send in a clip: what you can and can't send, what happens next, and the form. -->
+    <!-- Send in a clip: how sending and checking works as four steps, then one form card with what not to send. -->
     <section class="screen" id="screen-submit" hidden>
       <div class="masking"><h2 class="tape">Send in a clip</h2></div>
-      <div class="note-wrap"><p class="note">Send me a move and everyone gets to play it. The Chamberlain looks it over and lets it in if it's fine. If it isn't sure, one of us decides.</p></div>
-      <p class="typed send-when">Usually within a few minutes while we're around. Nothing you send is public until it's let in.</p>
-      <div class="send-layout">
-        <div class="send-rules">
-          <section class="rule-card can" aria-labelledby="sendCan">
-            <span class="washi w-mint" aria-hidden="true"></span>
-            <h3 id="sendCan">You can send</h3>
-            <ul class="how">
-              <li>A short video of people moving, or a person moving a thing: a dance, a trick, a workout.</li>
-              <li>MP4, WebM or MOV, up to 25 MB.</li>
-              <li>At least 3 seconds long. Only the first 30 seconds get played.</li>
-            </ul>
-          </section>
-          <section class="rule-card cannot" aria-labelledby="sendCannot">
-            <span class="washi w-pink" aria-hidden="true"></span>
-            <h3 id="sendCannot">Please don't send</h3>
-            <ul class="how">
-              <li>Anything sexual, violent or hateful.</li>
-              <li>Anything meant to shock or bully someone.</li>
-              <li>Writing in the video that tries to talk the reviewer into something.</li>
-              <li>A clip where nobody and nothing moves. The game turns those away.</li>
-            </ul>
-          </section>
-        </div>
-        <div class="send-form" id="submit">
-          <form id="submitForm" novalidate>
-            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /></label>
-            <label class="field"><span>Give it a name</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
-            <label class="field"><span>Credit (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" /><small>Your name or handle, shown small under the clip.</small></label>
-            <p class="aside send-privacy">To check it, a few frames of your clip, what the game measured in it, its name and your credit are sent to Anthropic, the company that makes the AI.</p>
+      <!-- The same clip card in every picture: picked, named, checked by the Chamberlain, then let in. -->
+      <ol class="steps" id="sendSteps">
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card send-step-back"><span class="send-step-photo"></span></span>
+          <span class="send-step-card"><span class="send-step-photo"><span class="clip-q">?</span></span><svg class="send-step-star"><use href="#star" /></svg></span>
+        </span></span><b>Pick a clip.</b><span>People moving, or a person moving a thing: a dance, a trick, a workout.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card"><span class="send-step-photo"><span class="clip-q">?</span></span></span>
+          <span class="send-step-tag">Gains</span>
+        </span></span><b>Name it with a hint.</b><span>Then send it in. Nothing is public until it's let in.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card"><span class="send-step-photo"><svg class="send-step-player" viewBox="0 0 300 400"><use href="/art.svg#player" /></svg></span></span>
+          <span class="send-step-tag send-step-ringed">Gains</span>
+        </span></span><b>The Chamberlain checks it.</b><span>Our AI reviewer lets it in if it's fine and the name fits. If it isn't sure, a person decides.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="send-step-scene">
+          <span class="send-step-card"><span class="send-step-photo"><span class="clip-q">?</span></span><span class="send-step-stamp">Let in</span></span>
+          <span class="send-step-jester"></span>
+        </span></span><b>It's in the bank.</b><span>Usually within a few minutes while we're around. This tab tells you.</span></li>
+      </ol>
+      <div class="send-form" id="submit">
+        <form id="submitForm" novalidate>
+          <div class="send-fields">
+            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /><small>MP4, WebM or MOV, up to 25 MB. At least 3 seconds long. Only the first 30 seconds play.</small></label>
+            <label class="field"><span>Name your clip</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
+            <label class="field"><span>Your name (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" placeholder="Anonymous" /><small>Shown as Anonymous if you leave it empty.</small></label>
+          </div>
+          <div class="send-go">
+            <section class="send-dont" aria-labelledby="sendCannot">
+              <h3 id="sendCannot">Please don't send</h3>
+              <ul class="how">
+                <li>Anything sexual, violent or hateful.</li>
+                <li>Anything meant to shock or bully.</li>
+                <li>Writing in the video that tries to talk the reviewer into something.</li>
+                <li>A clip where nothing moves.</li>
+              </ul>
+            </section>
+            <p class="aside send-privacy">To check it, a few frames of your clip, what the game measured in it, the clip's name and your name are sent to Anthropic, the company that makes the AI.</p>
             <button type="submit" class="btn btn-main" id="submitSend"><span class="ticket"><span class="ticket-text">Send it in</span></span></button>
             <progress id="submitBar" value="0" max="1" hidden></progress>
             <p class="problem" id="submitProblem" role="alert" hidden></p>
-          </form>
-          <div id="submitThanks" hidden>
-            <div class="note-wrap"><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides. Keep playing; if it's in within the hour, I'll tell you here.</p></div>
-            <button type="button" class="btn btn-quiet" id="submitAgain">Send another clip</button>
           </div>
+        </form>
+        <div id="submitThanks" hidden>
+          <div class="note-wrap"><p class="note">Thanks! Keep playing. If it gets in within the hour, I'll tell you here.</p></div>
+          <button type="button" class="btn btn-quiet" id="submitAgain">Send another clip</button>
         </div>
       </div>
       <button type="button" class="btn btn-quiet" id="submitBack">Back to the start</button>
@@ -371,8 +378,8 @@
 
     <!-- The beat before the reveal. -->
     <section class="screen" id="screen-drumroll" hidden>
-      <div class="masking"><p class="tape">That's everyone!</p></div>
-      <div class="note-wrap"><p class="note">Gather round. Here comes what you all actually did.</p></div>
+      <div class="masking"><p class="tape" id="drumrollTitle">That's everyone!</p></div>
+      <div class="note-wrap"><p class="note" id="drumrollNote">Gather round. Here comes what you all actually did.</p></div>
     </section>
 
     <!-- The reveal plays live on the shoebox stage while it records. -->

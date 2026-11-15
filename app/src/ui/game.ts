@@ -14,7 +14,7 @@ import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } fro
 import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
-import { awardsFor, motionOf, rankFor } from "../feelText.ts";
+import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -139,7 +139,8 @@ function letters(el: HTMLElement, text: string, color?: string) {
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
-const MIN_PLAYERS = 2;
+/** One player may play alone; a new cast still starts with two, since it is a party game. */
+const MIN_PLAYERS = 1;
 const MAX_PLAYERS = 4;
 
 export function initGame(deps: GameDeps) {
@@ -166,10 +167,11 @@ export function initGame(deps: GameDeps) {
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
   const revealCanvas = $<HTMLCanvasElement>("revealStage");
   // Fast forward and skip for the reveal: blind.ts reads `speed` every tick while the reveal records.
-  const revealControl = { speed: 1 };
+  const revealControl: { speed: number; skip?: boolean } = { speed: 1 };
   const setPace = (speed: number) => { revealControl.speed = speed; $("revealFastLabel").textContent = `${speed}x`; };
   $("revealFast").addEventListener("click", () => { const steps = [1, 2, 4]; setPace(steps[(steps.indexOf(revealControl.speed) + 1) % steps.length] ?? 1); });
-  $("revealSkip").addEventListener("click", () => setPace(16));
+  // Skip ends the recap at once and goes to the results (the video shows what was recorded so far).
+  $("revealSkip").addEventListener("click", () => { revealControl.skip = true; setPace(16); });
   const turn = $("screen-turn");
 
   // ---- Start ----
@@ -482,11 +484,16 @@ export function initGame(deps: GameDeps) {
 
   // ---- Cast ----
 
-  function openCast() {
+  /**
+   * Opens "Who's playing?". The cast starts with the number of players picked on the start screen; with no pick,
+   * one player per part of the clip (so a one-person clip opens with one player). `again` keeps the cast as it
+   * was, for Play again. Add a player and One fewer still change it.
+   */
+  function openCast(again = false) {
     if (!scene) return;
     $("startProblem").hidden = true;
     // As many seats as the start screen's pick; more players than parts share them, fewer leave some out.
-    const want = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, count));
+    const want = again && names.length ? names.length : Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, count));
     names = Array.from({ length: want }, (_, i) => names[i] ?? "");
     renderCast();
     show("cast");
@@ -520,7 +527,7 @@ export function initGame(deps: GameDeps) {
     $("castParts").textContent = (duelGame()
       ? `This clip has 1 person. ${names.length === 2 ? "You both copy them" : "You all copy them"}; the best copy wins.`
       : (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
-        + (extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : ""))
+        + (names.length === 1 && parts > 1 ? " You play one of them." : extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : ""))
       + " Tap your dot to change your jester's colour.";
     // A clip with a thing in it: play the thing as a part, or people only. Not in a duel, where everyone is the person.
     $("castThing").hidden = !castClip || castClip.things === 0 || duelGame();
@@ -590,6 +597,7 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    soloGame = cast.length === 1;
     game = new AbortController();
     const signal = game.signal;
     restartsLeft.clear();
@@ -637,6 +645,7 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    soloGame = false; // a room waits for the others on the drum roll, even with one player in it
     game = new AbortController();
     restartsLeft.clear();
     restartsLeft.set(room.name, RESTARTS_PER_PLAYER);
@@ -698,6 +707,8 @@ export function initGame(deps: GameDeps) {
   /** The game under way: leaving aborts it, so its pending screens stop waiting and a new game never collides. */
   let game: AbortController | null = null;
   let running = false;
+  /** One player on their own: no passing the laptop, and the drum roll says so. */
+  let soloGame = false;
   const sig = () => game?.signal;
   const live = () => { if (game?.signal.aborted) throw left(); };
   /** The current turn's restart, kept so leaving mid-turn can end the turn at once. */
@@ -768,6 +779,7 @@ export function initGame(deps: GameDeps) {
       camera.newTurn();
       activeRestart = null;
       hideRestart();
+      if (soloGame) return; // one player: nobody to pass the laptop to
       show("handover");
       const screen = $("screen-handover");
       screen.style.setProperty("--who", player.color);
@@ -864,6 +876,8 @@ export function initGame(deps: GameDeps) {
       live();
       activeRestart = null;
       hideRestart();
+      $("drumrollTitle").textContent = soloGame ? "That's the show!" : "That's everyone!";
+      $("drumrollNote").textContent = soloGame ? "Here comes what you actually did." : "Gather round. Here comes what you all actually did.";
       show("drumroll");
       say("beat");
       const roll = sfx.drumRoll();
@@ -880,6 +894,7 @@ export function initGame(deps: GameDeps) {
     results(r) {
       live();
       setPace(1);
+      revealControl.skip = false;
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
@@ -961,8 +976,8 @@ export function initGame(deps: GameDeps) {
       return { row, j, slot };
     });
     castRow.replaceChildren(...jesters.map((x) => x.slot));
-    const winners = rows.filter((r) => r.winner);
-    const headline = winners.length === 0 ? "Everyone played!" : winners.length === 1 ? `${winners[0]!.name} wins!` : `${winners.map((w) => w.name).join(" and ")} tie!`;
+    const winners = winnersOf(rows);
+    const headline = headlineFor(rows);
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
@@ -1003,7 +1018,7 @@ export function initGame(deps: GameDeps) {
       if (mine === runs) {
         roll();
         sfx.crown();
-        say(winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: winners.map((w) => w.name).join(" and ") });
+        say(rows.length === 1 ? "solo" : winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: rows.length === 1 ? rows[0]!.name : winners.map((w) => w.name).join(" and ") });
       }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
@@ -1079,11 +1094,8 @@ export function initGame(deps: GameDeps) {
 
   function showResults() {
     stopPodium();
-    const winners = rows.filter((r) => r.winner);
-    const headline = winners.length === 0 ? "Everyone played!"
-      : winners.length === 1 ? `${winners[0]!.name} wins!`
-      : `${winners.map((w) => w.name).join(" and ")} tie!`;
-    letters($("resultsHeadline"), headline);
+    const winners = winnersOf(rows);
+    letters($("resultsHeadline"), headlineFor(rows));
     const list = $("podium");
     list.innerHTML = "";
     // Everyone leaves with something: the crown, or an award from how they played.
@@ -1096,7 +1108,7 @@ export function initGame(deps: GameDeps) {
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
       li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
-      li.querySelector(".place-rank")!.textContent = ordinal(place);
+      li.querySelector(".place-rank")!.textContent = rows.length === 1 ? "" : ordinal(place); // no "1st" of one
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
       j.canvas.setAttribute("aria-label", `${r.name} as a jester`);
@@ -1107,6 +1119,8 @@ export function initGame(deps: GameDeps) {
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
       li.querySelector(".place-award")!.textContent = awards[i]!;
       const score = li.querySelector<HTMLElement>(".place-score")!;
+      // The final score is on the element from the start, so anything reading it mid count-up gets the real one.
+      score.dataset.score = r.score == null ? "" : String(r.score);
       if (r.score == null) score.textContent = "no score";
       else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
@@ -1145,7 +1159,7 @@ export function initGame(deps: GameDeps) {
     note.textContent = "Saved to your downloads. Send it from there.";
   });
 
-  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(); else show("start"); });
+  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(true); else show("start"); });
   $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
 
