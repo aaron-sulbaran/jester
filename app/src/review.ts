@@ -294,7 +294,9 @@ function renderNeedsYou(pending: Pending[]) {
   const box = $("needsYou");
   box.replaceChildren();
   // Waiting: what the Chamberlain left for a person, and with no model key every clip it has not seen.
-  const waiting = pending.filter((p) => p.logged?.verdict === "ask_a_person" || (!p.logged && status && !status.canJudge));
+  // Everything still pending: what the Chamberlain left for a person, and anything it has not looked at yet,
+  // which can be named and let in (or turned away) by hand without waiting for a review.
+  const waiting = pending.filter((p) => !p.logged || p.logged.verdict === "ask_a_person");
   if (waiting.length === 0) {
     const none = document.createElement("p");
     none.className = "typed";
@@ -326,7 +328,9 @@ function renderNeedsYou(pending: Pending[]) {
     clip.src = `/__review/video?path=${encodeURIComponent(p.video_path)}`;
     const why = document.createElement("p");
     why.className = "aside";
-    why.textContent = p.logged ? `The Chamberlain: ${p.logged.reason}` : "Not seen by the Chamberlain yet (no model key).";
+    why.textContent = p.logged ? `The Chamberlain: ${p.logged.reason}`
+      : status?.canJudge ? "Not reviewed yet. Review new clips asks the Chamberlain, or name it and decide yourself."
+      : "Not seen by the Chamberlain yet (no model key). Name it and decide yourself.";
     const result = document.createElement("p");
     result.className = "problem";
     result.setAttribute("role", "alert");
@@ -477,7 +481,17 @@ $("deskAskFirst").addEventListener("click", () => {
 });
 
 jesterBars();
-void rememberedFolder().then((handle) => { remembered = handle; syncFolder(); });
+void rememberedFolder().then(async (handle) => {
+  remembered = handle;
+  // Already allowed in this browser: use it straight away, so the bank list shows without a click.
+  const permission = handle as unknown as { queryPermission?: (d: { mode: "readwrite" }) => Promise<PermissionState> } | null;
+  if (handle && (await permission?.queryPermission?.({ mode: "readwrite" }).catch(() => "denied")) === "granted"
+      && (!status?.bankFolder || handle.name === status.bankFolder)) {
+    dir = handle;
+    await showBank();
+  }
+  syncFolder();
+});
 void api<Status>("status").then(async (s) => {
   if (s.error !== null) return problem(s.error);
   status = s.data;
@@ -486,7 +500,11 @@ void api<Status>("status").then(async (s) => {
   else setStatus(`Ready. The Chamberlain runs on ${status.model}. Pick the bank folder, then review.`);
   if (status.canQueue) {
     const pending = await api<Pending[]>("pending");
-    if (pending.error === null) renderNeedsYou(pending.data);
+    if (pending.error === null) {
+      renderNeedsYou(pending.data);
+      const fresh = pending.data.filter((p) => !p.logged).length;
+      if (fresh) setStatus(`${statusBase} ${fresh} new ${fresh === 1 ? "clip is" : "clips are"} waiting below.`);
+    }
   }
   await showLog();
 });
