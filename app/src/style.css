@@ -277,6 +277,26 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 .curtain.r { right: 0; }
 .curtain.l i { clip-path: polygon(0 0, 100% 0, 96% 8%, 86% 18%, 70% 30%, 54% 42%, 42% 52%, 38% 57%, 42% 63%, 52% 74%, 63% 86%, 72% 100%, 0 100%); }
 .curtain.r i { clip-path: polygon(100% 0, 0 0, 4% 8%, 14% 18%, 30% 30%, 46% 42%, 58% 52%, 62% 57%, 58% 63%, 48% 74%, 37% 86%, 28% 100%, 100% 100%); }
+/* Closing curtains: two straight panels tucked out of sight that meet in the middle when a show ends
+   (.box.closed), on the reveal, and part again to open the crowning. One curve and one length for both. */
+.drapes { --curtain-ms: 900ms; position: absolute; z-index: 2; inset: 0 0 calc(var(--floor) * .4); overflow: hidden; pointer-events: none; }
+.drape { position: absolute; top: 0; bottom: 0; width: calc(50% + 2px); transition: translate var(--curtain-ms) cubic-bezier(.3, .7, .2, 1); }
+.drape.l { left: 0; translate: -101% 0; filter: drop-shadow(5px 0 0 var(--shade)); }
+.drape.r { right: 0; translate: 101% 0; filter: drop-shadow(-5px 0 0 var(--shade)); }
+.drape i {
+  display: block; height: 100%; background-color: #FFF4E8;
+  background-image: repeating-linear-gradient(90deg, rgba(30, 27, 24, .07) 0 3px, transparent 3px 46px), linear-gradient(90deg, rgba(217, 58, 43, .5) 50%, transparent 50%), linear-gradient(rgba(217, 58, 43, .5) 50%, transparent 50%);
+  background-size: auto, 20px 20px, 20px 20px;
+}
+.box.closed .drape { translate: 0 0; }
+/* The picture goes dark under the closing curtains, so the show never ends on a frozen frame. */
+#revealStage { transition: opacity 900ms cubic-bezier(.3, .7, .2, 1); }
+.box.closed #revealStage { opacity: 0; }
+/* Between acts: the reveal fades out once its curtains are shut, the crowning fades in with its own shut. */
+.screen.leaving { opacity: 0; transition: opacity .22s ease-out; }
+.screen.arriving { animation: arrive .22s ease-out both; }
+@keyframes arrive { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .drape, #revealStage { transition: none; } .screen.arriving { animation: none; } }
 .curtain .washi { top: calc(57% - 13px); width: 62%; height: 24px; }
 .curtain.l .washi { left: -6px; rotate: -10deg; }
 .curtain.r .washi { right: -6px; rotate: 9deg; }
@@ -516,5 +536,6 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
 
 /* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
-.lost { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
+/* Scoped to the notice: the crowning marks losing jesters .lost too, and a bare .lost pulled them onto the winner. */
+#lostNotice { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
 .place-who .aside { text-align: left; }

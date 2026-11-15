@@ -635,6 +635,9 @@ export function initGame(deps: GameDeps) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
+      // A fresh show: the curtains open and the picture is up (the last game left them shut).
+      $("screen-reveal").classList.remove("leaving");
+      $("screen-reveal").querySelector(".box")?.classList.remove("closed");
       show("reveal");
     },
 
@@ -643,7 +646,7 @@ export function initGame(deps: GameDeps) {
       videoUrl = url;
       // The game itself has finished; the crowning and results need no leave check.
       running = false;
-      try { await crown(); } catch { return; /* left from the crowning */ }
+      try { await curtainCall(); await crown(); } catch { return; /* left from the curtain call or the crowning */ }
       showResults();
     },
   };
@@ -654,6 +657,26 @@ export function initGame(deps: GameDeps) {
     return variantFor(i < 0 ? rows.indexOf(row) : i);
   }
 
+  // ---- Between the reveal and the crowning: the curtain call ----
+
+  /** How long the curtains take to close or open; style.css uses the same length (.drapes, #revealStage). */
+  const CURTAIN_MS = 900;
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /**
+   * The show is over: the reveal's curtains close while the picture goes dark, a beat with them shut, then the
+   * screen fades out. The crowning then fades in with its own curtains shut and opens them (see crown()).
+   * With reduced motion the crowning simply follows, as before.
+   */
+  async function curtainCall() {
+    if (calm()) return;
+    const screen = $("screen-reveal");
+    screen.querySelector(".box")?.classList.add("closed");
+    await wait(CURTAIN_MS + 250, sig());
+    screen.classList.add("leaving");
+    await wait(220, sig());
+  }
+
   // ---- The crowning ----
 
   /**
@@ -661,6 +684,12 @@ export function initGame(deps: GameDeps) {
    * and lands on the winner, who does the win dance while the rest slump. Resolves on "See the scores".
    */
   async function crown() {
+    // The crowning arrives with its curtains shut, as the reveal left them, and opens them before the drum roll.
+    const crownScreen = $("screen-crown");
+    const crownBox = crownScreen.querySelector(".box");
+    const opening = !calm();
+    crownBox?.classList.toggle("closed", opening);
+    crownScreen.classList.toggle("arriving", opening);
     show("crown");
     // Stand them in seat order, not score order, so the spotlight has somewhere to travel.
     const seated = [...rows].sort((a, b) => playerColors().indexOf(a.color) - playerColors().indexOf(b.color));
@@ -737,9 +766,21 @@ export function initGame(deps: GameDeps) {
 
     const again = () => { cancel = true; void run(); };
     $("crownAgain").addEventListener("click", again);
-    void run();
+    let done = false;
+    // The curtains part once the screen has faded in; the drum roll and spotlight start about two thirds open.
+    const begin = async () => {
+      if (opening) {
+        await wait(220, sig());
+        crownScreen.classList.remove("arriving");
+        crownBox?.classList.remove("closed");
+        await wait(Math.round(CURTAIN_MS * 0.65), sig());
+      }
+      if (!done) void run();
+    };
+    void begin().catch(() => { /* left mid-opening */ });
     try { await clicked($("crownGo"), sig()); }
     finally {
+      done = true;
       cancel = true;
       roll();
       $("crownAgain").removeEventListener("click", again);
