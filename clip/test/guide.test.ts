@@ -77,6 +77,22 @@ test("buildGuide: a point's outline is carried through unchanged", () => {
   assert.deepEqual(guide.outlines[3], outlineOfBox(boxAt(23)));
 });
 
+test("buildGuide: the tracker's depth rides along per frame, and guides without it have no depths", () => {
+  const depthOf = (i: number) => Array.from({ length: 33 }, (_, k) => (k + i) / 1000);
+  const deep = frames.map((f, i) => ({ ...f, people: f.people.map((p) => ({ ...p, depth: depthOf(i) })) }));
+  const guide = buildGuide({ ...input, frames: deep, track: linkTracks(deep, [20]).find((t) => t.shot === 1)! });
+  assert.equal(guide.depths!.length, guide.timeline!.frames.length);
+  assert.deepEqual(guide.depths![3], depthOf(23));
+  assert.equal("depths" in buildGuide(input), false);
+});
+
+test("buildGuide: depth never changes the timeline the scorer reads", () => {
+  const deep = frames.map((f) => ({ ...f, people: f.people.map((p) => ({ ...p, depth: Array(33).fill(0.2) })) }));
+  const withDepth = buildGuide({ ...input, frames: deep, track: linkTracks(deep, [20]).find((t) => t.shot === 1)! });
+  assert.deepEqual(withDepth.timeline, buildGuide(input).timeline);
+  assert.deepEqual(withDepth.keyMoments, buildGuide(input).keyMoments);
+});
+
 test("shotEndMs: a shot ends where the next one starts, the last shot at the end of what was read", () => {
   assert.equal(shotEndMs(frames, { start: 0, end: 20 }, source), 2000);
   assert.equal(shotEndMs(frames, { start: 20, end: 40 }, source), 4000);

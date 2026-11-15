@@ -5,7 +5,8 @@ export interface Verdict { refuse: string | null; warnings: string[] }
 
 const MIN_DURATION_MS = 3000;
 const MS_PER_CUT_ALLOWED = 2000;
-const MIN_SHARE_OF_SHOT = 0.5;
+/** A subject must be on screen for at least this share of its shot. Things use it too (`rankThings`). */
+export const MIN_SHARE_OF_SHOT = 0.5;
 const MIN_MEDIAN_HEIGHT = 0.25;
 const STILL_BELOW = 0.002;
 

@@ -7,6 +7,7 @@
 //   npm run chamberlain -- --dry-run             list the cases and their truth; no model calls
 //   npm run chamberlain -- --source synthetic    only the committed synthetic cases (or: desk)
 //   npm run chamberlain -- --only name-missing,steer-frame-words
+//   npm run chamberlain -- --mode fast           deep (the default: a plan and the playability-checker subagent) or fast (one call)
 //   npm run chamberlain -- --model claude-opus-5-5 --concurrency 2
 //
 // Keys: read from the review env file by absolute path (JESTER_REVIEW_ENV, else jester-deploy/.env.review found
@@ -23,7 +24,7 @@ import { parseArgs } from "node:util";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
 import {
   addUsage, classify, costUsd, deskCase, mayTrace, nameCheckHolds, renderReport, summarize,
-  type CaseFile, type CaseResult, type Decision, type EvalCase, type LogEntry, type ReviewInput, type Run, type Usage,
+  type CaseFile, type CaseResult, type Decision, type EvalCase, type LogEntry, type Mode, type ReviewInput, type Run, type Usage,
 } from "./chamberlainCases.ts";
 
 const PROJECT = "jester-chamberlain-eval";
@@ -32,9 +33,9 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** What the runner uses from app/review-agent.ts, loaded at run time so the eval's typecheck never needs the agent packages. */
 interface AgentModule {
   DEFAULT_MODEL: string;
-  promptVersion(): string;
+  promptVersion(mode: Mode): string;
   reviewSubmission(input: ReviewInput, settings: {
-    apiKey: string; model: string; callbacks?: object[]; tags?: string[]; metadata?: Record<string, unknown>; runName?: string; runId?: string;
+    apiKey: string; model: string; mode: Mode; callbacks?: object[]; tags?: string[]; metadata?: Record<string, unknown>; runName?: string; runId?: string;
   }): Promise<Decision>;
   tracerFor(trace: { apiKey: string; project: string }): Promise<object>;
   flushTraces(): Promise<void>;
@@ -45,6 +46,7 @@ const { values: args } = parseArgs({
   options: {
     "dry-run": { type: "boolean", default: false },
     source: { type: "string", default: "all" },
+    mode: { type: "string" },
     only: { type: "string" },
     model: { type: "string" },
     concurrency: { type: "string", default: "4" },
@@ -122,13 +124,13 @@ function deskCases(dir: string | null, log: LogEntry[]): EvalCase[] {
   return out;
 }
 
-/** The newest run report that reads back whole. */
-function lastRun(runsDir: string | null): Run | null {
+/** The newest run report in this mode that reads back whole. */
+function lastRun(runsDir: string | null, mode: Mode): Run | null {
   if (!runsDir || !existsSync(runsDir)) return null;
   for (const name of readdirSync(runsDir).filter((f) => f.endsWith(".json")).sort().reverse()) {
     try {
       const run = JSON.parse(readFileSync(join(runsDir, name), "utf8")) as Run;
-      if (Array.isArray(run.results)) return run;
+      if (Array.isArray(run.results) && run.mode === mode) return run;
     } catch { /* an unreadable report: try the one before */ }
   }
   return null;
@@ -169,7 +171,12 @@ async function main(): Promise<number> {
   const runsDir = casesDir ? join(casesDir, "runs") : null;
   const agent = (await import(new URL("../../app/review-agent.ts", import.meta.url).href)) as AgentModule;
   const model = args.model ?? env.JESTER_REVIEW_MODEL ?? agent.DEFAULT_MODEL;
-  const prompt = agent.promptVersion();
+  const mode = args.mode ?? env.JESTER_REVIEW_MODE ?? "deep";
+  if (mode !== "deep" && mode !== "fast") {
+    console.error("--mode is deep or fast.");
+    return 2;
+  }
+  const prompt = agent.promptVersion(mode);
 
   const only = args.only ? new Set(args.only.split(",").map((s) => s.trim())) : null;
   const all = [...(args.source === "desk" ? [] : SYNTHETIC.map(syntheticCase)), ...(args.source === "synthetic" ? [] : deskCases(casesDir, readLog(envFile)))];
@@ -180,10 +187,10 @@ async function main(): Promise<number> {
   }
 
   const desk = cases.filter((c) => c.source === "desk");
-  const previous = lastRun(runsDir);
+  const previous = lastRun(runsDir, mode);
   const perReview = previous?.results.length ? (costUsd(previous.model, previous.results.reduce<Usage>((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 })) ?? 0) / previous.results.length : null;
   console.log(`${cases.length} cases: ${cases.length - desk.length} synthetic, ${desk.length} from the desk (${desk.filter((c) => c.truth).length} with a person's outcome or a hand label).`);
-  console.log(`Each case is one Chamberlain review on ${model} (prompt ${prompt}), with the model calls and cost counted per review.${perReview ? ` Last run: about $${perReview.toFixed(3)} a review, so about $${(perReview * cases.length).toFixed(2)} for this one.` : ""}`);
+  console.log(`Each case is one Chamberlain review on ${model}, ${mode} mode (prompt ${prompt}), with the model calls and cost counted per review.${perReview ? ` Last run: about $${perReview.toFixed(3)} a review, so about $${(perReview * cases.length).toFixed(2)} for this one.` : ""}`);
   if (desk.length && !casesDir) console.log("No env file found, so no desk cases.");
 
   if (args["dry-run"]) {
@@ -230,8 +237,8 @@ async function main(): Promise<number> {
     try {
       const tracer = trace ? [await agent.tracerFor({ apiKey: env.LANGSMITH_API_KEY!, project: env.LANGSMITH_PROJECT || PROJECT })] : [];
       decision = await agent.reviewSubmission(c.input, {
-        apiKey, model, callbacks: [meter, ...tracer],
-        tags: ["chamberlain-eval", c.source], metadata: { case: c.id, source: c.source, prompt }, runName: `chamberlain-eval ${c.id}`, runId,
+        apiKey, model, mode, callbacks: [meter, ...tracer],
+        tags: ["chamberlain-eval", c.source, mode], metadata: { case: c.id, source: c.source, mode, prompt }, runName: `chamberlain-eval ${mode} ${c.id}`, runId,
       });
     } catch (err) {
       error = scrub((err as Error).message);
@@ -253,7 +260,7 @@ async function main(): Promise<number> {
     }
   }
 
-  const run: Run = { at: started, model, prompt, results };
+  const run: Run = { at: started, model, mode, prompt, results };
   const report = renderReport(run, previous);
   console.log(`\n${report}`);
   if (runsDir) {

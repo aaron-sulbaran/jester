@@ -236,9 +236,13 @@ export const addUsage = (a: Usage, b: Usage): Usage => ({
 
 // ---- The report ----
 
+export type Mode = "deep" | "fast";
+
 export interface Run {
   at: string;
   model: string;
+  /** Absent in runs from before the two modes. */
+  mode?: Mode;
   prompt: string;
   results: CaseResult[];
 }
@@ -280,7 +284,7 @@ export function renderReport(run: Run, previous: Run | null): string {
   const lines = [
     `# Chamberlain eval, ${run.at.slice(0, 16).replace("T", " ")}`,
     "",
-    `Model ${run.model}, prompt ${run.prompt}. ${run.results.length} reviews (one per case), ${total.calls} model calls, ${total.input} input tokens (${total.cacheRead ?? 0} read from the cache, ${total.cacheWrite ?? 0} written to it) and ${total.output} output tokens${cost === null ? "" : `, about $${cost.toFixed(2)}`}, ${secs} s of review time.`,
+    `Model ${run.model}, ${run.mode ?? "single"} mode, prompt ${run.prompt}. ${run.results.length} reviews (one per case), ${total.calls} model calls, ${total.input} input tokens (${total.cacheRead ?? 0} read from the cache, ${total.cacheWrite ?? 0} written to it) and ${total.output} output tokens${cost === null ? "" : `, about $${cost.toFixed(2)}`}, ${secs} s of review time.`,
     "",
     ...summaryRows(run.results),
     "",
