@@ -359,6 +359,8 @@ export function initGame(deps: GameDeps) {
     if (!clip) return;
     // A surprise gets the merry-go-round while its moves load; the cast screen follows once both are done.
     const ride = pick.kind === "surprise" ? surpriseRide(clip, from) : null;
+    // The ride's first frame is painted before the load starts, so any work the load does runs under it.
+    if (ride) await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
     const loading = bankScene(clip, deps.clipVideo);
     let loaded = false;
     void loading.then(() => { loaded = true; });
