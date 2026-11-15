@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Link lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 760px; background: #fff; color: #111; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p.sub { margin: 0 0 12px; color: #555; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+    input[type="text"] { flex: 1; min-width: 200px; padding: 6px; }
+    #player-box { width: 640px; max-width: 100%; aspect-ratio: 16 / 9; background: #000; }
+    #player-box iframe, #player-box > div { width: 100%; height: 100%; display: block; }
+    canvas { display: block; width: 100%; max-width: 640px; height: auto; background: #000; margin-top: 8px; }
+    table { border-collapse: collapse; margin-top: 12px; }
+    td { border: 1px solid #ccc; padding: 4px 8px; }
+    #status { min-height: 1.4em; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Link lab: tab capture check</h1>
+  <p class="sub">Load a YouTube video, press play, then press Grab this tab and pick This tab. A skeleton should sit on the person below.</p>
+  <div class="row">
+    <input id="link" type="text" value="https://www.youtube.com/watch?v=9bZkp7q19f0" />
+    <button id="load">Load</button>
+  </div>
+  <div id="player-box"><div id="player"></div></div>
+  <div class="row">
+    <button id="grab">Grab this tab</button>
+    <button id="stop" disabled>Stop</button>
+  </div>
+  <p id="status">Load a video to start.</p>
+  <canvas id="preview" width="640" height="360"></canvas>
+  <table id="facts"></table>
+  <script type="module" src="./src/link-lab.ts"></script>
+</body>
+</html>
