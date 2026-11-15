@@ -8,6 +8,7 @@ import { cameraPlayer, playObjectRound, playRound, simulatedPlayer, type Player 
 import { drawFrame, drawObject, fitCanvas } from "./draw.ts";
 import { OBJECT_NAMES, objectClip, simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { cutFrame, recordReveal, type Cutout } from "./cutout.ts";
+import { initBlindScreens } from "./blindScreens.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clipVideo = $<HTMLVideoElement>("clip");
@@ -23,6 +24,8 @@ let camera: Player | null = null;
 let playing = false;
 let clipNowMs = 0;
 let lastPlayer: { pose: LandmarkObject[] | null; aspect: number } = { pose: null, aspect: 4 / 3 };
+/** In blind mode the blind screens draw the two canvases themselves. */
+let blindMode = false;
 
 const setStatus = (text: string) => { $("status").textContent = text; };
 const simMode = () => $<HTMLInputElement>("simPlayer").checked;
@@ -169,7 +172,7 @@ async function showReveal(o: ObjectClip, cutouts: Cutout[], lagMs: number, partN
   setStatus("Making your replay...");
   const ctx = canvas.getContext("2d")!;
   const url = await recordReveal({
-    canvas, durationMs: o.durationMs, lagMs, cutouts, boxAt: o.boxAt,
+    canvas, durationMs: o.durationMs, layers: [{ cutouts, lagMs, boxAt: o.boxAt, kind: "thing" }],
     // The clip without the player: here a drawn scene with a faint ghost of the object so the match shows.
     drawBackground: (_ctx, ms) => {
       ctx.globalAlpha = 1; drawObject(canvas, null, o.name);
@@ -343,6 +346,7 @@ function showResults(r: PoseRoundResult) {
 
 function render() {
   requestAnimationFrame(render);
+  if (blindMode) return;
   if (objClip) drawObject(clipCanvas, objClip.boxAt(playing ? clipNowMs : 0), objClip.name);
   else if (clip) {
     const ms = clip.videoUrl ? clipVideo.currentTime * 1000 : playing ? clipNowMs : 0;
@@ -353,3 +357,22 @@ function render() {
   drawFrame(playerCanvas, simMode() ? null : cam, lastPlayer.pose, { mirror: true, color: "#6fd3ff" });
 }
 requestAnimationFrame(render);
+
+// ---- Modes ----
+
+initBlindScreens({ simMode, noise, getCamera, countdown, clipVideo, cam, guideCanvas: clipCanvas, playerCanvas });
+
+function setMode(blind: boolean) {
+  if (playing) return;
+  blindMode = blind;
+  $("modeSolo").classList.toggle("on", !blind);
+  $("modeBlind").classList.toggle("on", blind);
+  $("setup").classList.toggle("hidden", blind);
+  $("results").classList.add("hidden");
+  $("blind").classList.toggle("hidden", !blind);
+  $("clipCaption").textContent = blind ? "Your role" : "Clip";
+  for (const c of [clipCanvas, playerCanvas]) { const ctx = c.getContext("2d")!; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, c.width, c.height); }
+}
+$("modeSolo").addEventListener("click", () => setMode(false));
+$("modeBlind").addEventListener("click", () => setMode(true));
+if (params.has("blind")) setMode(true);
