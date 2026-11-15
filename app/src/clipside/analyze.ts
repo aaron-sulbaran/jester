@@ -2,8 +2,8 @@
 // the person picked. The pure work lives in ../../../clip; this file feeds it from the browser.
 
 import {
-  buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkTracks, linkThings, pickConfirmFrame,
-  rankCandidates, rankThings, rejoinTracks, repairIdentities, shotRanges, thingGuides, withConfirmBoxes, withoutPeople,
+  buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkThings, pickConfirmFrame,
+  rankCandidates, rankThings, rejoinThings, shotRanges, thingGuides, trackPeople, withConfirmBoxes, withoutPeople,
 } from "../../../clip/src/index.ts";
 import type {
   Candidate, ClipSource, FrameDetections, Guide, ThingCandidate, ThingFrame, ThingTrack, Track,
@@ -24,8 +24,8 @@ const MAX_MS = 30000;
 const MAX_SIDE = 512;
 const SIGNATURE_WIDTH = 32;
 const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are used.";
-/** A person lost for up to this long (behind someone, at the back) is joined back into one track. */
-const REJOIN_SECONDS = 3;
+/** A thing lost for up to this long (behind the dancer) is joined back into one track, as people are in trackPeople. */
+const THING_REJOIN_SECONDS = 3;
 /** The object detector looks at every this many analysed frames. */
 const THING_EVERY = 6;
 /**
@@ -85,11 +85,7 @@ function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] 
  * and picks the frame to choose from. Pure and quick, so saved analyses run it again too.
  */
 function findPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
-  const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
-  const aspect = source.width / source.height;
-  const joined = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect });
-  // Puts back skeletons that crossing dancers swapped, and drops frames that show someone else's pose.
-  const { tracks } = repairIdentities(joined, { aspect });
+  const { tracks } = trackPeople(frames, cuts, { sampleHz: SAMPLE_HZ, aspect: source.width / source.height });
   const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
   const confirmFrame = pickConfirmFrame(ranked, tracks);
   const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
@@ -209,12 +205,17 @@ export async function prepareClip(
   return { data: prepared, error: null };
 }
 
-/** Follows and ranks the things, leaving out boxes that are mostly a person the pose tracker has. */
+/**
+ * Follows and ranks the things, leaving out boxes that are mostly a person the pose tracker has. A thing
+ * that linking split (a parked car seen whole, then only as the part a dancer leaves uncovered) is joined
+ * back into one track, as people are.
+ */
 function findThings(thingFrames: ThingFrame[], frames: readonly FrameDetections[], cuts: number[], source: ClipSource): PreparedThings {
   const aspect = source.width / source.height;
   const kept = withoutPeople(thingFrames, frames.map((f) => f.people.map((p) => p.box)));
-  const tracks = linkThings(kept, cuts, { aspect, maxGap: THING_MAX_GAP });
-  const candidates = rankThings(tracks, { sampleHz: source.sampleHz, frameCount: frames.length, aspect });
+  const linked = linkThings(kept, cuts, { aspect, maxGap: THING_MAX_GAP });
+  const tracks = rejoinThings(linked, kept, { aspect, maxGap: THING_REJOIN_SECONDS * SAMPLE_HZ });
+  const candidates = rankThings(tracks, { sampleHz: source.sampleHz, frameCount: frames.length, aspect, cuts });
   return { frames: kept, tracks, candidates };
 }
 
