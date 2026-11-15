@@ -2,7 +2,7 @@
 // grabbed analysis is saved under. Also evens out frames grabbed live onto a fixed rate.
 // Pure: no DOM, no fetching. Tested from clip/test/link.test.ts.
 
-import type { FrameDetections, Track } from "../../../clip/src/index.ts";
+import type { FrameDetections } from "../../../clip/src/index.ts";
 
 export const NOT_A_LINK = "That link is not one Jester can open. Try a YouTube link, or grab it from another tab.";
 
@@ -118,40 +118,4 @@ export function evenFrames(
     frames.push({ tMs: Math.round(t), people: nearest.people, signature: nearest.signature });
   }
   return { frames, stretched };
-}
-
-export interface StitchOptions {
-  /** Most frames between one track's end and the next one's start. */
-  maxGap?: number;
-  /** Most distance between the end and the start, in box heights. */
-  maxJump?: number;
-}
-
-/**
- * Joins a track that ends to one that starts soon after, close by and in the same shot: one person
- * whose box jumped (arms flung out, a dropped frame) and so was split in two. Tracks that overlap in
- * time are never joined; when several could continue, the closest one does. Keeps the first id.
- */
-export function stitchTracks(tracks: readonly Track[], options: StitchOptions = {}): Track[] {
-  const maxGap = options.maxGap ?? 8;
-  const maxJump = options.maxJump ?? 0.75;
-  const firstFrame = (t: Track) => t.points[0]?.frame ?? Infinity;
-  const ordered = [...tracks].sort((a, b) => firstFrame(a) - firstFrame(b) || a.id - b.id);
-  const chains: Track[] = [];
-  for (const track of ordered) {
-    const start = track.points[0];
-    if (!start) continue;
-    let best: Track | null = null;
-    let bestJump = Infinity;
-    for (const chain of chains) {
-      const end = chain.points[chain.points.length - 1]!;
-      const gap = start.frame - end.frame;
-      if (chain.shot !== track.shot || gap < 1 || gap > maxGap) continue;
-      const jump = Math.hypot(start.box.cx - end.box.cx, start.box.cy - end.box.cy) / Math.max(end.box.h, start.box.h, 1e-6);
-      if (jump <= maxJump && jump < bestJump) { best = chain; bestJump = jump; }
-    }
-    if (best) best.points.push(...track.points);
-    else chains.push({ id: track.id, shot: track.shot, points: [...track.points] });
-  }
-  return chains.sort((a, b) => a.id - b.id);
 }

@@ -3,17 +3,16 @@
 // Frames are read, searched for people and dropped at once: no frame or video is kept, saved or sent.
 
 import {
-  checkClip, findCuts, frameSignature, linkTracks, pickConfirmFrame, rankCandidates, withConfirmBoxes,
+  checkClip, findCuts, frameSignature, linkTracks, pickConfirmFrame, rankCandidates, rejoinTracks, withConfirmBoxes,
 } from "../../../clip/src/index.ts";
 import type { ClipSource, FrameDetections } from "../../../clip/src/index.ts";
 import type { Prepared } from "./analyze.ts";
 import { drawTabFrame, type TabCapture } from "./capture.ts";
 import { createPeopleDetector, type PeopleDetector } from "./detect.ts";
-import { evenFrames, stitchTracks } from "./link.ts";
+import { evenFrames } from "./link.ts";
 import { loadPrepared, savePrepared } from "./store.ts";
 import { STATE, type YtPlayer } from "./youtube.ts";
 
-export { loadPrepared } from "./store.ts";
 
 export const SAMPLE_HZ = 15;
 export const MAX_GRAB_MS = 30000;
@@ -21,6 +20,8 @@ export const MIN_GRAB_MS = 3000;
 const MAX_SIDE = 720;
 const SIGNATURE_WIDTH = 32;
 const STEP_MS = 1000 / SAMPLE_HZ;
+/** A person lost for up to this long is joined back into one track; same as the file path. */
+const REJOIN_SECONDS = 3;
 
 export const NOT_PLAYING = "The clip did not start playing. Press play on the video once, then try again.";
 export const NOTHING_GRABBED = "Sharing stopped before the moves were grabbed. Press the button again.";
@@ -69,6 +70,33 @@ class StatsCounter {
   }
 }
 
+/**
+ * Follows each person through the frames and joins people split into pieces, with the same calls and
+ * settings as the file path (analyze.ts), then ranks them. Pure and quick, so saved grabs run it again.
+ */
+function followPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
+  const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
+  const tracks = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect: source.width / source.height });
+  const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
+  const confirmFrame = pickConfirmFrame(ranked, tracks);
+  const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
+  const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
+  return { piecesBeforeJoining: linked.length, tracks, candidates, confirmFrame, confirmTMs: frames[confirmFrame]?.tMs ?? 0, verdict };
+}
+
+/**
+ * The saved grab under `key`, with the people followed again by the current rules (saved grabs keep
+ * the frames as read). Null when there is none, or when the current rules refuse it.
+ */
+export async function loadGrab(key: string): Promise<Prepared | null> {
+  const saved = await loadPrepared(key);
+  if (!saved) return null;
+  const { verdict, piecesBeforeJoining: _pieces, ...people } = followPeople(saved.frames, saved.cuts, saved.source);
+  if (verdict.refuse !== null) return null;
+  const warnings = [...saved.warnings.filter((w) => w === JUMPY || w === CUT_SHORT), ...verdict.warnings];
+  return { ...saved, ...people, warnings };
+}
+
 /** Prepared's decoder field names how frames were read; a grab reads them from tab capture. */
 const TAB_CAPTURE = "tab-capture" as unknown as Prepared["decoder"];
 
@@ -108,18 +136,11 @@ async function finishGrab(
   const { frames, stretched } = evenFrames(grabbed, startMs, endMs, SAMPLE_HZ);
   const source: ClipSource = { width: reader.width, height: reader.height, durationMs: endMs - startMs, sampleHz: SAMPLE_HZ };
   const cuts = findCuts(frames.map((f) => f.signature));
-  // Live grabs split one fast mover into pieces more often than files do; join them back.
-  const linked = linkTracks(frames, cuts);
-  const tracks = stitchTracks(linked);
-  const stats = reader.stats.finish(Math.round((endMs - startMs) / 100) / 10, stretched, linked.length, tracks.length);
-  const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
-  const confirmFrame = pickConfirmFrame(ranked, tracks);
-  const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
-  const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
+  const { verdict, piecesBeforeJoining, ...people } = followPeople(frames, cuts, source);
+  const stats = reader.stats.finish(Math.round((endMs - startMs) / 100) / 10, stretched, piecesBeforeJoining, people.tracks.length);
   if (verdict.refuse !== null) return { data: null, error: verdict.refuse, stats };
   const prepared: Prepared = {
-    fingerprint: key, source, frames, cuts, tracks, candidates, confirmFrame,
-    confirmTMs: frames[confirmFrame]?.tMs ?? startMs,
+    fingerprint: key, source, frames, cuts, ...people,
     warnings: [...warnings, ...(stretched > frames.length / 5 ? [JUMPY] : []), ...verdict.warnings],
     decoder: TAB_CAPTURE, fromSaved: false,
   };
@@ -272,5 +293,5 @@ export function rememberGrab(linkKey: string, fingerprint: string) {
 export async function lastGrab(linkKey: string): Promise<Prepared | null> {
   let fingerprint: string | null = null;
   try { fingerprint = localStorage.getItem(POINTER_PREFIX + linkKey); } catch { return null; }
-  return fingerprint ? loadPrepared(fingerprint) : null;
+  return fingerprint ? loadGrab(fingerprint) : null;
 }

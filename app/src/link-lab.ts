@@ -3,12 +3,12 @@
 // other tab. Only the people analysis is saved. URL option: ?link=<pasted link> opens it at once.
 // After each grab, window.__linkLab holds a summary.
 
-import type { Box, Guide } from "../../clip/src/index.ts";
+import { pointNearFrame, type Box, type Guide } from "../../clip/src/index.ts";
 import { finishClip, subjectGuides, type Prepared } from "./clipside/analyze.ts";
 import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
 import { canCaptureTab, captureTab, NO_TAB_CAPTURE } from "./clipside/capture.ts";
 import {
-  grabFromOtherTab, grabFromPlayer, lastGrab, loadPrepared, MAX_GRAB_MS, MIN_GRAB_MS, rememberGrab, TOO_SHORT,
+  grabFromOtherTab, grabFromPlayer, lastGrab, loadGrab, MAX_GRAB_MS, MIN_GRAB_MS, rememberGrab, TOO_SHORT,
   type GrabResult, type GrabStats, type OtherTabGrab,
 } from "./clipside/grab.ts";
 import { grabKey, parseLink, type ParsedLink } from "./clipside/link.ts";
@@ -121,10 +121,12 @@ function strokeSkeleton(ctx: CanvasRenderingContext2D, landmarks: Points, w: num
   }
 }
 
-function strokeBox(ctx: CanvasRenderingContext2D, box: Box, label: string, w: number, h: number, color: string) {
+function strokeBox(ctx: CanvasRenderingContext2D, box: Box, label: string, w: number, h: number, color: string, dashed = false) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
+  if (dashed) ctx.setLineDash([10, 8]);
   ctx.strokeRect((box.cx - box.w / 2) * w, (box.cy - box.h / 2) * h, box.w * w, box.h * h);
+  ctx.setLineDash([]);
   if (!label) return;
   ctx.fillStyle = color;
   ctx.font = "bold 22px system-ui, sans-serif";
@@ -154,20 +156,31 @@ function sizeView(canvas: HTMLCanvasElement, p: Prepared): CanvasRenderingContex
   return ctx;
 }
 
-/** Every candidate at the confirm frame, numbered; on the player too when it is there. */
-function drawConfirm(p: Prepared, chosen: number) {
+const DASHED_NOTE = "A dashed box is someone who is not in this frame, shown where they are closest to it.";
+
+/**
+ * Every candidate at the confirm frame, numbered; on the player too when it is there. Someone not in
+ * that frame gets a dashed box where they are closest to it. True when any box is dashed.
+ */
+function drawConfirm(p: Prepared, chosen: number): boolean {
   const ctx = sizeView(confirmCanvas, p);
   const { width: w, height: h } = confirmCanvas;
   const overlayCtx = flow === "player" && player ? overlayContext() : null;
+  let anyDashed = false;
   for (const c of p.candidates) {
     const color = c.number === chosen ? CHOSEN : OTHERS;
-    const point = p.tracks.find((t) => t.id === c.trackId)?.points.find((pt) => pt.frame === p.confirmFrame);
+    const track = p.tracks.find((t) => t.id === c.trackId);
+    const point = track?.points.find((pt) => pt.frame === p.confirmFrame);
     if (point) strokeSkeleton(ctx, point.landmarks, w, h, color);
-    if (c.boxAtConfirm) {
-      strokeBox(ctx, c.boxAtConfirm, String(c.number), w, h, color);
-      if (overlayCtx) strokeBox(overlayCtx, c.boxAtConfirm, String(c.number), overlay.width, overlay.height, color);
-    }
+    const near = c.boxAtConfirm ? null : track ? pointNearFrame(track, p.confirmFrame) : null;
+    const box = c.boxAtConfirm ?? near?.box ?? null;
+    if (!box) continue;
+    const dashed = c.boxAtConfirm === null;
+    anyDashed ||= dashed;
+    strokeBox(ctx, box, String(c.number), w, h, color, dashed);
+    if (overlayCtx) strokeBox(overlayCtx, box, String(c.number), overlay.width, overlay.height, color, dashed);
   }
+  return anyDashed;
 }
 
 function drawGuideFrame(ctx: CanvasRenderingContext2D, guide: Guide, index: number, w: number, h: number) {
@@ -311,9 +324,9 @@ function showPrepared(p: Prepared, from: Flow, seconds: number | null, stats: Gr
     show(overlay, true);
   }
   showPeople(p, top);
-  drawConfirm(p, top);
+  const dashed = drawConfirm(p, top);
   const found = p.candidates.length === 1 ? "1 person" : `${p.candidates.length} people`;
-  setStatus(`Found ${found}. Pick who to follow.`, p.fromSaved ? "These moves were grabbed before." : "", ...p.warnings);
+  setStatus(`Found ${found}. Pick who to follow.`, dashed ? DASHED_NOTE : "", p.fromSaved ? "These moves were grabbed before." : "", ...p.warnings);
 }
 
 function handleResult(result: GrabResult, from: Flow, linkKey: string | null, began: number) {
@@ -382,7 +395,7 @@ async function openYoutube(parsed: Extract<ParsedLink, { site: "youtube" }>) {
   startInput.value = String(parsed.startSeconds);
   updateLabels();
   const { startMs, endMs } = currentRange();
-  const saved = await loadPrepared(grabKey(parsed.key, startMs, endMs));
+  const saved = await loadGrab(grabKey(parsed.key, startMs, endMs));
   setStatus(saved
     ? "The moves for this stretch were grabbed before. Press Grab the moves to use them."
     : "Pick where to start and how long, then press Grab the moves.");
@@ -396,7 +409,7 @@ async function grabFromThisTab() {
   const key = grabKey(link.key, range.startMs, range.endMs);
   const began = performance.now();
   // Reading the saved analysis is quick, so the click still counts when the picker opens.
-  const saved = await loadPrepared(key);
+  const saved = await loadGrab(key);
   if (saved) {
     clearResult();
     showPrepared(saved, "player", 0);
