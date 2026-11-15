@@ -117,6 +117,24 @@ function hornGeometry(points: Vector3[], r0: number, r1: number): BufferGeometry
 }
 
 const UP = new Vector3(0, 1, 0);
+
+/** The furthest the head turns away from where the body faces (radians): a believable neck. */
+const NECK_TURN = 1;
+
+/**
+ * Which way the head faces (radians, 0 toward the camera, positive toward the image's right), from the face itself:
+ * on a real head the nose sits about 10 cm ahead of a 15 cm span of ears, so the nose's sideways offset from the
+ * ears' middle against the ears' span gives the turn. With one ear hidden (a profile) the head is turned well
+ * toward the nose's side. Kept within NECK_TURN of the body's facing; the body's facing alone when the nose or
+ * both ears are unseen, or the body faces away from the camera. World coordinates: x right.
+ */
+export function headTurn(nose: { x: number } | null, leftEar: { x: number } | null, rightEar: { x: number } | null, facing: number): number {
+  if (!nose || (!leftEar && !rightEar) || Math.cos(facing) < 0.3) return facing;
+  const own = leftEar && rightEar
+    ? Math.atan2(1.5 * (nose.x - (leftEar.x + rightEar.x) / 2), Math.max(Math.abs(leftEar.x - rightEar.x), 1e-3))
+    : Math.sign(nose.x - (leftEar ?? rightEar)!.x) * 1.1;
+  return facing + Math.max(-NECK_TURN, Math.min(NECK_TURN, own - facing));
+}
 const tmpQ = new Quaternion();
 
 interface Part { fill: Mesh; hull: Mesh }
@@ -330,7 +348,7 @@ class Figure {
     const radius = T * 0.5;
     this.head.visible = true;
     this.head.position.copy(headAt.add(lean.clone().multiplyScalar(radius * 0.1)));
-    this.head.quaternion.setFromUnitVectors(UP, lean).multiply(new Quaternion().setFromAxisAngle(UP, facing));
+    this.head.quaternion.setFromUnitVectors(UP, lean).multiply(new Quaternion().setFromAxisAngle(UP, headTurn(j(0), j(7), j(8), facing)));
     this.head.scale.setScalar(radius);
     // Inside the head everything is in head radii, so the outline is the ink over the radius.
     const hullInk = ink / radius;
