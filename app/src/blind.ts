@@ -23,7 +23,7 @@ import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
-import { cutFrame, recordReveal, type Box, type Cutout, type RevealLayer } from "./cutout.ts";
+import { cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock } from "./cutout.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
 export interface Scene {
@@ -482,11 +482,104 @@ function drawDemoScene(ctx: CanvasRenderingContext2D, W: number, H: number, scen
   }
 }
 
+/** A playing video as a segment clock, from clip media time `fromMs`. */
+function videoClock(video: HTMLVideoElement, fromMs: number): SegmentClock {
+  return {
+    async start() {
+      video.muted = true;
+      video.pause();
+      const seeked = new Promise((r) => { video.addEventListener("seeked", r, { once: true }); setTimeout(r, 1500); });
+      video.currentTime = fromMs / 1000;
+      await seeked;
+      await video.play();
+    },
+    now: () => video.currentTime * 1000 - fromMs,
+    stop: () => video.pause(),
+  };
+}
+
+/** Start (clip ms from the shared stretch's start) of the `windowMs` where the roles move the most together. */
+function busiestWindow(guides: readonly Guide[], windowMs: number): number {
+  const g0 = guides[0];
+  if (!g0) return 0;
+  const frameMs = 1000 / g0.source.sampleHz, n = g0.boxTrack.frames.length, w = Math.max(1, Math.round(windowMs / frameMs));
+  if (n <= w) return 0;
+  const motion = new Array<number>(n).fill(0);
+  for (const g of guides) {
+    g.boxTrack.frames.forEach((f, i) => {
+      const p = g.boxTrack.frames[i - 1]?.box;
+      if (f.box && p) motion[i]! += Math.abs(f.box.cx - p.cx) + Math.abs(f.box.cy - p.cy) + Math.abs(f.box.h - p.h);
+    });
+  }
+  let sum = motion.slice(0, w).reduce((a, b) => a + b, 0), best = sum, at = 0;
+  for (let i = w; i < n; i++) { sum += motion[i]! - motion[i - w]!; if (sum > best) { best = sum; at = i - w + 1; } }
+  return at * frameMs;
+}
+
+const CARD_BG = "#16161d", INK = "#f2f2f5", SOFT = "#a0a3b1", GOLD = "#f5c542";
+const font = (H: number, k: number, weight = 600) => `${weight} ${Math.round(H * k)}px system-ui, -apple-system, sans-serif`;
+
+/** The opening card. */
+function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneName: string, players: number, ms: number) {
+  ctx.fillStyle = CARD_BG; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = Math.min(1, ms / 400);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = GOLD; ctx.font = font(H, 0.12, 800); ctx.fillText("Blind mode", W / 2, H * 0.4);
+  ctx.fillStyle = INK; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
+  ctx.fillStyle = SOFT; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
+  ctx.globalAlpha = 1;
+}
+
+/** One frame of the side by side: the clip on the left, the cast on the right. */
+function drawSideBySide(ctx: CanvasRenderingContext2D, W: number, H: number, full: HTMLCanvasElement, background: (c: CanvasRenderingContext2D, ms: number) => void, layers: RevealLayer[], ms: number) {
+  full.width = W; full.height = H;
+  const f = full.getContext("2d")!;
+  ctx.fillStyle = CARD_BG; ctx.fillRect(0, 0, W, H);
+  const pad = W * 0.02, w = (W - 3 * pad) / 2, h = w * (H / W), y = (H - h) / 2 + H * 0.04;
+  background(f, ms);
+  ctx.drawImage(full, pad, y, w, h);
+  drawLayers(f, W, H, layers, ms);
+  ctx.drawImage(full, 2 * pad + w, y, w, h);
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.font = font(H, 0.05, 700);
+  ctx.fillStyle = INK; ctx.fillText("The clip", pad + w / 2, y - H * 0.02);
+  ctx.fillStyle = GOLD; ctx.fillText("Your cast", 2 * pad + 1.5 * w, y - H * 0.02);
+}
+
+/** The closing card: who played what, how well, and who won. Each player's picture is their own cutout. */
+function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows: ResultRow[], faces: (HTMLCanvasElement | null)[], ms: number) {
+  ctx.fillStyle = CARD_BG; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center"; ctx.fillStyle = GOLD; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
+  const rowH = Math.min(H * 0.17, (H * 0.78) / Math.max(1, rows.length));
+  rows.forEach((r, i) => {
+    // Rows slide in one after another.
+    const t = Math.min(1, Math.max(0, (ms - 300 - i * 450) / 350));
+    if (t <= 0) return;
+    const y = H * 0.25 + i * rowH + rowH / 2;
+    ctx.globalAlpha = t;
+    const x0 = W * 0.08 + (1 - t) * W * 0.05, face = rowH * 0.85;
+    ctx.fillStyle = "#23232d"; ctx.fillRect(x0, y - face / 2, face, face);
+    const img = faces[i];
+    if (img) ctx.drawImage(img, x0, y - face / 2, face, face);
+    ctx.strokeStyle = r.color; ctx.lineWidth = 3; ctx.strokeRect(x0, y - face / 2, face, face);
+    ctx.textAlign = "left";
+    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15);
+    ctx.fillStyle = INK; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = r.winner ? GOLD : INK; ctx.font = font(H, 0.07, 800);
+    ctx.fillText(r.score == null ? "-" : String(r.score), W * 0.92, y - rowH * 0.08);
+    ctx.fillStyle = r.winner ? GOLD : SOFT; ctx.font = font(H, 0.032, 600);
+    ctx.fillText(r.winner ? (r.tied ? "Tied for first" : "Winner") : r.tier ?? "", W * 0.92, y + rowH * 0.27);
+  });
+  ctx.globalAlpha = 1;
+}
+
 /**
- * Records the reveal at the clip's own speed. `played` is the scene as the turns were played (slowed to
- * `speed`); reveal time ms is play time ms / speed, so each player's cutout is sped up to match the clip.
+ * Records the reveal: a title card, the cast over the clip at the clip's own speed, the busiest few seconds
+ * side by side with the original, and a closing cast card. `played` is the scene as the turns were played
+ * (slowed to `speed`); reveal time ms is play time ms / speed, so each cutout is sped up to match the clip.
  */
-async function recordGroupReveal(seats: Seat[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void): Promise<string | null> {
+async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void): Promise<string | null> {
   const scene = played;
   canvas.height = Math.round(canvas.width * (scene.height / scene.width));
   const W = canvas.width, H = canvas.height;
@@ -497,23 +590,31 @@ async function recordGroupReveal(seats: Seat[], played: Scene, speed: number, ca
     tag: `${s.name} ${s.result?.score ?? "-"}`,
   }));
   const video = scene.video;
-  return recordReveal({
-    canvas, durationMs: scene.durationMs * speed, layers, onProgress,
-    drawBackground: (ctx, ms) => {
-      if (video) { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); ctx.drawImage(video, 0, 0, W, H); }
-      else drawDemoScene(ctx, W, H, scene, toPlay(ms));
+  const realMs = scene.durationMs * speed;
+  /** The clip with no players at reveal time ms (`from` ms into the stretch, for a video that was seeked there). */
+  const background = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
+    if (video) { c.fillStyle = "#000"; c.fillRect(0, 0, W, H); c.drawImage(video, 0, 0, W, H); }
+    else drawDemoScene(c, W, H, scene, toPlay(from + ms));
+  };
+  const sideMs = Math.min(6000, realMs);
+  const sideFrom = busiestWindow(seats.map((s) => s.original), sideMs);
+  const sideLayers = layers.map((l) => ({ ...l, boxAt: (ms: number) => l.boxAt(sideFrom + ms), cutouts: l.cutouts.map((c) => ({ ...c, clipMs: c.clipMs - toPlay(sideFrom) })) }));
+  const full = document.createElement("canvas");
+  // Each player's picture on the cast card: a cutout from the middle of their turn.
+  const faces = seats.map((s) => s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
+  const segments: Segment[] = [
+    { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
+    {
+      durationMs: realMs, clock: video ? videoClock(video, scene.startMs) : undefined,
+      draw: (c, ms) => { background(0)(c, ms); drawLayers(c, W, H, layers, ms); },
     },
-    clock: video ? {
-      async start() {
-        video.muted = true;
-        video.currentTime = scene.startMs / 1000;
-        await new Promise((r) => video.addEventListener("seeked", r, { once: true }));
-        await video.play();
-      },
-      now: () => video.currentTime * 1000 - scene.startMs,
-      stop: () => video.pause(),
-    } : undefined,
-  });
+    {
+      durationMs: sideMs, clock: video ? videoClock(video, scene.startMs + sideFrom) : undefined,
+      draw: (c, ms) => drawSideBySide(c, W, H, full, background(sideFrom), sideLayers, ms),
+    },
+    { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
+  ];
+  return recordSegments(canvas, segments, onProgress);
 }
 
 // ---- The game ----
@@ -566,7 +667,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     timeline: mediaTimeline(s, scene, speed),
   }));
   ui.results(rows);
-  const url = await recordGroupReveal(seats, scene, speed, ui.revealCanvas(), (share) => ui.progress(share));
+  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share));
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
   return rows;
