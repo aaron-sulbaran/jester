@@ -16,14 +16,7 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 
 ## How it works
 
-```mermaid
-flowchart LR
-  A["1. Pick a clip"] --> B["2. Jester reads the moves<br/>one guide per person or thing"]
-  B --> C["3. Copy your secret part<br/>on the webcam"]
-  C --> D["4. Score and reveal<br/>the real clip, everyone on it"]
-```
-
-<!-- PICTURE SLOT: round diagram. If the devpost kit's app/public/devpost/diagram-round.png is merged, it can go here beside or instead of the diagram above. -->
+<!-- PICTURE SLOT: four step diagram. Use the devpost kit's diagram (app/public/devpost/diagram-round.png, or whatever it is named when merged); it goes through the frontend agent. Do not draw one here. -->
 
 1. **Pick a clip.** From the video bank, or a file from your computer. While the bank is empty the game offers two built-in starter clips, which also work offline.
 2. **Jester reads the moves.** The clip side finds up to 4 people per frame and the things that move, notices cuts, follows each subject through the clip, and writes a guide for each: the pose over time (33 body points), the box over time and an outline. A clip it cannot use is refused with a sentence a player can read.
@@ -75,7 +68,7 @@ Then open http://localhost:5173. No settings file is needed: the dev server take
 
 **AI tools.** Each of us worked with Claude Code (Claude Opus 5.5, Sonnet 5.5 and Fable 5.2); commits written with it carry a `Co-Authored-By` line naming the model. The game calls no language model: every number comes from the pose and object models running in the browser and from fixed code.
 
-**How we built this.** Three people each ran several coding agents at once, so the repo carries its own rules for them. [`AGENTS.md`](AGENTS.md) at the root is what every agent reads first, whatever tool it runs in: how to tell the team which files it is about to touch and what it changed, to commit only as its own person, and that anything a player sees goes through one look. [`CLAUDE.md`](CLAUDE.md) is one line that points Claude Code at the same file, so there is a single copy of the rules. Agents worked on their own branches, and each part has a pure, tested core (`clip/`, `engine/`, the webcam and room modules) that the app imports, which kept parallel work from breaking each other.
+**How we built this.** Three people each ran several coding agents at once, so the repo carries its own rules for them. [`AGENTS.md`](AGENTS.md) at the root is what every agent reads first, whatever tool it runs in: how to tell the team which files it is about to touch and what it changed, to commit only as its own person, and that anything a player or a judge sees (screens, wording, colours, the Devpost pictures) keeps one look, so feature work reuses the parts listed in [`docs/design/look-parts.md`](docs/design/look-parts.md). [`CLAUDE.md`](CLAUDE.md) is one line that points Claude Code at the same file, so there is a single copy of the rules. Agents worked on their own branches, and each part has a pure, tested core (`clip/`, `engine/`, the webcam and room modules) that the app imports, which kept parallel work from breaking each other.
 
 ## Credits
 
