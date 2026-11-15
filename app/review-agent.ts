@@ -9,6 +9,8 @@
 // frames itself, and records one decision: approve, reject, or ask a person. Only "ask a person" waits.
 // What leaves the laptop for each review: the four frames, the facts, and the submitter's title and credit.
 
+import { createHash } from "node:crypto";
+
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 
 export interface ClipFacts {
@@ -84,6 +86,28 @@ It is unsure only when: the best subject is seen for less than 40 percent of the
 
 Answer in two or three sentences: "plays well", "does not play" or "unsure", and why, with the numbers.`;
 
+/** A short hash of both prompts, saved with every eval case so a report can say which prompt judged it. */
+export function promptVersion(): string {
+  return createHash("sha256").update(`${SYSTEM}\n---\n${PLAYABILITY}`).digest("hex").slice(0, 10);
+}
+
+/**
+ * Extra settings for one run, passed to the agent's invoke: the eval sends callbacks (to count tokens), tags,
+ * metadata and a run name, so a LangSmith trace can be found by case. The desk sends none.
+ */
+export interface RunOptions {
+  callbacks?: object[];
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  runName?: string;
+}
+
+/** Waits for LangChain's background callbacks (LangSmith uploads) to finish, before a script exits. */
+export async function flushTraces(): Promise<void> {
+  const { awaitAllCallbacks } = await import("@langchain/core/callbacks/promises");
+  await awaitAllCallbacks();
+}
+
 /** Text of a LangChain message's content, whether a string or a list of blocks. */
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -92,7 +116,7 @@ function textOf(content: unknown): string {
 }
 
 /** One review. Throws when the model cannot be reached (a wrong key, no network); the caller says so. */
-export async function reviewSubmission(input: ReviewInput, settings: { apiKey: string; model: string }): Promise<Decision> {
+export async function reviewSubmission(input: ReviewInput, settings: { apiKey: string; model: string; run?: RunOptions }): Promise<Decision> {
   // Loaded only when a review runs, so the dev server and `vite build` start without the agent packages.
   const [{ createDeepAgent }, { ChatAnthropic }, { tool }, { z }] = await Promise.all([
     import("deepagents"),
@@ -154,7 +178,7 @@ export async function reviewSubmission(input: ReviewInput, settings: { apiKey: s
   const timer = setTimeout(() => controller.abort(new Error("The Chamberlain took too long.")), TIMEOUT_MS);
   let state: { todos?: { content?: string }[]; messages?: { name?: string; content?: unknown; getType?: () => string }[] };
   try {
-    state = (await agent.invoke({ messages: [{ role: "user", content }] }, { recursionLimit: 60, signal: controller.signal })) as typeof state;
+    state = (await agent.invoke({ messages: [{ role: "user", content }] }, { ...settings.run, recursionLimit: 60, signal: controller.signal } as Parameters<typeof agent.invoke>[1])) as typeof state;
   } catch (err) {
     if (controller.signal.aborted) throw new Error("The Chamberlain took too long.");
     throw err;

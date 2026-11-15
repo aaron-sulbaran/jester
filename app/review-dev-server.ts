@@ -3,7 +3,9 @@
 // every repo, never a VITE_ setting, so they never reach a browser or a build). With the Supabase service
 // role it reads pending submissions, streams their videos to the desk and writes each decision back to the
 // row's status. With the Anthropic key it runs the Chamberlain (review-agent.ts). Decisions and their
-// reasons go in jester-review-log.json beside that env file, since the table has no column for them.
+// reasons go in jester-review-log.json beside that env file, since the table has no column for them. Each
+// judged clip is also saved as an eval case in chamberlain-cases/ beside it (review-cases.ts): the exact judge
+// input with its frames, the decision, and later the final outcome. That folder is outside every repo.
 //
 // What leaves the laptop: the four frames, the analysis facts, and the submitter's title and credit go to
 // Anthropic for each review. Nothing else does. Videos come down from Supabase and stay here.
@@ -13,7 +15,7 @@
 //   GET  status          which settings are missing, the model, the bank folder approvals must land in
 //   GET  pending         pending submissions, each with its logged decision if it has one
 //   GET  video?path=     one submission's video
-//   POST judge           { title, credit, facts, frames } -> the Chamberlain's decision
+//   POST judge           { id, video_path, title, credit, facts, frames } -> the Chamberlain's decision (saved as a case)
 //   POST decide          { id, video_path, title, status: "approved" | "rejected", by, reason, bankId? }
 //   POST flag            { id, video_path, title, reason, ... } -> logged as waiting for a person
 //   GET  log             the latest decisions
@@ -31,7 +33,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import { readBankIndex } from "./src/bankIndex.ts";
-import { DEFAULT_MODEL, reviewSubmission, type ReviewInput } from "./review-agent.ts";
+import { DEFAULT_MODEL, promptVersion, reviewSubmission, type Decision, type ReviewInput } from "./review-agent.ts";
+import { casesDirFor, saveJudged, saveOutcome } from "./review-cases.ts";
 
 const PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov)$/;
 const ROW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -107,6 +110,7 @@ const findingsOf = (x: unknown): Finding[] | undefined => (Array.isArray(x)
 export function reviewDevServer(options: { envFile: string | undefined; supabaseUrl: string | undefined }): Plugin {
   const bankDir = process.env.JESTER_BANK_DIR;
   const logPath = options.envFile ? join(dirname(options.envFile), "jester-review-log.json") : undefined;
+  const casesDir = casesDirFor(options.envFile);
   const readLog = (): LogEntry[] => {
     if (!logPath) return [];
     try { return JSON.parse(readFileSync(logPath, "utf8")) as LogEntry[]; } catch { return []; }
@@ -255,11 +259,28 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
 
           if (route === "judge") {
             if (s.judgeMissing.length || !s.anthropicKey) return fail(503, `The Chamberlain is missing: ${s.judgeMissing.join(", ")}. You can still decide by hand.`);
-            const input = body as unknown as ReviewInput;
+            const input: ReviewInput = {
+              title: typeof body.title === "string" ? body.title : null,
+              credit: typeof body.credit === "string" ? body.credit : null,
+              facts: body.facts as ReviewInput["facts"],
+              frames: body.frames as string[],
+            };
             if (!input.facts || !Array.isArray(input.frames) || input.frames.length > 8) return fail(400, "The review needs the clip's facts and up to 8 frames.");
+            // Every judged clip becomes an eval case, whatever the outcome; a failed save never blocks the review.
+            const keep = (decision: Decision | null, error?: string) => {
+              const saved = saveJudged(casesDir, {
+                id: ROW_ID.test(String(body.id ?? "")) ? String(body.id) : null,
+                videoPath: PATH.test(String(body.video_path ?? "")) ? String(body.video_path) : null,
+                model: s.model, prompt: promptVersion(), input, decision, ...(error ? { error } : {}),
+              });
+              if (saved.error !== null) console.warn(`[review] ${saved.error}`);
+            };
             try {
-              return ok(await reviewSubmission(input, { apiKey: s.anthropicKey, model: s.model }));
+              const decision = await reviewSubmission(input, { apiKey: s.anthropicKey, model: s.model });
+              keep(decision);
+              return ok(decision);
             } catch (err) {
+              keep(null, s.scrub((err as Error).message));
               return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
           }
@@ -289,6 +310,8 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             if (error) return fail(502, `Saving the decision failed: ${error.message}`);
             if (!changed || changed.length !== 1) return fail(409, "That submission was already decided, so nothing changed.");
             addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(bankId ? { bankId } : {}), ...extra });
+            const outcome = saveOutcome(casesDir, id, { status, by, title, reason, ...(bankId ? { bankId } : {}) });
+            if (outcome.error !== null) console.warn(`[review] ${outcome.error}`);
             if (status === "approved") schedulePublish();
             return ok({ id, status });
           }
