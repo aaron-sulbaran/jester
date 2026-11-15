@@ -3,7 +3,7 @@
 // built here, with the tracker's depth or without it. Dev only.
 
 import { boxFromLandmarks, type Guide } from "../../clip/src/index.ts";
-import { blindView, drawBlindBackground, drawBlindSubject, guidePoseAt, type BlindStyle } from "./clipside/blind.ts";
+import { blindView, drawBlindBackground, drawBlindSubject, guidePoseAt, guideSliceAt, type BlindStyle } from "./clipside/blind.ts";
 import { CONSTRUCTIONS, type Construction, type StageLook } from "./clipside/puppet.ts";
 
 const W = 1280, H = 720, HZ = 15, DURATION_S = 12, ASPECT = W / H, SCALE = 0.45;
@@ -83,24 +83,6 @@ function dancerGuide(withDepth: boolean): Guide {
   };
 }
 
-/** A one-frame guide blended between the samples around frame position `pos`, as the game does. */
-function sliceAt(g: Guide, pos: number): Guide {
-  const last = g.boxTrack.frames.length - 1;
-  const p = Math.min(last, Math.max(0, pos));
-  const i = Math.floor(p), j = Math.min(last, i + 1), u = p - i;
-  const lerp = (a: number, b: number) => a + (b - a) * u;
-  const l0 = g.timeline!.frames[i]!.landmarks!, l1 = g.timeline!.frames[j]!.landmarks!;
-  const landmarks = l0.map(([x, y, v], k) => [lerp(x, l1[k]![0]), lerp(y, l1[k]![1]), Math.min(v, l1[k]![2])] as const);
-  const d0 = g.depths?.[i], d1 = g.depths?.[j];
-  return {
-    ...g,
-    boxTrack: { ...g.boxTrack, frames: [{ tMs: 0, box: boxFromLandmarks(landmarks) }] },
-    outlines: [null],
-    timeline: { ...g.timeline!, frames: [{ tMs: 0, landmarks }] },
-    depths: d0 && d1 ? [d0.map((z, k) => lerp(z, d1[k]!))] : undefined,
-  };
-}
-
 const guides = { depth: dancerGuide(true), flat: dancerGuide(false) };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const colorPick = $<HTMLSelectElement>("color"), depthBox = $<HTMLInputElement>("depth"), pauseBox = $<HTMLInputElement>("pause");
@@ -164,7 +146,7 @@ function tick(now: number) {
   }
   const guide = depthBox.checked ? guides.depth : guides.flat;
   const pos = clock * HZ;
-  const slice = sliceAt(guide, pos);
+  const slice = guideSliceAt(guide, pos);
   const pose = guidePoseAt(guide, pos);
   for (const [i, panel] of panels.entries()) {
     const key = `${guide.fingerprint}:${i}`;

@@ -2,8 +2,9 @@
 // comparing, the old stick figure); a thing is its outline. Behind them a stage, or the old plain background.
 // Placement comes from `placeSubject` in ../../../clip.
 
-import { bodyTurns, NO_TURN, placeSubject, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
-import { drawPuppet, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
+import { boxFromLandmarks, bodyTurns, NO_TURN, placeSubject, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
+import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
+import { drawPuppet, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
 
 export type Look = "outline" | "stick" | "puppet";
 
@@ -61,9 +62,69 @@ export function puppetClip(guide: Guide): PuppetClip {
     const lowest = ANKLES_AND_FEET.filter(seen).map((i) => l[i]![1]);
     if (lowest.length) feet.push(Math.max(...lowest));
   }
-  const clip: PuppetClip = { turns: bodyTurns(guide), torso: median(torsos), footY: median(feet), centerX: median(centers) };
+  const clip: PuppetClip = { turns: bodyTurns(drawingGuide(guide)), torso: median(torsos), footY: median(feet), centerX: median(centers) };
   clips.set(guide, clip);
   return clip;
+}
+
+const drawn = new WeakMap<Guide, Guide>();
+
+/**
+ * The guide as the puppet draws it: the tracker's jitter softened, one-frame spikes removed and short gaps
+ * filled (the engine's `smoothTimeline`), its depth softened the same way. Only for drawing: the scorer
+ * reads the guide as it is.
+ */
+export function drawingGuide(guide: Guide): Guide {
+  const kept = drawn.get(guide);
+  if (kept) return kept;
+  if (!guide.timeline) { drawn.set(guide, guide); return guide; }
+  const timeline = smoothTimeline(guide.timeline);
+  let depths = guide.depths;
+  if (depths && depths.length === guide.timeline.frames.length) {
+    // Depth goes through the same smoother, carried in the x of a stand-in timeline.
+    const asTimeline = { ...guide.timeline, frames: guide.timeline.frames.map((f, i) => ({ tMs: f.tMs, landmarks: depths![i]?.map((z): Landmark => [z, 0, 1]) ?? null })) };
+    depths = smoothTimeline(asTimeline).frames.map((f) => f.landmarks?.map((l) => l[0]) ?? null);
+  }
+  const out: Guide = { ...guide, timeline, ...(depths ? { depths } : {}) };
+  drawn.set(guide, out);
+  return out;
+}
+
+/**
+ * A one-frame guide at frame position `position` (3.4 is four tenths of the way from frame 3 to 4) of the
+ * smoothed guide, curving through the samples on either side (Catmull-Rom) instead of joining them with
+ * straight lines, so the puppet moves without the jerk of a 15-a-second sample rate. Draw it with index 0,
+ * with `guidePoseAt(guide, position)` for its turn.
+ */
+export function guideSliceAt(guide: Guide, position: number): Guide {
+  const g = drawingGuide(guide);
+  const frames = g.timeline?.frames ?? [];
+  const last = frames.length - 1;
+  const p = Math.min(Math.max(0, last), Math.max(0, position));
+  const i = Math.floor(p), u = p - i;
+  const at = (k: number) => frames[Math.min(last, Math.max(0, k))]?.landmarks ?? null;
+  const p1 = at(i), p2 = at(i + 1) ?? p1, p0 = at(i - 1) ?? p1, p3 = at(i + 2) ?? p2;
+  const curve = (a: number, b: number, c: number, d: number) =>
+    0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u * u + (3 * b - a - 3 * c + d) * u * u * u);
+  let landmarks: Landmark[] | null = null;
+  if (p1 && p2 && p0 && p3) {
+    landmarks = p1.map((b, k) => {
+      const a = p0[k]!, c = p2[k]!, d = p3[k]!;
+      return [curve(a[0], b[0], c[0], d[0]), curve(a[1], b[1], c[1], d[1]), Math.min(b[2], c[2])] as const;
+    });
+  } else if (p1) {
+    landmarks = [...p1];
+  }
+  const dAt = (k: number) => g.depths?.[Math.min(last, Math.max(0, k))] ?? null;
+  const d1 = dAt(i), d2 = dAt(i + 1) ?? d1, d0 = dAt(i - 1) ?? d1, d3 = dAt(i + 2) ?? d2;
+  const depth = d1 && d2 && d0 && d3 && d1.length === d2.length ? d1.map((b, k) => curve(d0[k]!, b, d2[k]!, d3[k]!)) : d1;
+  return {
+    ...g,
+    boxTrack: { ...g.boxTrack, frames: [{ tMs: 0, box: landmarks ? boxFromLandmarks(landmarks) : g.boxTrack.frames[i]?.box ?? null }] },
+    outlines: [g.outlines[i] ?? null],
+    timeline: g.timeline && { ...g.timeline, frames: [{ tMs: 0, landmarks }] },
+    depths: g.depths ? [depth] : undefined,
+  };
 }
 
 /** The puppet's pose at a frame position of the whole guide; between two frames (`position` 3.4) the turn is blended. */
@@ -95,7 +156,7 @@ export function blindView(guide: Guide, canvas: HTMLCanvasElement, placement: Pl
 /**
  * The room the puppet takes at each frame: the subject's outline or box, grown to hold the hat and its bells
  * round the head, the shoes and shadow below, and the white edge all round. Sizes are shares of the torso,
- * as the puppet's are (puppet.ts: the head is 0.36 torso across, the bells reach 0.7 out and the hat 0.7 up).
+ * as the puppet's are (`HEAD` and `HAT_REACH` in puppet.ts).
  */
 function puppetRoom(guide: Guide): Pick<Guide, "source" | "boxTrack" | "outlines"> {
   const { width, height } = guide.source;
@@ -110,15 +171,17 @@ function puppetRoom(guide: Guide): Pick<Guide, "source" | "boxTrack" | "outlines
       left = f.box.cx - f.box.w / 2; right = f.box.cx + f.box.w / 2; top = f.box.cy - f.box.h / 2; bottom = f.box.cy + f.box.h / 2;
     } else return f;
     const torsoPx = clip.torso ?? (bottom - top) * height * 0.3;
+    // The hat's reach from the head's middle, plus the white edge.
+    const side = HEAD * HAT_REACH.side + 0.08, rise = HEAD * HAT_REACH.up + 0.08;
     const tx = torsoPx / width, ty = torsoPx / height;
     const l = guide.timeline?.frames[i]?.landmarks;
     const seen = (k: number) => !!l && (l[k]?.[2] ?? 0) >= MIN_VISIBILITY;
     const head = l && seen(7) && seen(8) ? [(l[7]![0] + l[8]![0]) / 2, (l[7]![1] + l[8]![1]) / 2]
       : l && seen(0) ? [l[0]![0], l[0]![1]] : [(left + right) / 2, top];
-    left = Math.min(left, head[0]! - 0.75 * tx) - 0.08 * tx;
-    right = Math.max(right, head[0]! + 0.75 * tx) + 0.08 * tx;
-    top = Math.min(top, head[1]! - 0.75 * ty) - 0.08 * ty;
-    bottom += 0.2 * ty;
+    left = Math.min(left, head[0]! - side * tx) - 0.08 * tx;
+    right = Math.max(right, head[0]! + side * tx) + 0.08 * tx;
+    top = Math.min(top, head[1]! - rise * ty) - 0.08 * ty;
+    bottom += 0.25 * ty;
     return { ...f, box: { cx: (left + right) / 2, cy: (top + bottom) / 2, w: right - left, h: bottom - top } };
   });
   return { source: guide.source, boxTrack: { ...guide.boxTrack, frames }, outlines: frames.map(() => null) };

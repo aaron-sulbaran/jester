@@ -9,7 +9,7 @@
 import { linkTracks, pointNearFrame, type Box, type Guide, type Placement, type View } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
 import { finishClip, prepareClip, subjectGuides, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
-import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, guideFrameAt, guidePoseAt, guideSliceAt, traceOutline, type Look } from "./clipside/blind.ts";
 import type { Construction, StageLook } from "./clipside/puppet.ts";
 import type { PersonSearch, PoseModel } from "./clipside/detect.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
@@ -232,7 +232,14 @@ function tick() {
 
   view ??= blindView(guide, blindCanvas, place(), look());
   // The puppet and the outline stand on the stage; the stick figure keeps the old plain look.
-  drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view, { background: "#16161d", color: "#F47FA6", ...(look() === "stick" ? {} : { stage: labStage, puppet: labPuppet }) });
+  const style = { background: "#16161d", color: "#F47FA6", ...(look() === "stick" ? {} : { stage: labStage, puppet: labPuppet }) };
+  if (look() === "puppet") {
+    // The puppet as the game draws it: smoothed and curved between samples, not stepped frame to frame.
+    const position = (nowMs - startMs) / frameMs;
+    drawBlind(blindCanvas, guideSliceAt(guide, position), 0, "puppet", view, style, guidePoseAt(guide, position));
+  } else {
+    drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view, style);
+  }
 }
 
 async function run(file: File) {

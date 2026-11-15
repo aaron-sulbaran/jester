@@ -29,6 +29,8 @@ export type StageLook = "plain" | "spot";
 // The look's tokens (app/src/style.css) and the frontend agent's stage colour.
 const INK = "#1E1B18";
 const PHOTO = "#FFFFFF";
+/** --wood: the puppet's face and hands, warm like the jester sprites' skin rather than a white mask. */
+const WOOD = "#EDCB8E";
 const GOLD = "#F4BE1A";
 const STAMP = "#D93A2B";
 const NAVY = "#2E4593";
@@ -154,9 +156,10 @@ export function drawPuppet(
   const up = sm && hmSeen ? unit(sub(sm, hmSeen)) : ([0, -1] as P);
   const hm = hmSeen ?? (sm ? sub(sm, mul(up, T)) : null);
 
-  // Each side's colour: the far side dark, else the right side light and the left as it is.
-  const far = (side: 1 | -1) => side * sinY > 0.27;
-  const sideColor = (side: 1 | -1) => (far(side) ? suit.dark : side === -1 ? suit.light : suit.base);
+  // Each side's colour: the right side light and the left as it is, easing into the far shade as that side
+  // turns away (a blend, so nothing snaps from one colour to the other mid-turn).
+  const farness = (side: 1 | -1) => smoothstep(0.12, 0.42, side * sinY);
+  const sideColor = (side: 1 | -1) => mix(side === -1 ? suit.light : suit.base, suit.dark, farness(side));
 
   const depthOf = (ids: number[]): number | null => {
     if (!pose.depth || pose.depth.length !== lm.length) return null;
@@ -176,16 +179,16 @@ export function drawPuppet(
   for (const side of [1, -1] as const) {
     const left = side === 1;
     const color = sideColor(side);
-    const thin = far(side) ? 0.92 : 1;
+    const thin = 1 - 0.08 * farness(side);
     const [sh, el, wr, pi, ix] = left ? [L_SHOULDER, L_ELBOW, L_WRIST, L_PINKY, L_INDEX] : [R_SHOULDER, R_ELBOW, R_WRIST, R_PINKY, R_INDEX];
     const [hp, kn, an, he, to] = left ? [L_HIP, L_KNEE, L_ANKLE, L_HEEL, L_TOE] : [R_HIP, R_KNEE, R_ANKLE, R_HEEL, R_TOE];
     groups.push({
       key: keyOf([hp, kn, an], side, 0.08),
-      pieces: limbPieces([at(hp), at(kn), at(an)], [0.2, 0.15, 0.115].map((r) => r * T * thin), color, ink, footPiece(at(an), at(he), at(to), at(kn), T * thin, ink)),
+      pieces: limbPieces([at(hp), at(kn), at(an)], [0.25, 0.2, 0.16].map((r) => r * T * thin), color, ink, footPiece(at(an), at(he), at(to), at(kn), T * thin, suit.dark, ink)),
     });
     groups.push({
       key: keyOf([sh, el, wr], side, armBias),
-      pieces: limbPieces([at(sh), at(el), at(wr)], [0.15, 0.12, 0.1].map((r) => r * T * thin), color, ink, handPiece(at(wr), at(el), at(ix), at(pi), T * thin, ink)),
+      pieces: limbPieces([at(sh), at(el), at(wr)], [0.19, 0.16, 0.135].map((r) => r * T * thin), color, ink, handPiece(at(wr), at(el), at(ix), at(pi), T * thin, ink)),
     });
   }
   if (sm && hm) groups.push({ key: 0, pieces: torsoPieces({ ls, rs, lh, rh, sm, hm, up }, T, turn, sideColor, ink) });
@@ -289,27 +292,36 @@ function limbPieces(joints: (P | null)[], radii: number[], color: string, ink: n
   return out;
 }
 
-/** A white paper mitten past the wrist, toward the fingers when they are seen. */
+/** A round mitten past the wrist, toward the fingers when they are seen. */
 function handPiece(wrist: P | null, elbow: P | null, index: P | null, pinky: P | null, T: number, ink: number): Piece | null {
   if (!wrist) return null;
   const fingers = index && pinky ? mid(index, pinky) : index ?? pinky;
   const dir = fingers ? unit(sub(fingers, wrist)) : elbow ? unit(sub(wrist, elbow)) : ([0, 1] as P);
-  const reach = fingers ? clamp(len(sub(fingers, wrist)) * 0.6, T * 0.06, T * 0.16) : T * 0.1;
+  const reach = fingers ? clamp(len(sub(fingers, wrist)) * 0.7, T * 0.08, T * 0.2) : T * 0.12;
   const c = add(wrist, mul(dir, reach));
-  return plain((ctx) => { ctx.beginPath(); ctx.arc(c[0], c[1], T * 0.125, 0, TAU); }, PHOTO, ink);
+  return plain((ctx) => { ctx.beginPath(); ctx.arc(c[0], c[1], T * 0.17, 0, TAU); }, WOOD, ink);
 }
 
-/** An ink shoe from heel to toe, else pointing on from the shin. */
-function footPiece(ankle: P | null, heel: P | null, toe: P | null, knee: P | null, T: number, ink: number): Piece | null {
+/** A round jester shoe from heel to toe (else pointing on from the shin), with a gold pompom on the toe. */
+function footPiece(ankle: P | null, heel: P | null, toe: P | null, knee: P | null, T: number, color: string, ink: number): Piece | null {
   if (!ankle) return null;
-  const r = T * 0.1;
+  const r = T * 0.13;
   let a: P, b: P;
   if (toe) { a = heel ?? ankle; b = toe; } else {
     const down = knee ? unit(sub(ankle, knee)) : ([0, 1] as P);
     a = ankle; b = add(ankle, mul(down, T * 0.12));
   }
   const d = unit(sub(b, a), [1, 0]);
-  return plain((ctx) => taperPath(ctx, add(a, mul(d, r * 0.2)), add(b, mul(d, r * 0.3)), r * 0.95, r), INK, ink);
+  const tip = add(b, mul(d, r * 0.9));
+  const shoe = (ctx: CanvasRenderingContext2D) => taperPath(ctx, add(a, mul(d, r * 0.1)), add(b, mul(d, r * 0.3)), r, r * 0.95);
+  return {
+    outline: (ctx) => { shoe(ctx); ctx.moveTo(tip[0] + r * 0.45, tip[1]); ctx.arc(tip[0], tip[1], r * 0.45, 0, TAU); },
+    art: (ctx) => {
+      shoe(ctx); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke();
+      ctx.beginPath(); ctx.arc(tip[0], tip[1], r * 0.45, 0, TAU);
+      ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = ink * 0.8; ctx.stroke();
+    },
+  };
 }
 
 interface Frame { ls: P | null; rs: P | null; lh: P | null; rh: P | null; sm: P; hm: P; up: P }
@@ -333,7 +345,8 @@ function torsoPieces(f: Frame, T: number, turn: Turn, sideColor: (side: 1 | -1) 
   const wH = Math.max(Math.hypot(hSeen, T * 0.42 * sinY), T * 0.3);
   const sL = add(f.sm, mul(sDir, wS / 2)), sR = sub(f.sm, mul(sDir, wS / 2));
   const hL = add(f.hm, mul(hDir, wH / 2)), hR = sub(f.hm, mul(hDir, wH / 2));
-  const waist = lerpP(f.sm, f.hm, 0.62), wDir = unit(add(sDir, hDir), sDir), wW = (wS * 0.38 + wH * 0.62) * 0.86;
+  // A round tummy, not a waist: cartoon, not mannequin.
+  const waist = lerpP(f.sm, f.hm, 0.62), wDir = unit(add(sDir, hDir), sDir), wW = (wS * 0.38 + wH * 0.62) * 1.04;
   const wL = add(waist, mul(wDir, wW / 2)), wR = sub(waist, mul(wDir, wW / 2));
   const outline = (ctx: CanvasRenderingContext2D) => {
     ctx.beginPath();
@@ -384,7 +397,7 @@ function torsoPieces(f: Frame, T: number, turn: Turn, sideColor: (side: 1 | -1) 
     },
   };
   // A white paper ruff round the neck, flattened by the angle we see it from.
-  const n = 8, rx = wS * 0.44, ry = T * 0.13;
+  const n = 8, rx = wS * 0.5, ry = T * 0.16;
   const c = add(f.sm, mul(f.up, T * 0.02));
   const ruff = plain((ctx) => {
     ctx.beginPath();
@@ -405,25 +418,33 @@ function onSphere(x: number, y: number, sinY: number, cosY: number): { x: number
   return { x: x * cosY - z * sinY, y, toward: -(x * sinY + z * cosY) };
 }
 
+/** The head's radius as a share of the torso: big and round, like the jester sprites, so it reads as a cartoon. */
+export const HEAD = 0.5;
+/** How far the hat reaches from the head's middle, in head radii: out to the bells and up to its top. */
+export const HAT_REACH = { side: 1.95, up: 1.55 };
+
 /**
  * The head with its hat. It sits between the ears (else at the nose, else above the shoulders) and leans
- * with the neck. The face rides round the front of the head with the turn and is gone when the back comes
- * round; the hat's far point is drawn behind the head and its near point in front.
+ * with the neck. A friendly cartoon face (big shiny eyes, happy brows, a red clown nose, an open smile, the
+ * jester's diamond cheeks) rides round the front with the turn and fades as it goes round the side. As the
+ * back comes round the cap slides down into a hood in the suit's colours, so a back is a hooded head, not a
+ * blank one. The hat's far point is drawn behind the head and its near point in front.
  */
 function headPieces(
   at: (i: number) => P | null, sm: P | null, up: P, T: number, turn: Turn, suit: Suit,
   sideColor: (side: 1 | -1) => string, ink: number, swing: Swing | undefined,
 ): Piece[] {
   const le = at(L_EAR), re = at(R_EAR), nose = at(NOSE);
-  const R = T * 0.36;
+  const R = T * HEAD;
   let found: P | null = le && re ? mid(le, re) : le ?? re ?? nose;
-  if (!found && sm) found = add(sm, mul(up, T * 0.66));
+  if (!found && sm) found = add(sm, mul(up, R * 1.1));
   if (!found) return [];
   const hUp: P = sm && len(sub(found, sm)) > T * 0.2 ? unit(sub(found, sm)) : up;
-  const center = add(found, mul(hUp, R * 0.12));
+  const center = add(found, mul(hUp, R * 0.1));
   const hRight: P = [-hUp[1], hUp[0]];
   const toScreen = (x: number, y: number): P => add(center, add(mul(hRight, x * R), mul(hUp, y * R)));
   const sinY = Math.sin(turn.yaw), cosY = Math.cos(turn.yaw);
+  const face = clamp(turn.face, 0, 1);
 
   // The bells lag behind the head as it moves.
   let lag: P = [0, 0];
@@ -431,25 +452,25 @@ function headPieces(
     if (swing.head) {
       const moved = sub(center, swing.head);
       const target = len(moved) > R * 3 ? ([0, 0] as P) : mul(moved, -3);
-      swing.lag = lerpP(swing.lag, target, 0.3);
-      if (len(swing.lag) > R * 0.7) swing.lag = mul(unit(swing.lag), R * 0.7);
+      swing.lag = lerpP(swing.lag, target, 0.25);
+      if (len(swing.lag) > R * 0.6) swing.lag = mul(unit(swing.lag), R * 0.6);
     }
     swing.head = center;
     lag = swing.lag;
   }
 
-  // The hat's two points in head space (x toward the subject's left, y up, z away from the camera).
+  // The hat's two floppy points in head space (x toward the subject's left, y up, z away from the camera).
   const horn = (side: 1 | -1): Piece & { z: number } => {
     const pts: P[] = [];
     let z = 0;
     const ctrl: [number, number, number][] = [[0.3 * side, 0.82, 0.1], [1.2 * side, 1.35, 0.25], [1.62 * side, 0.5, 0.3]];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12, u = 1 - t;
+    for (let i = 0; i <= 14; i++) {
+      const t = i / 14, u = 1 - t;
       const q = [0, 1, 2].map((k) => u * u * ctrl[0]![k]! + 2 * u * t * ctrl[1]![k]! + t * t * ctrl[2]![k]!) as [number, number, number];
       pts.push(add(toScreen(q[0] * cosY - q[2] * sinY, q[1]), mul(lag, t * t)));
       z = q[0] * sinY + q[2] * cosY;
     }
-    const width = (t: number) => R * (0.42 * (1 - t) + 0.09 * t);
+    const width = (t: number) => R * (0.5 * (1 - t) + 0.13 * t);
     const leftEdge: P[] = [], rightEdge: P[] = [];
     pts.forEach((p, i) => {
       const a = pts[Math.max(0, i - 1)]!, b = pts[Math.min(pts.length - 1, i + 1)]!;
@@ -458,21 +479,21 @@ function headPieces(
       leftEdge.push(add(p, mul(n, w))); rightEdge.push(sub(p, mul(n, w)));
     });
     const tip = pts[pts.length - 1]!;
-    const bell = add(tip, mul(hUp, -R * 0.12));
-    const br = R * 0.22;
+    const bell = add(tip, mul(hUp, -R * 0.14));
+    const br = R * 0.26;
     const point = (ctx: CanvasRenderingContext2D) => {
       ctx.beginPath();
       leftEdge.forEach((p, i) => (i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
       for (let i = rightEdge.length - 1; i >= 0; i--) ctx.lineTo(rightEdge[i]![0], rightEdge[i]![1]);
       ctx.closePath();
     };
-    const farHorn = z > 0.6;
+    const color = mix(side === -1 ? suit.light : suit.base, suit.dark, smoothstep(0.3, 0.9, z));
     return {
       z,
       outline: (ctx) => { point(ctx); ctx.moveTo(bell[0] + br, bell[1]); ctx.arc(bell[0], bell[1], br, 0, TAU); },
       art: (ctx) => {
         point(ctx);
-        ctx.fillStyle = farHorn ? suit.dark : side === -1 ? suit.light : suit.base;
+        ctx.fillStyle = color;
         ctx.fill(); ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke();
         ctx.beginPath(); ctx.arc(bell[0], bell[1], br, 0, TAU);
         ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = ink * 0.85; ctx.stroke();
@@ -486,65 +507,104 @@ function headPieces(
   const before = horns.filter((h) => h.z < -0.05);
 
   const headOutline = (ctx: CanvasRenderingContext2D) => { ctx.beginPath(); ctx.arc(center[0], center[1], R, 0, TAU); };
-  const neck: Piece | null = sm ? plain((ctx) => taperPath(ctx, sm, center, T * 0.12, T * 0.11), PHOTO, ink) : null;
+  // A short neck only shows when the head is well clear of the collar.
+  const neck: Piece | null = sm && len(sub(center, sm)) > R * 1.05 ? plain((ctx) => taperPath(ctx, sm, center, T * 0.14, T * 0.13), WOOD, ink) : null;
   const head: Piece = {
     outline: headOutline,
     art: (ctx) => {
       headOutline(ctx);
-      ctx.fillStyle = PHOTO; ctx.fill();
+      ctx.fillStyle = WOOD; ctx.fill();
       ctx.save();
       headOutline(ctx);
       ctx.clip();
-      // The cap over the top of the head, split in the side colours along the front seam.
-      const brim = 0.3;
-      const seam = onSphere(0, brim, sinY, cosY).x;
-      for (const side of [1, -1] as const) {
-        ctx.beginPath();
-        ctx.moveTo(...toScreen(seam, brim + 2)); ctx.lineTo(...toScreen(seam, brim - 0.05));
-        ctx.lineTo(...toScreen(side * 2, brim - 0.05)); ctx.lineTo(...toScreen(side * 2, brim + 2));
-        ctx.closePath();
-        ctx.fillStyle = sideColor(side);
-        ctx.fill();
-      }
-      ctx.beginPath();
-      ctx.moveTo(...toScreen(-1.2, brim - 0.05)); ctx.lineTo(...toScreen(1.2, brim - 0.05));
-      ctx.moveTo(...toScreen(seam, brim - 0.05)); ctx.lineTo(...toScreen(seam, brim + 2));
-      ctx.lineWidth = ink * 0.8; ctx.strokeStyle = INK; ctx.stroke();
-      // The face, riding round the front with the turn; each feature shows once it faces us well enough.
-      if (turn.face > 0.02) {
+      // The face, riding round the front with the turn. Each feature fades as it goes round the side or the
+      // back comes round, instead of popping.
+      if (face > 0.02) {
         const feature = (x: number, y: number, draw: (p: P, squash: number) => void) => {
           const s = onSphere(x, y, sinY, cosY);
-          if (turn.face * smoothstep(0.05, 0.35, s.toward) < 0.5) return;
-          draw(toScreen(s.x, s.y), clamp(s.toward, 0.35, 1));
+          // Features stay until they are right round the side, so a profile still has an eye.
+          const show = face * smoothstep(-0.05, 0.3, s.toward);
+          if (show <= 0.02) return;
+          ctx.globalAlpha = show;
+          draw(toScreen(s.x, s.y), clamp(s.toward, 0.3, 1));
+          ctx.globalAlpha = 1;
         };
-        for (const x of [-0.33, 0.33]) {
-          feature(x, 0.0, (p, sq) => {
-            ctx.beginPath(); ctx.ellipse(p[0], p[1], R * 0.1 * sq, R * 0.15, Math.atan2(hRight[1], hRight[0]), 0, TAU);
+        const tilt = Math.atan2(hRight[1], hRight[0]);
+        for (const x of [-0.3, 0.3]) {
+          // Big eyes with a shine.
+          feature(x, 0.04, (p, sq) => {
+            ctx.beginPath(); ctx.ellipse(p[0], p[1], R * 0.12 * sq, R * 0.17, tilt, 0, TAU);
             ctx.fillStyle = INK; ctx.fill();
+            const glint = add(p, add(mul(hRight, -R * 0.035 * sq), mul(hUp, R * 0.06)));
+            ctx.beginPath(); ctx.arc(glint[0], glint[1], R * 0.05, 0, TAU);
+            ctx.fillStyle = PHOTO; ctx.fill();
           });
-          feature(x * 1.45, -0.28, (p, sq) => {
-            const w = R * 0.09 * sq, h = R * 0.12;
+          // Happy brows.
+          feature(x, 0.31, (p, sq) => {
+            ctx.beginPath();
+            ctx.moveTo(...add(p, mul(hRight, -R * 0.1 * sq)));
+            ctx.quadraticCurveTo(...add(p, mul(hUp, R * 0.07)), ...add(p, mul(hRight, R * 0.1 * sq)));
+            ctx.lineWidth = Math.max(2, ink * 0.65); ctx.strokeStyle = INK; ctx.stroke();
+          });
+          // The jester's diamond cheeks.
+          feature(x * 1.7, -0.22, (p, sq) => {
+            const w = R * 0.1 * sq, h = R * 0.13;
             ctx.beginPath();
             ctx.moveTo(...add(p, mul(hUp, h))); ctx.lineTo(...add(p, mul(hRight, w)));
             ctx.lineTo(...sub(p, mul(hUp, h))); ctx.lineTo(...sub(p, mul(hRight, w)));
             ctx.closePath(); ctx.fillStyle = STAMP; ctx.fill();
           });
         }
-        // The smile, piece by piece so the part round the far side drops out.
-        ctx.lineWidth = Math.max(2.5, ink * 0.8); ctx.strokeStyle = INK;
-        for (let i = 0; i < 8; i++) {
-          const xa = -0.24 + (0.48 * i) / 8, xb = -0.24 + (0.48 * (i + 1)) / 8;
-          const ya = -0.42 - 0.12 * (1 - (xa / 0.24) ** 2), yb = -0.42 - 0.12 * (1 - (xb / 0.24) ** 2);
-          const sa = onSphere(xa, ya, sinY, cosY), sb = onSphere(xb, yb, sinY, cosY);
-          if (turn.face * smoothstep(0.05, 0.35, Math.min(sa.toward, sb.toward)) < 0.5) continue;
-          ctx.beginPath(); ctx.moveTo(...toScreen(sa.x, sa.y)); ctx.lineTo(...toScreen(sb.x, sb.y)); ctx.stroke();
+        // An open smile, drawn from points on the head's front so it bends round with the turn.
+        const lip: [number, number][] = [];
+        for (let i = 0; i <= 10; i++) { const x = -0.3 + 0.06 * i; lip.push([x, -0.3 - 0.04 * (1 - (x / 0.3) ** 2)]); }
+        for (let i = 10; i >= 0; i--) { const x = -0.3 + 0.06 * i; lip.push([x, -0.3 - 0.27 * Math.sqrt(Math.max(0, 1 - (x / 0.3) ** 2))]); }
+        const mouth = lip.map(([x, y]) => onSphere(x, y, sinY, cosY));
+        const mouthShow = face * smoothstep(0, 0.35, Math.min(...mouth.map((m) => m.toward)));
+        if (mouthShow > 0.02) {
+          ctx.globalAlpha = mouthShow;
+          ctx.beginPath();
+          mouth.forEach((m, i) => { const q = toScreen(m.x, m.y); if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]); });
+          ctx.closePath();
+          ctx.fillStyle = INK; ctx.fill();
+          const tongue = onSphere(0, -0.5, sinY, cosY);
+          const tq = toScreen(tongue.x, tongue.y);
+          ctx.beginPath(); ctx.ellipse(tq[0], tq[1], R * 0.13 * clamp(tongue.toward, 0.3, 1), R * 0.065, Math.atan2(hRight[1], hRight[0]), 0, TAU);
+          ctx.fillStyle = STAMP; ctx.fill();
+          ctx.globalAlpha = 1;
         }
       }
+      // The cap over the top of the head, split in the side colours along the front seam. As the back comes
+      // round it slides down into a hood over the whole head.
+      const brim = 0.42 + (-1.2 - 0.42) * (1 - face);
+      const seam = onSphere(0, Math.max(-0.95, Math.min(0.95, brim)), sinY, cosY).x;
+      for (const side of [1, -1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(...toScreen(seam, brim + 3)); ctx.lineTo(...toScreen(seam, brim - 0.05));
+        ctx.lineTo(...toScreen(side * 2, brim - 0.05)); ctx.lineTo(...toScreen(side * 2, brim + 3));
+        ctx.closePath();
+        ctx.fillStyle = sideColor(side);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.moveTo(...toScreen(-1.2, brim - 0.05)); ctx.lineTo(...toScreen(1.2, brim - 0.05));
+      ctx.moveTo(...toScreen(seam, brim - 0.05)); ctx.lineTo(...toScreen(seam, brim + 3));
+      ctx.lineWidth = ink * 0.8; ctx.strokeStyle = INK; ctx.stroke();
       ctx.restore();
       headOutline(ctx);
       ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke();
+      // A round red clown nose that stands off the face, so in profile it pokes out past the head and shows
+      // which way the puppet looks.
+      const noseAt = onSphere(0, -0.1, sinY, cosY);
+      const noseShow = face * smoothstep(-0.25, 0.1, noseAt.toward);
+      if (noseShow > 0.02) {
+        const q = toScreen(noseAt.x * 1.1, noseAt.y);
+        ctx.globalAlpha = noseShow;
+        ctx.beginPath(); ctx.arc(q[0], q[1], R * 0.12, 0, TAU);
+        ctx.fillStyle = STAMP; ctx.fill(); ctx.lineWidth = Math.max(2, ink * 0.7); ctx.strokeStyle = INK; ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     },
-    pins: sm ? [add(sm, mul(hUp, T * 0.1))] : [],
   };
   return [...behind, ...(neck ? [neck] : []), head, ...before];
 }

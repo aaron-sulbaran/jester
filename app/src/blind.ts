@@ -19,7 +19,7 @@ import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, stageSpot, type GuidePose, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, stageSpot, type GuidePose, type Look } from "./clipside/blind.ts";
 import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
@@ -549,6 +549,11 @@ function guideAt(g: Guide, ms: number): Guide {
   };
 }
 
+/** The role at play time `ms` as a one-frame guide: the puppet smoothed and curved between samples, else blended. */
+function roleAt(s: Seat, ms: number): Guide {
+  return s.look === "puppet" ? guideSliceAt(s.guide, ms / (1000 / s.guide.source.sampleHz)) : guideAt(s.guide, ms);
+}
+
 /** The puppet's turn at play time `ms`, from the whole guide (a one-frame slice cannot know its turn). */
 function poseAt(g: Guide, ms: number): GuidePose {
   return guidePoseAt(g, ms / (1000 / g.source.sampleHz));
@@ -758,7 +763,8 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   const g = s.guide;
   // The first frame where the subject is visible.
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
-  drawBlind(guideCanvas, g, first, s.look, view, style);
+  if (s.look === "puppet") drawBlind(guideCanvas, guideSliceAt(g, first), 0, s.look, view, style, guidePoseAt(g, first));
+  else drawBlind(guideCanvas, g, first, s.look, view, style);
 }
 
 /**
@@ -772,11 +778,11 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
     drawBlindBackground(canvas, s.guide, view.stageView, view.style, now);
     if (leadMs > 0) {
       scratch.width = canvas.width; scratch.height = canvas.height;
-      drawBlindSubject(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style, poseAt(s.guide, ms + leadMs));
+      drawBlindSubject(scratch, roleAt(s, ms + leadMs), 0, s.look, view.view, view.style, poseAt(s.guide, ms + leadMs));
       const ctx = canvas.getContext("2d")!;
       ctx.save(); ctx.globalAlpha = 0.3; ctx.drawImage(scratch, 0, 0); ctx.restore();
     }
-    drawBlindSubject(canvas, guideAt(s.guide, ms), 0, s.look, view.view, view.style, now);
+    drawBlindSubject(canvas, roleAt(s, ms), 0, s.look, view.view, view.style, now);
     return;
   }
   if (leadMs > 0) {
