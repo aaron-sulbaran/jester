@@ -30,7 +30,7 @@ Every nailed round, and every untagged round scoring 60 or more, also becomes si
 
 | transform | what changes in the player's recording | holds when |
 |---|---|---|
-| late | every frame 500 ms later | the lag moves by 500 (give or take 150) and the score drops at most 15 |
+| late | every frame 500 ms later | the lag moves by 500 (give or take 150) and the score drops at most 15; n/a when the source's lag plus 500 passes the engine's lag search |
 | frozen | the first frame held for the whole round | 10 or less, or no score |
 | seated | legs (points 25 to 32) invisible | 50 or less, on a clip whose thighs or shins swing 25 degrees or more |
 | walked-out | no body for the middle 40 percent | no score, or 50 or less |

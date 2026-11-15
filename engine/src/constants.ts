@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.10.0";
+export const SCORER_VERSION = "jester-engine/0.11.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -12,6 +12,26 @@ export const QUANTIZE_DECIMALS = 4;
 
 /** Resampling: interpolate between two detected input frames only if they are at most this far apart. */
 export const MAX_INTERP_GAP_MS = 100;
+
+/**
+ * 0.11.0 either side. Players copy a dancer two ways: as a mirror (the dancer raises her right arm, the player
+ * raises their left) or with the same side (the player raises their own right arm). Both are the dance someone
+ * would expect, so neither costs points: a round is scored both ways through the whole pipeline (lag, motion
+ * and moved shares, still gate, gain) and the better score is kept, with no penalty. On an exact tie the mirror
+ * reading wins, so a mirror copy keeps its 0.10.0 score. Before this a same-side copy scored near 0 under the
+ * 0.10.0 still gate (Aaron's live round: 87 in 0.9.0, 0 in 0.10.0).
+ */
+export const ORIENTATION = {
+  /** Score pose rounds and live pose comparisons both mirrored and same side, keep the better. */
+  eitherSide: true,
+  /**
+   * Trajectory rounds (an object's box, or a person's box followed with one body part): off by default. For an
+   * object there is no "same side": stepping the other way from a car is a wrong-way copy and must score low
+   * (car wrong way: 10 or less). A same-side copy of a person's sideways travel does lose here, so a caller
+   * following a person can pass { eitherSide: true } to scoreTrajectoryRound.
+   */
+  eitherSideTrajectory: false,
+} as const;
 
 export const POSE = {
   /** Angle error at or below this gets full credit (degrees). */

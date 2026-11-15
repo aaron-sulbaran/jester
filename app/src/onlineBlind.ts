@@ -20,7 +20,7 @@ type RoomLike = {
   me: string; name: string; round: { roundNo: number; extra?: { assign?: Record<string, number> } } | null; allDone: boolean;
   roster(): { id: string; name: string }[];
   standings(): { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
-  sendMedia(kind: string, text: string): Promise<void>;
+  sendMedia(kind: string, text: string, options?: { chunkChars?: number; delayMs?: number }): Promise<void>;
   start(clipId: string, delayMs?: number, extra?: object): unknown;
   submitResult(r: { score: number; timeline?: unknown; extra?: unknown }): void;
   on(event: "update" | "start", fn: (arg: never) => void): () => void;
@@ -71,21 +71,31 @@ export function revealRoles(room: RoomLike, scene: Scene): RevealRole[] {
 export async function sendMyMedia(room: RoomLike, row: ResultRow) {
   try {
     const face = packFace(row.face);
-    if (face) await room.sendMedia("face", face);
+    if (face) await room.sendMedia("face", face, { chunkChars: 60000, delayMs: 40 });
     const cutouts = row.layer?.cutouts ?? [];
-    if (cutouts.length > 0) await room.sendMedia("cuts", packCutouts(cutouts));
+    if (cutouts.length > 0) await room.sendMedia("cuts", packCutouts(cutouts), { chunkChars: 60000, delayMs: 40 });
   } catch (err) {
     console.warn("Could not send my pictures:", err);
   }
   try { await room.sendMedia("done", "1"); } catch { /* the others stop waiting after a while anyway */ }
 }
 
-/** Resolves once every other player has sent their pictures (or said they have none), or after timeoutMs. */
-export function whenMediaIn(room: RoomLike, timeoutMs = 25000): Promise<void> {
+/**
+ * Resolves once every other player has sent their pictures (or said they have none). It gives up only when nothing
+ * has arrived for `idleMs` (a hidden browser tab slows its sender down to about a piece a second, so a big set of
+ * pictures can take a minute and must not be cut off while it is still coming in), or after `maxMs` in all.
+ */
+export function whenMediaIn(room: RoomLike, idleMs = 20000, maxMs = 120000): Promise<void> {
   const ready = () => room.standings().every((r) => r.id === room.me || !r.timeline || !!r.media?.done);
   return new Promise((resolve) => {
     if (ready()) return resolve();
-    const stop = window.setTimeout(() => { off(); resolve(); }, timeoutMs);
-    const off = room.on("update", () => { if (ready()) { clearTimeout(stop); off(); resolve(); } });
+    let idle = window.setTimeout(finish, idleMs);
+    const hard = window.setTimeout(finish, maxMs);
+    const off = room.on("update", () => {
+      if (ready()) return finish();
+      clearTimeout(idle);
+      idle = window.setTimeout(finish, idleMs); // something arrived: keep waiting
+    });
+    function finish() { clearTimeout(idle); clearTimeout(hard); off(); resolve(); }
   });
 }

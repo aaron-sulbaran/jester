@@ -82,11 +82,22 @@ export interface PlacementResult {
   outlineHints: { distance: "closer" | "back" | null; side: "left" | "right" | null };
 }
 
+/**
+ * How the player copied (0.11.0): "mirror" (the clip raises its right arm, the player their left, as in a
+ * mirror) or "same-side" (the player raises their own right arm). Both score the same; this says which reading won.
+ */
+export type Orientation = "mirror" | "same-side";
+
 export interface PoseRoundResult {
   channel: "pose";
   scorerVersion: string;
   /** 0..100 integer, or null if tracking was too poor to score. */
   score: number | null;
+  /**
+   * 0.11.0: which reading of the player gave this score. Per-limb keys use the clip performer's sides either
+   * way; worstLimb.label is named from the player's own side for the winning reading.
+   */
+  orientation: Orientation;
   tier: Tier | null;
   failure: "low-tracking" | "no-reference" | null;
   /** Mean per-frame pose credit over scorable frames, 0..1. */
@@ -156,4 +167,6 @@ export interface TrajectoryRoundResult {
   matches: EventMatch[];
   extraPlayerEvents: MotionEvent[];
   axes: { x: boolean; y: boolean; h: boolean };
+  /** 0.11.0: which left/right reading of the player gave this score ("same-side" only with options.eitherSide). */
+  orientation?: Orientation;
 }

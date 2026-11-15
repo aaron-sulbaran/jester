@@ -4,9 +4,9 @@
 
 Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainment**.
 
-**Play it:** https://jester-pi.vercel.app (a laptop with a webcam, in desktop Chrome or Edge [check])
+**Play it:** https://jester-pi.vercel.app (a laptop with a webcam, in desktop Chrome or Edge)
 
-<!-- PICTURE SLOT: hero. Use the hero picture from app/public/devpost/ once the devpost kit pull request is merged. Real screenshot only. -->
+![Jester: act out any clip, get judged. 2 to 4 players and a laptop with a webcam.](https://aaronsulbaran.com/hack-princeton/brand/devpost/hero.png)
 
 ## Any video is now a game
 
@@ -16,31 +16,33 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 
 ## How it works
 
-<!-- PICTURE SLOT: four step diagram. Use the devpost kit's diagram (app/public/devpost/diagram-round.png, or whatever it is named when merged); it goes through the frontend agent. Do not draw one here. -->
+![How a round runs: pick a clip, deal the secret parts, pass the laptop, see your part, play, score, the reveal, the crown.](https://aaronsulbaran.com/hack-princeton/brand/devpost/diagram-round.png)
 
 1. **Pick a clip.** From the video bank, or a file from your computer. While the bank is empty the game offers two built-in starter clips, which also work offline.
 2. **Jester reads the moves.** The clip side finds up to 4 people per frame and the things that move, notices cuts, follows each subject through the clip, and writes a guide for each: the pose over time (33 body points), the box over time and an outline. A clip it cannot use is refused with a sentence a player can read.
-3. **Copy your secret part.** Pass the laptop, or play online with a room code, each on your own device. You see only your part's shape and pick how to copy it: with your whole body, or with one hand or your head following it. Slower speeds (0.75 and 0.5) are scored in the clip's own time.
+3. **Copy your secret part.** Pass the laptop, or play online with a room code, each on your own device. You see only your part's shape and pick how to copy it: with your whole body, or with one hand, your head or one foot following it. Slower speeds (0.75 and 0.5) are scored in the clip's own time.
 4. **Score and reveal.** The engine scores each copy from 0 to 100 limb by limb, then the reveal plays: a title card, the cast over the clip, the busiest few seconds beside the original, and a cast card with every score.
 
 <!-- PICTURE SLOT: a blind turn (the outline a player copies) and the reveal (players over the real clip). Real screenshots only. -->
 
 ## What each part does
 
+![How a clip becomes a guide: fingerprint, frames, find, follow, rank or refuse, the guide.](https://aaronsulbaran.com/hack-princeton/brand/devpost/diagram-clip-to-guide.png)
+
 | Part | Where | What it does | Tests |
 |---|---|---|---|
 | Clip side | `clip/`, `app/src/clipside/` | Reads the video's frames, finds people (MediaPipe Pose Landmarker) and moving things (EfficientDet-Lite0), detects cuts, follows and rejoins each subject, ranks them, refuses clips it cannot use, and turns each subject into a guide. Saved under a fingerprint of the file, so the same video gives the same result. | 103 |
 | Webcam side | `spikes/pose-match/webcam.mjs` and its helpers | Tracks the player's 33 body points live, smooths them (One Euro filter), and keeps a person mask and outline for the reveal cutout. | 53 |
-| Engine | `engine/` | Scores a copy: 12 limb directions (so height, size and distance do not matter), the player mirrored, one lag for the round, and credit only for accuracy that beats standing still or for moving the way the clip moves, so standing still scores near 0. Things are scored by how the player's body follows the thing's box. Same inputs, same score, bit for bit. | 70 |
-| Rooms | `spikes/pose-match/rooms.mjs`, `app/src/ui/room.ts`, `app/src/supabaseTransport.ts` | Four letter room codes over Supabase Realtime: presence, host handoff, a start synced to the host's clock, late joiners sit out one round, shared results. | 13 |
-| Eval | `eval/`, `app/round-log-plugin.ts` | Records every scored round (pose points only, no video) and replays them all against the engine on disk, so a scoring change shows what got better or worse. | 8 |
+| Engine | `engine/` | Scores a copy: 12 limb directions (so height, size and distance do not matter), the player mirrored, one lag for the round, and credit only for accuracy that beats standing still or for moving the way the clip moves, so standing still scores near 0. Things are scored by how the player's body follows the thing's box. Same inputs, same score, bit for bit. | 76 |
+| Rooms | `spikes/pose-match/rooms.mjs`, `app/src/ui/room.ts`, `app/src/supabaseTransport.ts` | Four letter room codes over Supabase Realtime: presence, host handoff, a start synced to the host's clock, late joiners sit out one round, shared results. | 21 |
+| Eval | `eval/`, `app/round-log-plugin.ts` | Records every scored round (pose points only, no video) and replays them all against the engine on disk, so a scoring change shows what got better or worse. | 11 |
 | Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | typecheck and build |
 
-247 tests in all, every one passing on main (`make test`, run Nov 14). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
+264 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
 
 ## Challenges
 
-- **Fair scores on gentle clips.** The first blind mode games scored everyone 0. The engine paid only for accuracy above what standing still earns, and on a slow dance standing still already earns 0.80 to 0.85. Engine 0.9.0 also gives plain accuracy credit, but only as far as the player's limbs turn the way the clip's do, so a still body still scores near 0 (`engine/test/fairness.test.ts`).
+- **Fair scores on gentle clips.** The first blind mode games scored everyone 0. The engine paid only for accuracy above what standing still earns, and on a slow dance standing still already earns 0.80 to 0.85. Engine 0.9.0 also gives plain accuracy credit, but only as far as the player's limbs turn the way the clip's do, so a still body still scores near 0 (`engine/test/fairness.test.ts`). Then a live round showed a player who never moved scoring up to 66 on a clip whose subject mostly stands, so in 0.10.0 the credit for beating standing still counts only as far as the player moved at all (`engine/test/still.test.ts`).
 - **Following everyone in a group dance.** In video mode the pose tracker only looks for new people when it loses one, so in a tight four person dance it followed two. Jester now looks on every frame and rejoins a subject's pieces up to 3 seconds apart, near where the last piece was heading and at a similar size.
 - **Starting together on different laptops.** Each device measures how far its clock is from the host's (ping and reply, lowest delay wins), so "start at T" is the same moment everywhere. A player silent for 10 seconds is dropped and the next one becomes host.
 - **A link instead of a file, without taking the video.** YouTube does not let a page copy its frames. The link lab shares the tab, cropped to the player, reads each frame once for people and drops it. Only the moves are kept.
@@ -58,7 +60,7 @@ make dev
 
 Then open http://localhost:5173. No settings file is needed: the dev server takes the two public Supabase settings from the live site by itself, and without a network the game still runs in one browser. Every setting is named in [`app/.env.example`](app/.env.example). Add `?nocam=1` to play with simulated players and no camera [check].
 
-`make test` runs the type checks and all 247 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
+`make test` runs the type checks and all 264 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
 
 ## Team and how we built it
 
@@ -82,7 +84,7 @@ Then open http://localhost:5173. No settings file is needed: the dev server take
 ## Clips
 
 - No video files live in this repo. It holds motion data and code only.
-- The public bank holds only clips we may share: filmed by the team, public domain, or openly licensed and credited on the clip [check]. The files are copied in at deploy time and never committed.
+- Only clips we may share go in the public bank: filmed by the team, public domain, or openly licensed and credited on the clip. Its files are copied in at deploy time and never committed.
 - Links are never downloaded. Jester reads each captured frame once for people and drops it; no tool or service that fetches video from YouTube, TikTok or Instagram is used.
 - Submit your own: a clip goes to a private bucket and a person on the team reviews it before it can join the bank. The sender confirms they filmed it and everyone in it agrees.
 - The round log keeps pose points, the score, and the camera and engine details. No video, no images, no masks.
