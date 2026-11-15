@@ -41,6 +41,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     const name = $<HTMLInputElement>("roomName").value.trim() || "Player";
     const r = new Room({ transport: hosted ?? broadcastChannelTransport(code), code, playerId: me, name });
     room = r;
+    (window as unknown as { __jesterRoom?: unknown }).__jesterRoom = r; // for checking in the console
     r.on("update", render);
     r.on("start", (round: OnlineRound) => hooks.onRound(r, round));
     r.join();
