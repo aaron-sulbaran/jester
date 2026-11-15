@@ -24,6 +24,7 @@ import { prepareVideo, subjectGuides } from "./clip.ts";
 import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
+import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock } from "./cutout.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
@@ -438,6 +439,35 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
   }
 }
 
+/**
+ * Before a whole-body turn: shows the camera and waits until the player's whole body (shoulders, hips, knees and
+ * ankles) has been in view for about 0.7 s, telling them what to do ("Step back until your knees and ankles are in
+ * view"). After 12 s the hint becomes clickable ("click to start anyway") for a room too small to fit in.
+ */
+async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement }, onFrame: (f: { landmarks: LandmarkObject[] | null; aspect: number }) => void) {
+  const host = stage.guideCanvas.parentElement!;
+  const hint = document.createElement("div");
+  hint.style.cssText = "position:absolute;left:0;right:0;bottom:6%;text-align:center;font:800 clamp(18px,3vw,34px) system-ui,sans-serif;color:#fff;text-shadow:0 2px 8px #000,0 0 3px #000;padding:0 14px;z-index:6;pointer-events:none";
+  hint.textContent = "Step into view so your whole body is in the picture.";
+  host.appendChild(hint);
+  stage.playerCanvas.style.opacity = "1"; // the camera is hidden until the countdown; bring it in so they can position themselves
+  const calibrator = new Calibrator();
+  await new Promise<void>((resolve) => {
+    let finished = false;
+    const done = () => { if (!finished) { finished = true; resolve(); } };
+    const late = window.setTimeout(() => { hint.style.pointerEvents = "auto"; hint.style.cursor = "pointer"; hint.onclick = done; hint.dataset.late = "1"; }, 12000);
+    player.start((f) => {
+      onFrame({ landmarks: f.landmarks as LandmarkObject[] | null, aspect: f.aspect });
+      const r = calibrator.update(f.landmarks as never, 30);
+      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " (Click here to start anyway.)" : "");
+      if (r.passed) { clearTimeout(late); done(); }
+    }, () => -1);
+  });
+  player.stop();
+  hint.remove();
+  stage.playerCanvas.style.opacity = "";
+}
+
 /** Stops a preview still playing when the turn starts. */
 let stopPreview: (() => void) | null = null;
 
@@ -496,6 +526,11 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
   // A timer, not requestAnimationFrame, so it keeps drawing in a background tab.
   const painter = window.setInterval(paint, 1000 / 30);
   paint();
+  // A whole-body turn waits until the player is fully in view; a simulated player is always in view.
+  if (!deps.simMode() && !followsBox(s)) {
+    try { await waitForFraming(player, stage, (f) => { pose = f.landmarks; aspect = f.aspect; }); pose = null; }
+    catch { /* no camera frames: just carry on to the countdown */ }
+  }
   await ui.countdown(3);
   // Cutouts at about 15 a second: plenty for the replay, and four players' worth stays small.
   s.cutouts = [];
