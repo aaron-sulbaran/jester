@@ -1,7 +1,8 @@
 // Jester app shell, Version 1: one clip, one player, one score.
 // Clip side: ./clip.ts (stand-in). Player side: Lisa's tracker. Score: ../engine.
 
-import { BODY_PARTS, comparePoses, LIMBS, type BodyPart, type Landmarks, type LandmarkObject, type PoseRoundResult, type TrajectoryRoundResult } from "../../engine/src/index.ts";
+import { BODY_PARTS, comparePoses, type BodyPart, type Landmarks, type LandmarkObject, type PoseRoundResult, type TrajectoryRoundResult } from "../../engine/src/index.ts";
+import { listLabels, playerSideLabel } from "./limbNames.ts";
 import { sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { analyzeVideo, starterClip, type Clip } from "./clip.ts";
 import { cameraPlayer, playObjectRound, playRound, simulatedPlayer, type Player } from "./round.ts";
@@ -239,11 +240,6 @@ $("start").addEventListener("click", async () => {
 
 $("again-solo").addEventListener("click", () => $("start").click());
 
-function playerSideLabel(limb: string): string {
-  const label = LIMBS[limb]?.label ?? limb;
-  return label.replace(/\b(left|right)\b/g, (m) => (m === "left" ? "right" : "left"));
-}
-
 function placementText(r: PoseRoundResult): string {
   const pl = r.placement;
   const missed = { sideways: "the clip's sideways steps", "up-down": "the clip's dips and rises", distance: "the clip's moves toward and away from the camera" } as const;
@@ -256,14 +252,6 @@ function placementText(r: PoseRoundResult): string {
     pl.outlineHints.side ? `move to your ${pl.outlineHints.side}` : "",
   ].filter(Boolean);
   return `${moves} Outline fit: ${pl.outlineFit} (not scored)${hints.length ? `: ${hints.join(" and ")} to line up with the clip` : ""}.`;
-}
-
-/** "left thigh, right thigh and left shin", from the player's own side; all four leg parts read as "legs". */
-function listLabels(limbs: string[]): string {
-  const legs = ["leftThigh", "rightThigh", "leftShin", "rightShin"];
-  if (legs.every((l) => limbs.includes(l)) && limbs.every((l) => legs.includes(l))) return "legs";
-  const labels = limbs.map(playerSideLabel);
-  return labels.length < 2 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
 }
 
 const EVENT_WORDS: Record<string, [string, string]> = {
@@ -329,15 +317,15 @@ function showResults(r: PoseRoundResult) {
       : ` Work on ${r.worstLimb.label}: mostly ${how(r.worstLimb.direction)}.`;
   $("placement").textContent = placementText(r);
   const capped = r.hiddenLimbs.length > 0
-    ? `Capped at 50: the camera could not see your ${listLabels(r.hiddenLimbs)} for most of the moves that used them. Step back so your whole body is in view. `
+    ? `Capped at 50: the camera could not see your ${listLabels(r.hiddenLimbs, r.orientation)} for most of the moves that used them. Step back so your whole body is in view. `
     : "";
   $("summary").textContent = `${capped}${lag}${capped ? "" : worst}`.trim();
   const rows = Object.entries(r.perLimb)
     .sort((a, b) => a[1].credit - b[1].credit)
-    // Limb keys use the performer's sides; the player copies as a mirror, so name rows from the player's own side.
+    // Limb keys use the performer's sides; name rows from the player's own side for the reading that won.
     .map(([name, l]) => {
       const notSeen = l.unseenShare >= 0.1 ? ` <small>(not in view ${Math.round(l.unseenShare * 100)}% of the time)</small>` : "";
-      return `<tr><td>${playerSideLabel(name)}</td><td><span class="bar" style="width:${Math.round(l.credit * 120)}px"></span></td><td>${Math.round(l.credit * 100)}%${notSeen}</td></tr>`;
+      return `<tr><td>${playerSideLabel(name, r.orientation)}</td><td><span class="bar" style="width:${Math.round(l.credit * 120)}px"></span></td><td>${Math.round(l.credit * 100)}%${notSeen}</td></tr>`;
     });
   $("limbs").innerHTML = rows.join("");
   setStatus(`Round over. Scorer ${r.scorerVersion}.`);

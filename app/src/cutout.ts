@@ -394,6 +394,28 @@ function glide(layer: RevealLayer, shown: Cutout, t: number, st: Steady): P {
   return { x: d.x * k, y: d.y * k };
 }
 
+/**
+ * A cutout with its glow already painted in, made once per cutout and kept: a canvas shadow blur on every
+ * cutout on every frame was the most expensive part of drawing the reveal. `pad` and `scale` are shares of the
+ * drawn side: the glowed picture is drawn `pad` sides left and up of the cutout, `scale` sides wide.
+ */
+const glowCache = new WeakMap<HTMLCanvasElement, { key: string; image: HTMLCanvasElement; pad: number; scale: number }>();
+function glowed(src: HTMLCanvasElement, color: string, glow: number, side: number) {
+  const blur = Math.max(0, Math.round((glow * src.width) / Math.max(1, side)));
+  const key = `${color}|${blur}`;
+  const hit = glowCache.get(src);
+  if (hit && hit.key === key) return hit;
+  const padPx = Math.ceil(blur * 1.5);
+  const out = document.createElement("canvas");
+  out.width = src.width + 2 * padPx; out.height = src.height + 2 * padPx;
+  const o = out.getContext("2d")!;
+  o.shadowColor = color; o.shadowBlur = blur;
+  o.drawImage(src, padPx, padPx);
+  const made = { key, image: out, pad: padPx / src.width, scale: out.width / src.width };
+  glowCache.set(src, made);
+  return made;
+}
+
 /** Draw every layer's cutout for replay time `ms`. */
 export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
   for (const layer of layers) {
@@ -409,10 +431,8 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
     const shift = (layer.spread ?? 0) * side;
     const cx = (placed?.cx ?? b.cx * W) + shift;
     const x = (placed ? placed.x + g.x : b.cx * W - side / 2) + shift, y = placed ? placed.y + g.y : b.cy * H - side / 2;
-    ctx.save();
-    ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = layer.glow ?? 12;
-    ctx.drawImage(c.image, x, y, side, side);
-    ctx.restore();
+    const glow = glowed(c.image, layer.color ?? "#f5c542", layer.glow ?? 12, side);
+    ctx.drawImage(glow.image, x - glow.pad * side, y - glow.pad * side, side * glow.scale, side * glow.scale);
     if (layer.tag) {
       ctx.save();
       ctx.font = `600 ${Math.round(H / 24)}px ${layer.tagFont ?? "system-ui, sans-serif"}`;

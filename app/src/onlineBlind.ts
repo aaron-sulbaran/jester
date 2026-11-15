@@ -65,19 +65,32 @@ export function revealRoles(room: RoomLike, scene: Scene): RevealRole[] {
 }
 
 /**
- * Sends my face and my cutouts to the others in the room (pictures only travel to them, after the round), then a
- * "done" marker so they know nothing more is coming. A failure just means the others see a stick figure for me.
+ * Sends my face and my cutouts to the others in the room, then a "done" marker that lists what was sent and how long
+ * each piece of text is, so the others can tell when everything has really arrived (a marker can land before the
+ * last piece of a big picture set). A failure just means the others see a stick figure for me.
  */
 export async function sendMyMedia(room: RoomLike, row: ResultRow) {
+  const sent: Record<string, number> = {};
   try {
     const face = packFace(row.face);
-    if (face) await room.sendMedia("face", face, { chunkChars: 60000, delayMs: 40 });
+    if (face) { await room.sendMedia("face", face, { chunkChars: 60000, delayMs: 40 }); sent.face = face.length; }
     const cutouts = row.layer?.cutouts ?? [];
-    if (cutouts.length > 0) await room.sendMedia("cuts", packCutouts(cutouts), { chunkChars: 60000, delayMs: 40 });
+    if (cutouts.length > 0) { const cuts = packCutouts(cutouts); await room.sendMedia("cuts", cuts, { chunkChars: 60000, delayMs: 40 }); sent.cuts = cuts.length; }
   } catch (err) {
     console.warn("Could not send my pictures:", err);
   }
-  try { await room.sendMedia("done", "1"); } catch { /* the others stop waiting after a while anyway */ }
+  try { await room.sendMedia("done", JSON.stringify({ sent })); } catch { /* the others stop waiting after a while anyway */ }
+}
+
+/** True when the player's "done" marker is in and every picture it lists has arrived in full. */
+function mediaComplete(media: Record<string, string> | undefined): boolean {
+  if (!media?.done) return false;
+  try {
+    const { sent } = JSON.parse(media.done) as { sent?: Record<string, number> };
+    return Object.entries(sent ?? {}).every(([kind, length]) => (media[kind]?.length ?? -1) === length);
+  } catch {
+    return true; // an old-style marker: the marker alone counts
+  }
 }
 
 /**
@@ -86,7 +99,7 @@ export async function sendMyMedia(room: RoomLike, row: ResultRow) {
  * pictures can take a minute and must not be cut off while it is still coming in), or after `maxMs` in all.
  */
 export function whenMediaIn(room: RoomLike, idleMs = 20000, maxMs = 120000): Promise<void> {
-  const ready = () => room.standings().every((r) => r.id === room.me || !r.timeline || !!r.media?.done);
+  const ready = () => room.standings().every((r) => r.id === room.me || !r.timeline || mediaComplete(r.media));
   return new Promise((resolve) => {
     if (ready()) return resolve();
     let idle = window.setTimeout(finish, idleMs);

@@ -1,6 +1,8 @@
 // Ghosts: opponents replayed from rounds saved earlier on the same clip (the `rounds` table, see
 // eval/src/record.ts). A ghost has a score bar that fills while the clip plays, a figure in the reveal and a
-// place in the ranking. Ghosts get made-up names and are always labelled as ghosts.
+// place in the ranking. Ghosts get made-up names, shown as they are ("Noodle"), with GHOST_NOTE under them and
+// GHOST_TAG on their reveal tag. The look (frontend agent): ghosts take no player colour, so --p1 to --p4 stay for
+// people; a ghost is --photo with a dashed --ink outline, like a pencil tracing, never dimmed.
 // Pure and DOM free (fetching is in ghostSource.ts), so the choices here are unit tested.
 //
 //   const pool = ghostCandidates(rows, clipId);            // untagged rounds with a score on this bank clip
@@ -76,8 +78,10 @@ export interface Ghost {
   cumulative: number[];
 }
 
-/** The bars and the ranking say this after every ghost's name. */
-export const GHOST_LABEL = "(ghost)";
+/** The small line under a ghost's name wherever it is listed (bars, ranking). */
+export const GHOST_NOTE = "a ghost from an earlier round";
+/** The word on a ghost's tag in the reveal, beside its name. */
+export const GHOST_TAG = "ghost";
 /** Ghost standings use ids that can never be a player's. */
 export const GHOST_PREFIX = "ghost:";
 
@@ -129,8 +133,6 @@ export function ghostNames(ids: readonly string[]): string[] {
   return ids.map((id) => { const name = ghostName(id, taken); taken.add(name); return name; });
 }
 
-export const labelled = (name: string) => `${name} ${GHOST_LABEL}`;
-
 /** A saved round made ready to replay: its poses for the reveal and its credits for the live bar. */
 export function makeGhost(record: GhostRecord, name: string): Ghost {
   const pose = unpackPose(record.player);
@@ -173,7 +175,7 @@ export function ghostScoreAt(ghost: Ghost, mediaMs: number, gridMs = 1000 / GRID
 /** The ghost as a row of the duel table, over the round's stretch (media ms). */
 export function ghostStanding(ghost: Ghost, startMs: number, endMs: number, bucketMs = 200): DuelStanding {
   return {
-    id: GHOST_PREFIX + ghost.id, name: labelled(ghost.name), place: 0, score: ghost.score, lagMs: ghost.lagMs, worst: ghost.worst,
+    id: GHOST_PREFIX + ghost.id, name: ghost.name, place: 0, score: ghost.score, lagMs: ghost.lagMs, worst: ghost.worst,
     credits: bucketCredits(ghost.frameCredits, startMs, endMs, 1000 / GRID_HZ, bucketMs), bucketMs, timeline: ghost.timeline, error: null,
   };
 }

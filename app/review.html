@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Chamberlain's desk</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<!-- Dev server only (not in the build): review Submit your own clips on Aaron's laptop. Logic: src/review.ts.
+     Plain markup from docs/design/look-parts.md, with stable ids; the frontend agent owns how it looks. -->
+<body data-screen="review">
+  <section class="screen" id="screen-review">
+    <div class="masking"><h2 class="tape">The Chamberlain's desk</h2></div>
+    <div class="note-wrap"><p class="note" id="deskNote">I look at every clip players send in. The ones that play well go straight into the bank. The ones I am not sure about wait here for you.</p></div>
+    <p class="typed" id="deskStatus">Checking the review queue...</p>
+    <p class="problem" id="deskProblem" role="alert" hidden></p>
+
+    <div class="row-actions">
+      <button type="button" class="btn btn-quiet" id="deskFolder">Pick the bank folder</button>
+      <button type="button" class="btn btn-main" id="deskReview"><span class="ticket"><span class="ticket-text">Review new clips</span></span></button>
+    </div>
+    <div class="chips" role="group" aria-label="How the Chamberlain works">
+      <button type="button" class="chip" id="deskAuto" aria-pressed="false">Keep reviewing every minute</button>
+      <button type="button" class="chip" id="deskAskFirst" aria-pressed="false">Ask me before adding a clip</button>
+    </div>
+    <progress id="deskBar" value="0" max="1" hidden></progress>
+
+    <!-- The clip under review: the frames sent to the model, the plan, the subagent's finding, the decision. -->
+    <article class="print" id="deskWork" aria-live="polite" hidden>
+      <p class="typed" id="workTitle"></p>
+      <div id="workFrames"></div>
+      <ol class="steps" id="workPlan"></ol>
+      <p class="aside" id="workFinding"></p>
+      <p class="aside" id="workSaw"></p>
+      <p class="typed" id="workDecision"></p>
+    </article>
+
+    <div class="masking"><h2 class="tape">Needs you</h2></div>
+    <div id="needsYou"><p class="typed">Nothing waiting.</p></div>
+
+    <div class="masking"><h2 class="tape">Latest decisions</h2></div>
+    <ul class="how" id="deskLog"></ul>
+  </section>
+
+  <!-- The human approval step. -->
+  <dialog class="leave" id="approveDialog" aria-labelledby="approveAsk">
+    <div class="note-wrap"><p class="note" id="approveAsk"></p></div>
+    <div class="row-actions">
+      <button type="button" class="btn btn-quiet" id="approveNo">Not yet</button>
+      <button type="button" class="btn btn-main" id="approveYes"><span class="ticket"><span class="ticket-text">Let it in</span></span></button>
+    </div>
+  </dialog>
+
+  <!-- Reads each clip for its moves; never shown. -->
+  <video id="deskVideo" class="media" playsinline muted></video>
+  <script type="module" src="./src/review.ts"></script>
+</body>
+</html>
