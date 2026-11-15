@@ -245,6 +245,23 @@
   </svg>
 
   <main id="game">
+    <!-- Surprise me's merry-go-round (ui/ride.ts): plays when Play starts a surprise, while the clip's moves load. Outside
+         the start screen, so it can fade out over the cast screen as that one appears. -->
+    <div class="ride" id="ride" hidden>
+      <div class="ride-stage" aria-hidden="true">
+        <svg class="ride-canopy" viewBox="0 0 400 140" focusable="false">
+          <path d="M200 6 V30" stroke="#1E1B18" stroke-width="5" stroke-linecap="round" />
+          <path d="M200 6 L232 14 L200 22 Z" fill="#D93A2B" stroke="#1E1B18" stroke-width="3.5" stroke-linejoin="round" />
+          <path d="M200 26 L14 98 H386 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round" />
+          <path d="M200 26 L38 98 H86 Z M200 26 L134 98 H174 Z M200 26 L226 98 H266 Z M200 26 L314 98 H362 Z" fill="#D93A2B" />
+          <path d="M14 98 H386 V112 H14 Z" fill="#2848C8" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round" />
+          <path d="M14 112 Q30 134 46 112 Q62 134 78 112 Q94 134 110 112 Q126 134 142 112 Q158 134 174 112 Q190 134 206 112 Q222 134 238 112 Q254 134 270 112 Q286 134 302 112 Q318 134 334 112 Q350 134 366 112 Q376 128 386 112 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="4.5" stroke-linejoin="round" />
+        </svg>
+        <span class="ride-floor"></span>
+        <div class="ride-ring" id="rideRing"></div>
+      </div>
+      <div class="note-wrap ride-note-wrap"><p class="note" id="rideNote" role="status"></p></div>
+    </div>
     <!-- Your clip is in (submissionWatch.ts): on any screen, once a clip sent from this tab joins the bank. Plain markup; the look comes from the frontend agent. -->
     <div class="note-wrap" id="clipReady" role="status" hidden>
       <p class="note" id="clipReadyText"></p>
@@ -377,18 +394,42 @@
       </div>
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
-        <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
+        <div class="note-wrap"><p class="note start-title">The party game that gets you off your chair.</p></div>
+        <p class="typed start-how">Each of you copies a secret part of a clip on the webcam. At the end, you see it all together.</p>
       </header>
 
-      <div class="start-mode" id="startMode">
-        <div class="modes-pick" role="radiogroup" aria-label="Game mode">
-          <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
-          <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+      <!-- How you play: how many are playing (remembered), and for two or more how; then Blind or Normal. The lines
+           under it say what the picks mean (game.ts). The library below follows them. -->
+      <div class="start-setup" id="startMode">
+        <div class="start-q" id="countRow">
+          <span class="start-ask" id="countLabel">How many are playing?</span>
+          <div class="start-pick" role="radiogroup" aria-labelledby="countLabel">
+            <button type="button" class="chip" role="radio" data-players="1" aria-checked="true">1</button>
+            <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
+            <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
+            <button type="button" class="chip" role="radio" data-players="4" aria-checked="false">4</button>
+          </div>
         </div>
-        <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
+        <div class="start-q" id="howPick" hidden>
+          <span class="start-ask" id="howLabel">How?</span>
+          <div class="start-pick" role="radiogroup" aria-labelledby="howLabel">
+            <button type="button" class="chip" role="radio" data-how="turns" aria-checked="true" data-says="One of you plays, then passes the laptop to the next.">Take turns on this laptop</button>
+            <button type="button" class="chip" role="radio" data-how="duel" aria-checked="false" data-says="Everyone copies the same person. Best copy wins.">Duel</button>
+            <button type="button" class="chip" role="radio" data-how="online" aria-checked="false" data-says="Each of you plays on your own phone or laptop. You pick the clip in the room.">Each on your own device</button>
+          </div>
+          <p class="typed start-says" id="howSays"></p>
+        </div>
+        <div class="start-q" id="modeRow">
+          <span class="start-ask" id="modeLabel">Blind or Normal?</span>
+          <div class="modes-pick" role="radiogroup" aria-labelledby="modeLabel">
+            <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end.</span></button>
+            <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Everyone sees the clip and dances along with it.</span></button>
+          </div>
+          <p class="typed start-says mode-says" id="modeSays" aria-hidden="true"></p>
+        </div>
       </div>
 
-      <!-- Surprise me: the first choice, a random clip from the ones the library shows (game.ts fills its line). -->
+      <!-- The choice: Surprise me, or pick from the library. Surprise me draws from the clips that fit the pick. -->
       <button type="button" class="clip surprise" id="surpriseCard" data-key="surprise" aria-pressed="true">
         <span class="washi w-pink" aria-hidden="true"></span>
         <span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span>
@@ -396,34 +437,37 @@
         <span class="clip-hint" id="surpriseHint"></span>
         <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
       </button>
+      <p class="start-or" id="startOr" aria-hidden="true">or</p>
 
-      <!-- The library: every clip, found by name or by how many players it needs (one player per part). -->
-      <div class="library-head" id="libraryHead" role="search" aria-label="Find a clip">
-        <label class="field library-find"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
-        <div class="library-players" role="radiogroup" aria-labelledby="playersLabel">
-          <span class="library-players-label" id="playersLabel">Players</span>
-          <button type="button" class="chip" role="radio" data-players="0" aria-checked="true">Any</button>
-          <button type="button" class="chip" role="radio" data-players="1" aria-checked="false">1</button>
-          <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
-          <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
-          <button type="button" class="chip" role="radio" data-players="4" aria-checked="false" aria-label="4 or more">4+</button>
-        </div>
+      <!-- The library: every clip that fits, found by name. -->
+      <div class="library-head" id="libraryHead">
+        <h2 class="library-title" id="libraryTitle">Pick from the library</h2>
+        <span class="library-count" id="libraryCount"></span>
+        <button type="button" class="link library-more" id="libraryMore" hidden></button>
+        <label class="field library-find" role="search"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
       </div>
-      <div class="bank" id="bank" role="group" aria-label="Clips"></div>
+      <div class="bank" id="bank" role="group" aria-labelledby="libraryTitle"></div>
       <p class="typed library-none" id="libraryNone" role="status" hidden></p>
       <p class="typed bank-note" id="bankNote" hidden></p>
 
       <div class="start-foot" id="startFoot">
         <div class="start-actions" id="startActions">
           <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
-          <button type="button" class="btn btn-quiet" id="playOnline">Play online</button>
         </div>
 
-        <!-- Send in a clip: its own card in the Play row; the form has its own screen (#screen-submit). -->
-        <button type="button" class="send-card" id="submitOpen" aria-describedby="sendInviteText">
+        <!-- The two other ways in, as matching paper cards beside the ticket: the online room (ui/room.ts listens on
+             #playOnline; "Each on your own device" in How? opens the same room), and Send in a clip (#screen-submit). -->
+        <button type="button" class="send-card start-door" id="playOnline" aria-describedby="playOnlineText">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <svg class="ico start-door-ico" aria-hidden="true"><use href="#ico-online" /></svg>
+          <b class="send-card-name">Play online</b>
+          <span class="send-card-text" id="playOnlineText">Each on your own phone or laptop. Make a room or join one with a code.</span>
+        </button>
+        <button type="button" class="send-card start-door" id="submitOpen" aria-describedby="sendInviteText">
           <span class="washi w-dots" aria-hidden="true"></span>
+          <svg class="ico start-door-ico" aria-hidden="true"><use href="#ico-send" /></svg>
           <b class="send-card-name">Send in a clip</b>
-          <span class="send-card-text" id="sendInviteText">Got a dance or a trick on your phone? Everyone gets to play it.</span>
+          <span class="send-card-text" id="sendInviteText">Got a dance on your phone? Add it to the library.</span>
         </button>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
@@ -598,6 +642,11 @@
     <section class="screen" id="screen-cast" hidden>
       <div class="masking"><h2 class="tape">Who's playing?</h2></div>
       <p class="typed" id="castParts"></p>
+      <!-- A clip with a thing in it (a ball, a dog): play the thing as a part too, or people only (game.ts). -->
+      <div class="cast-thing" id="castThing" role="radiogroup" aria-label="The thing in this clip" hidden>
+        <button type="button" class="chip" role="radio" data-things="on" aria-checked="true">With the thing as a part</button>
+        <button type="button" class="chip" role="radio" data-things="off" aria-checked="false">People only</button>
+      </div>
       <div class="cast" id="castNames"></div>
       <div class="cast-count">
         <button type="button" class="btn btn-quiet" id="castLess"><svg class="ico" aria-hidden="true"><use href="#ico-player-less" /></svg>One fewer</button>
