@@ -40,6 +40,18 @@ function loadStrip(variant: string, anim: JesterAnim): Promise<HTMLImageElement>
 /** Player n (0 based) wears colourway p1 to p4, matching the skin's --p1 to --p4. */
 export const variantFor = (index: number) => `p${(index % 4) + 1}`;
 
+/**
+ * Every rendered colourway, keyed by its main colour: the four player colours, then red, orange and purple
+ * (art/jester/jester.py ALL_PLAYERS, the same suits a player can pick on the cast screen).
+ */
+const VARIANT_OF_COLOUR: Readonly<Record<string, string>> = {
+  "#f47fa6": "p1", "#4f7bf0": "p2", "#ffc93c": "p3", "#3fbf8f": "p4", "#d93a2b": "p5", "#ec8234": "p6", "#6b2fb3": "p7",
+};
+export const VARIANTS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"] as const;
+
+/** The rendered jester for a player colour, or null when that colour has none. */
+export const variantOfColour = (color: string): string | null => VARIANT_OF_COLOUR[color.trim().toLowerCase()] ?? null;
+
 /** Loads every strip for these colourways ahead of time, so nothing pops in during the crowning. */
 export function preloadJesters(variants: string[]) {
   void loadTrack();

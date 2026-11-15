@@ -4,7 +4,7 @@
 //
 // What a screen calls (see app/src/duel-lab.ts for all of it wired up):
 //   const clips = await duelClips();                                   // bank clips with one subject, plus the starter
-//   hostStartDuel(room, clipId, "blind" | "watch", { alive });         // host only; alive = null means everyone
+//   hostStartDuel(room, clipId, "blind" | "normal", { alive });        // host only; alive = null means everyone
 //   room.on("start", async (round) => {
 //     if (!isDuelRound(round)) return;
 //     await playDuel(room, { kind: "camera", player }, video, hooks);  // loads the clip by id, plays, scores, sends
@@ -41,9 +41,8 @@ export const DUEL_MAX_MS = 20_000;
 const RECORDING_LIMIT_BYTES = 180_000;
 const CREDIT_BUCKET_MS = 200;
 const DEFAULT_DELAY_MS = 5000;
-const WATCH_GAP_MS = 3000;
-
-export type DuelLook = "blind" | "watch";
+/** Blind: only the stick figure, never the clip. Normal: copy the clip itself as it plays. */
+export type DuelLook = "blind" | "normal";
 
 /** What the host puts in room.start's extra. The round number is the room's own `round.roundNo`. */
 export interface DuelStartExtra { mode: "duel"; look: DuelLook; alive: string[] | null }
@@ -245,7 +244,7 @@ export function packRecording(timeline: unknown, limitBytes = RECORDING_LIMIT_BY
 
 /**
  * Plays this device's part of the room's current duel round: loads the clip by id, waits for the shared
- * start, (watch look) plays it once to watch, then plays it for real with this device's performer,
+ * start, then plays it for real with this device's performer (the normal look shows the clip as it plays),
  * scores it with the engine exactly as a solo round does, and sends score, lag and recording to the room.
  * Always sends something, so the room never waits on a device that failed.
  */
@@ -270,19 +269,12 @@ export async function playDuel(room: DuelRoom, performer: DuelPerformer, video: 
     return { score: null, lagMs: null, out: false, error: got.error };
   }
   const dc = got.data;
-  const lengthMs = dc.endMs - dc.startMs;
   // Everyone works from the host's start time, so devices stay together even if one loaded slowly.
   const startPerf = toPerf(round.startAt);
-  const watchFirst = look === "watch";
-  await countdown(startPerf, say, (s) => (watchFirst ? `Watch it once in ${s}` : `Copy it in ${s}`));
+  await countdown(startPerf, say, (s) => `Copy it in ${s}`);
 
   const aspectOf = performer.kind === "camera" ? 4 / 3 : dc.aspect;
-  if (watchFirst) {
-    say("Watch it once. Next time, copy it.");
-    await runStretch(dc, Math.max(startPerf, performance.now()), (mediaMs) => hooks.onFrame?.({ phase: "watch", mediaMs, player: null, playerAspect: aspectOf, clip: dc }));
-  }
-  const playPerf = Math.max(watchFirst ? startPerf + lengthMs + WATCH_GAP_MS : startPerf, performance.now());
-  if (watchFirst) await countdown(playPerf, say, (s) => `Your turn in ${s}`);
+  const playPerf = Math.max(startPerf, performance.now());
 
   say("Go! Copy it as if it were a mirror.");
   const recorder = new PerformanceRecorder();
@@ -392,14 +384,14 @@ export function behindLine(ranked: readonly DuelStanding[]): string | null {
 
 const views = new WeakMap<HTMLCanvasElement, { key: string; view: View }>();
 
-/** The subject at `mediaMs` as this round's look shows it: the clip itself when watching, only its stick figure when blind. */
+/** The subject at `mediaMs` as this round's look shows it: the clip itself in the normal look, only its stick figure when blind. */
 export function drawDuelSubject(canvas: HTMLCanvasElement, dc: DuelClip, look: DuelLook, phase: "watch" | "play", mediaMs: number) {
   if (!dc.video) {
     const sample = sampleAt(dc.clip.samples as never, mediaMs / 1000) as ClipSample | null;
     drawFrame(canvas, null, (sample?.landmarks ?? null) as LandmarkObject[] | null);
     return;
   }
-  if (look === "watch" || phase === "watch") { drawFrame(canvas, dc.video, null); return; }
+  if (look !== "blind" || phase === "watch") { drawFrame(canvas, dc.video, null); return; }
   const key = `${dc.id}:${canvas.width}x${canvas.height}`;
   let cached = views.get(canvas);
   if (!cached || cached.key !== key) { cached = { key, view: blindView(dc.guide, canvas, "fit") }; views.set(canvas, cached); }

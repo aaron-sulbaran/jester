@@ -75,6 +75,27 @@ test("repairIdentities: dancers of the same build side by side are left alone", 
   assert.equal(result.dropped, 0);
 });
 
+test("repairIdentities: a dancer's points are not handed to a short piece that has no body shape", () => {
+  // As on a real duo clip: the pose model measures limbs a little differently on every frame, and
+  // linking left a one-frame piece beside the dancer. That piece has no body shape of its own, so
+  // it must not be read as a better fit for the dancer's later frames.
+  const wobble = (f: number): Build => ({
+    ...LONG_LEGS,
+    upperArm: LONG_LEGS.upperArm * (1 + 0.12 * Math.sin(3.1 * f)),
+    forearm: LONG_LEGS.forearm * (1 + 0.12 * Math.cos(2.7 * f)),
+    thigh: LONG_LEGS.thigh * (1 + 0.15 * Math.sin(1.7 * f)),
+    shin: LONG_LEGS.shin * (1 + 0.15 * Math.cos(2.3 * f)),
+  });
+  const frames = Array.from({ length: 121 }, (_, f) => f);
+  const dancer: Track = { id: 0, shot: 0, points: frames.map((f) => pointOf(f, 0.62, wobble(f))) };
+  const piece: Track = { id: 1, shot: 0, points: [pointOf(40, 0.52, AVERAGE_BUILD)] };
+  const result = repairIdentities([dancer, piece]);
+  assert.equal(result.swaps, 0);
+  assert.equal(result.swappedPoints, 0);
+  assert.equal(result.tracks[0]!.points.length, 121);
+  assert.equal(result.tracks[1]!.points.length, 1);
+});
+
 test("repairIdentities: tracks in different shots are never swapped", () => {
   const { a, b, frames } = crossing();
   const t0: Track = { id: 0, shot: 0, points: frames.map((f) => (f <= 20 ? a(f) : b(f))) };

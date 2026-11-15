@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.11.0";
+export const SCORER_VERSION = "jester-engine/0.12.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -124,10 +124,33 @@ export const MOTION = {
   spanMs: 250,
   /** Turning less than this over the span counts as no motion (degrees): covers tracker jitter. */
   noiseFloorDeg: 6,
-  /** Motion share at or below this opens no gate ... */
+  /** Share gate: motion share at or below this opens nothing ... */
   gateLow: 0.15,
   /** ... and at or above this opens it fully (linear in between). */
   gateHigh: 0.5,
+  /**
+   * 0.12.0 gain gate, the second way to open the plain accuracy credit: from the gain over still. A player who
+   * moved (still gate open) and matched the clip's poses clearly better than standing still would have is
+   * copying, even when little of the motion is in step (late or loose). Posture alone gives up to about 0.18
+   * (a player frozen in their own standing pose, on Alex's saved rounds), and wrong moves rarely beat still at
+   * all, so the ramp starts at 0.15: gain over still at or below this opens nothing ...
+   */
+  gainGateLow: 0.15,
+  /**
+   * ... and at or above this opens fully, smoothstep in between (no corner at either end), times the still
+   * gate so a statue cannot open it, and times the share ramp below. The gate used is the larger of the share
+   * gate and this one.
+   */
+  gainGateHigh: 0.3,
+  /**
+   * The gain gate also needs some of the motion in step: from this share (nothing) to gainGateShareHigh (all),
+   * smoothstep. Much lower than gateLow, since this half only has to tell "partly in step" from "not in step at
+   * all": on a clip that mostly stands, a player who waves while the clip rests holds the clip's resting
+   * posture the rest of the time and beats the fixed still pose by about 0.3, with a share of 0. Alex's honest
+   * rounds with a low share had 0.14 to 0.18.
+   */
+  gainGateShareLow: 0.02,
+  gainGateShareHigh: 0.12,
   /** Absolute accuracy credit: 0 at or below this accuracy ... */
   accuracyFloor: 0.55,
   /** ... and 1 at or above this accuracy (linear in between). */
