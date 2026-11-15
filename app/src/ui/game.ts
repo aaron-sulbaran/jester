@@ -1129,5 +1129,6 @@ export function initGame(deps: GameDeps) {
 
   let seen = false;
   try { seen = localStorage.getItem(HOWTO_SEEN) === "1"; } catch { /* storage blocked: treat as seen, never trap them */ seen = true; }
-  show(seen ? "start" : "howto");
+  // A join link (?room=CODE) opens the room screen with the code filled in.
+  show(lobby.invited ? "room" : seen ? "start" : "howto");
 }
