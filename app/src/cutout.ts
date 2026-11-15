@@ -257,7 +257,8 @@ function nearest(cutouts: readonly Cutout[], ms: number): Cutout | null {
   if (hi < 0) return null;
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cutouts[m]!.clipMs <= ms) lo = m; else hi = m; }
   const best = Math.abs(cutouts[lo]!.clipMs - ms) <= Math.abs(cutouts[hi]!.clipMs - ms) ? cutouts[lo]! : cutouts[hi]!;
-  return Math.abs(best.clipMs - ms) <= 150 ? best : null;
+  // Up to 0.6 s away: the camera or its mask drops frames now and then, and a held picture beats a blink.
+  return Math.abs(best.clipMs - ms) <= 600 ? best : null;
 }
 
 /** Draw every layer's cutout for replay time `ms`. */

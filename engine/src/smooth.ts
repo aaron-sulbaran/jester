@@ -12,9 +12,11 @@ export interface SmoothOptions {
   medianWindow?: number;
   /** Softening: Gaussian width in frames (about 100 ms at 15 a second). */
   sigma?: number;
+  /** Also fill the empty frames before the first and after the last pose by holding those poses. */
+  holdEnds?: boolean;
 }
 
-const DEFAULTS: Required<SmoothOptions> = { maxFill: 5, medianWindow: 5, sigma: 1.5 };
+const DEFAULTS: Required<SmoothOptions> = { maxFill: 5, medianWindow: 5, sigma: 1.5, holdEnds: false };
 
 type Mutable = [number, number, number];
 
@@ -51,9 +53,16 @@ function fillGaps(frames: (Mutable[] | null)[], maxFill: number) {
  * smoothing never reaches across it. Visibility is softened the same way.
  */
 export function smoothTimeline(timeline: PoseTimeline, options: SmoothOptions = {}): PoseTimeline {
-  const { maxFill, medianWindow, sigma } = { ...DEFAULTS, ...options };
+  const { maxFill, medianWindow, sigma, holdEnds } = { ...DEFAULTS, ...options };
   const frames: (Mutable[] | null)[] = timeline.frames.map((f) => f.landmarks?.map((p) => [p[0], p[1], p[2]] as Mutable) ?? null);
   fillGaps(frames, maxFill);
+  if (holdEnds) {
+    const first = frames.findIndex((f) => f), last = frames.length - 1 - [...frames].reverse().findIndex((f) => f);
+    if (first >= 0) {
+      for (let i = 0; i < first; i++) frames[i] = frames[first]!.map((p) => [...p] as Mutable);
+      for (let i = last + 1; i < frames.length; i++) frames[i] = frames[last]!.map((p) => [...p] as Mutable);
+    }
+  }
   const n = frames.length;
   const count = frames.find((f) => f)?.length ?? 0;
   const half = medianWindow >> 1;

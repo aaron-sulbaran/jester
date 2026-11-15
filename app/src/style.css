@@ -222,7 +222,10 @@ body:not(.solo) #solo { display: none; }
    under it and the shape's dark background drops out (screen blend keeps only the bright outline). */
 #youCanvas { opacity: 0; transition: opacity .4s var(--ease); object-fit: cover; }
 #screen-turn[data-state="play"] #youCanvas { opacity: 1; }
-#screen-turn[data-state="play"] #guideCanvas { mix-blend-mode: screen; }
+/* While playing: the role on the left, you on the right, side by side (not drawn over the camera). */
+#screen-turn[data-state="play"] #guideCanvas { inset: 0 50% 0 0; width: 50%; }
+#screen-turn[data-state="play"] #youCanvas { inset: 0 0 0 50%; width: 50%; }
+#screen-turn[data-state="play"] .stage::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; background: rgba(255, 255, 255, .25); }
 #screen-turn[data-state="part"] .stage-wrap { width: min(100%, 760px, calc((100vh - 420px) * 16 / 9 + 140px)); width: min(100%, 760px, calc((100dvh - 420px) * 16 / 9 + 140px)); }
 .count {
   position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none;
