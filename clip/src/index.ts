@@ -2,10 +2,12 @@
 
 export type * from "./types.ts";
 export { boxFromLandmarks, iou } from "./boxes.ts";
-export { linkTracks, rejoinTracks } from "./tracks.ts";
+export { linkTracks, mergeOverlapping, rejoinTracks } from "./tracks.ts";
 export type { LinkOptions, RejoinOptions } from "./tracks.ts";
 export { bodyShape, repairIdentities, shapeDistance, shapeSignature } from "./identity.ts";
 export type { IdentityOptions, IdentityResult } from "./identity.ts";
+export { trackPeople } from "./people.ts";
+export type { TrackedPeople, TrackPeopleOptions } from "./people.ts";
 export { frameSignature, signatureDistance, findCuts, shotRanges } from "./cuts.ts";
 export { crossingShare, motionPerFrame, rankCandidates, pickConfirmFrame, pointNearFrame, withConfirmBoxes } from "./rank.ts";
 export { checkClip, checkSubject } from "./rules.ts";
@@ -22,8 +24,8 @@ export { boneLengths, facingOf, liftPose } from "./lift.ts";
 export type { BoneLengths, Lifted, Vec3 } from "./lift.ts";
 export type { Placement, View } from "./view.ts";
 export {
-  linkThings, withoutPeople, rankThings, thingMotionPerFrame, thingMoves, thingName, thingPace,
+  linkThings, rejoinThings, withoutPeople, rankThings, thingMotionPerFrame, thingMoves, thingName, thingPace,
   boxPolygon, boxEllipse, buildThingGuide, thingGuides, THING_STILL, THING_OTHER_SHOT, thingObjectName, thingHint, boxTrackAt,
 } from "./things.ts";
-export type { ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingLinkOptions } from "./things.ts";
-export { meanCentreX, medianCentreX, nameByPosition, positionNames } from "./positions.ts";
+export type { ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingLinkOptions, ThingRejoinOptions } from "./things.ts";
+export { meanCentreX, medianCentreX, nameByPosition, partName, positionNames } from "./positions.ts";

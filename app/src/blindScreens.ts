@@ -3,6 +3,7 @@
 
 import { escapeHtml, safeColor } from "./escape.ts";
 import type { BodyPart } from "../../engine/src/index.ts";
+import { partName } from "../../clip/src/index.ts";
 import { demoScene, dribbleScene, runBlindGame, videoScene, type BlindDeps, type BlindUi, type Scene } from "./blind.ts";
 import { Room, broadcastChannelTransport, makeRoomCode, normalizeCode } from "../../spikes/pose-match/rooms.mjs";
 import { PLAYER_COLORS } from "../../spikes/pose-match/reveal.mjs";
@@ -62,7 +63,7 @@ export function initBlindScreens(deps: ScreenDeps) {
     scene = s;
     sceneId = id;
     renderLobby();
-    status(`${s.name}: ${(s.durationMs / 1000).toFixed(1)} s, roles: ${s.guides.map((g) => g.subject.label).join(", ")}.`);
+    status(`${s.name}: ${(s.durationMs / 1000).toFixed(1)} s, roles: ${s.guides.map((g) => partName(g.subject)).join(", ")}.`);
     $<HTMLButtonElement>("blindDeal").disabled = false;
   };
   $("blindDemo").addEventListener("click", () => sceneReady(demoScene(), "demo"));
