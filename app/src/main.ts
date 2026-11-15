@@ -10,7 +10,6 @@ import { OBJECT_NAMES, objectClip, simulatedObjectPlayer, type ObjectClip } from
 import { cutFrame, recordReveal, type Cutout } from "./cutout.ts";
 import { initGame } from "./ui/game.ts";
 import { initBlindScreens } from "./blindScreens.ts";
-import { initAnyone } from "./anyone.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clipVideo = $<HTMLVideoElement>("clip");
@@ -367,8 +366,6 @@ requestAnimationFrame(render);
 // online in rooms" on its start screen opens the practice area: solo (above) and Alex's blind screens with
 // online rooms (blindScreens.ts), until the rooms get the new look.
 initGame({ simMode, noise, getCamera, clipVideo, cam });
-// Play with anyone (anyone.ts): the start screen's second button, an open lobby across devices.
-initAnyone({ simMode, getCamera, clipVideo, cam });
 
 initBlindScreens({ simMode, noise, getCamera, countdown, clipVideo, cam, guideCanvas: clipCanvas, playerCanvas });
 

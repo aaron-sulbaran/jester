@@ -74,9 +74,7 @@ export interface DuelRoom {
   results: Map<string, { score: number | null; timeline: unknown; extra: unknown }>;
   allDone: boolean;
   roster(): { id: string; name: string }[];
-  /** Players who left or dropped; the ones who sent a result this round are still ranked. */
-  gone?: Map<string, { id: string; name: string }>;
-  start(clipId: string, delayMs?: number, extra?: object, lengthMs?: number | null): unknown;
+  start(clipId: string, delayMs?: number, extra?: object): unknown;
   submitResult(r: { score: number | null; timeline?: unknown; extra?: unknown }): void;
   on(event: "update" | "start", fn: (arg: never) => void): () => void;
 }
@@ -162,19 +160,10 @@ export async function loadDuelClip(clipId: string, video: HTMLVideoElement): Pro
 
 // ---- Starting and playing a round ----
 
-/** How long a round on a clip of `durationMs` runs from its start: once, or watched once and then played. */
-export function duelLengthMs(durationMs: number, look: DuelLook): number {
-  return look === "watch" ? 2 * durationMs + WATCH_GAP_MS : durationMs;
-}
-
-/**
- * Host only. Starts a duel round on `clipId` for everyone (or only `alive`, in elimination). With the clip's
- * `durationMs`, results close at the round's length plus the room's grace period, so a player who never
- * finishes does not hold the round up.
- */
-export function hostStartDuel(room: DuelRoom, clipId: string, look: DuelLook, { alive = null, delayMs = DEFAULT_DELAY_MS, durationMs = null }: { alive?: string[] | null; delayMs?: number; durationMs?: number | null } = {}) {
+/** Host only. Starts a duel round on `clipId` for everyone (or only `alive`, in elimination). */
+export function hostStartDuel(room: DuelRoom, clipId: string, look: DuelLook, { alive = null, delayMs = DEFAULT_DELAY_MS }: { alive?: string[] | null; delayMs?: number } = {}) {
   const extra: DuelStartExtra = { mode: "duel", look, alive };
-  return room.start(clipId, delayMs, extra, durationMs === null ? null : duelLengthMs(durationMs, look));
+  return room.start(clipId, delayMs, extra);
 }
 
 export function isDuelRound(round: DuelRound | null): round is DuelRound & { extra: DuelStartExtra } {
@@ -205,11 +194,10 @@ export interface DuelOutcome { score: number | null; lagMs: number | null; out: 
 const sleepUntil = (perfMs: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, perfMs - performance.now())));
 const toPerf = (wallMs: number) => performance.now() + (wallMs - Date.now());
 
-/** Counts down to `untilPerf()`, read again each step: the room may correct the start time while it counts. */
-async function countdown(untilPerf: () => number, say: (t: string) => void, label: (s: number) => string) {
-  while (performance.now() < untilPerf() - 50) {
-    say(label(Math.max(1, Math.ceil((untilPerf() - performance.now()) / 1000))));
-    await sleepUntil(Math.min(untilPerf(), performance.now() + 250));
+async function countdown(untilPerf: number, say: (t: string) => void, label: (s: number) => string) {
+  while (performance.now() < untilPerf - 50) {
+    say(label(Math.max(1, Math.ceil((untilPerf - performance.now()) / 1000))));
+    await sleepUntil(Math.min(untilPerf, performance.now() + 250));
   }
 }
 
@@ -283,12 +271,10 @@ export async function playDuel(room: DuelRoom, performer: DuelPerformer, video: 
   }
   const dc = got.data;
   const lengthMs = dc.endMs - dc.startMs;
-  // Everyone works from the host's start time, so devices stay together even if one loaded slowly. The room
-  // keeps correcting it on this device's clock until it comes, so it is read again until the countdown ends.
-  const startNow = () => toPerf(room.round?.roundNo === round.roundNo ? room.round.startAt : round.startAt);
+  // Everyone works from the host's start time, so devices stay together even if one loaded slowly.
+  const startPerf = toPerf(round.startAt);
   const watchFirst = look === "watch";
-  await countdown(startNow, say, (s) => (watchFirst ? `Watch it once in ${s}` : `Copy it in ${s}`));
-  const startPerf = startNow();
+  await countdown(startPerf, say, (s) => (watchFirst ? `Watch it once in ${s}` : `Copy it in ${s}`));
 
   const aspectOf = performer.kind === "camera" ? 4 / 3 : dc.aspect;
   if (watchFirst) {
@@ -296,7 +282,7 @@ export async function playDuel(room: DuelRoom, performer: DuelPerformer, video: 
     await runStretch(dc, Math.max(startPerf, performance.now()), (mediaMs) => hooks.onFrame?.({ phase: "watch", mediaMs, player: null, playerAspect: aspectOf, clip: dc }));
   }
   const playPerf = Math.max(watchFirst ? startPerf + lengthMs + WATCH_GAP_MS : startPerf, performance.now());
-  if (watchFirst) await countdown(() => playPerf, say, (s) => `Your turn in ${s}`);
+  if (watchFirst) await countdown(playPerf, say, (s) => `Your turn in ${s}`);
 
   say("Go! Copy it as if it were a mirror.");
   const recorder = new PerformanceRecorder();
@@ -372,9 +358,7 @@ export interface DuelTable {
 }
 
 export function duelStandings(room: DuelRoom): DuelTable {
-  const here = room.roster();
-  const left = [...(room.gone?.values() ?? [])].filter((p) => room.results.has(p.id) && !here.some((q) => q.id === p.id));
-  const roster = [...here, ...left];
+  const roster = room.roster();
   const played: Omit<DuelStanding, "place">[] = [];
   const waiting: string[] = [], out: string[] = [];
   for (const p of roster) {

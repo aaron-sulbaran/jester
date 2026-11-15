@@ -30,12 +30,8 @@ const status = (t: string) => { $("status").textContent = t; };
 const nameOf = (id: string) => room?.roster().find((p) => p.id === id)?.name ?? id;
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-/** Each clip's length, so the room can close a round's results on time. */
-const clipLengths = new Map<string, number>();
-
 async function fillClips() {
   const listed = await duelClips();
-  for (const c of listed.data) clipLengths.set(c.id, c.durationMs);
   $<HTMLSelectElement>("clip").innerHTML = listed.data.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.title)} (${clockText(c.durationMs)})</option>`).join("");
   if (listed.error) status(listed.error + " The built in starter dance still works.");
 }
@@ -164,7 +160,7 @@ function startRound() {
   if (!elimination) match = null;
   else if (!match || match.winner) { match = startElimination(room.roster().map((p) => p.id)); lastWins = {}; }
   if (match?.winner) return;
-  try { hostStartDuel(room, $<HTMLSelectElement>("clip").value, $<HTMLSelectElement>("look").value as DuelLook, { alive: match ? match.alive : null, durationMs: clipLengths.get($<HTMLSelectElement>("clip").value) ?? null }); }
+  try { hostStartDuel(room, $<HTMLSelectElement>("clip").value, $<HTMLSelectElement>("look").value as DuelLook, { alive: match ? match.alive : null }); }
   catch (e) { status((e as Error).message); }
 }
 

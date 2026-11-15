@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Room, MemoryBus, RESULT_GRACE_MS, makeRoomCode, normalizeCode } from "./rooms.mjs";
+import { Room, MemoryBus, makeRoomCode, normalizeCode } from "./rooms.mjs";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 function makeRooms(names, clocks = {}) {
@@ -173,94 +173,4 @@ test("leaving stops the heartbeat", () => {
   assert.ok(r.timer);
   r.leave();
   assert.equal(r.timer, null);
-});
-
-// ---- results deadline, rooms made from a match ----
-
-test("results close at the round's length plus 15 s; whoever sent a result is ranked, even after dropping", async () => {
-  const bus = new MemoryBus();
-  const clock = { t: 1000 };
-  const a = clockRoom(bus, "ana", clock, 1), b = clockRoom(bus, "ben", clock, 2), c = clockRoom(bus, "cy", clock, 3);
-  a.join(); b.join(); c.join(); await tick();
-  const round = a.start("clip", 3000, {}, 20_000);       // starts at 4000, runs 20 s
-  await tick();
-  assert.equal(round.closeAt, 4000 + 20_000 + RESULT_GRACE_MS);
-  assert.equal(b.round.closeAt, round.closeAt);
-  b.submitResult({ score: 70 }); await tick();
-  b.transport.close();                                    // Ben sent his score, then his tab closed
-  let updates = 0;
-  a.on("update", () => updates++);
-  clock.t = round.closeAt - 1;
-  c.tick(); await tick(); a.tick();
-  assert.equal(a.allDone, false);                         // Cy has not sent one yet, and it is not closed
-  assert.deepEqual(a.roster().map((p) => p.id), ["ana", "cy"]); // Ben dropped: silent for more than 10 s
-  clock.t = round.closeAt;
-  a.tick();
-  assert.equal(a.closed, true);
-  assert.equal(a.allDone, true);                          // closed: the round ends without Ana's or Cy's result
-  assert.ok(updates >= 1, "closing tells the screen");
-  const ranked = a.standings().filter((r) => r.score !== null);
-  assert.deepEqual(ranked.map((r) => [r.id, r.score, r.gone]), [["ben", 70, true]]);
-});
-
-test("a round without a length waits for everyone, as before", async () => {
-  const bus = new MemoryBus();
-  const clock = { t: 0 };
-  const a = clockRoom(bus, "ana", clock, 1), b = clockRoom(bus, "ben", clock, 2);
-  a.join(); b.join(); await tick();
-  a.start("clip"); await tick();
-  clock.t = 10 * 60_000;
-  assert.equal(a.closed, false);
-  assert.equal(a.round.closeAt, null);
-});
-
-test("a room made from a match ignores outsiders and drops a member who never shows up", async () => {
-  const bus = new MemoryBus();
-  const clock = { t: 5000 };
-  const members = [{ id: "mm", name: "Matchmaker" }, { id: "ana", name: "Ana" }, { id: "nobody", name: "No Show" }];
-  const mk = (id) => new Room({ transport: bus.transport(), code: "MTCH", playerId: id, name: id, now: () => clock.t, heartbeatMs: 0, members });
-  const mm = mk("mm"), ana = mk("ana");
-  const stranger = new Room({ transport: bus.transport(), code: "MTCH", playerId: "zed", name: "Zed", now: () => clock.t, heartbeatMs: 0 });
-  mm.join(); ana.join(); stranger.join(); await tick();
-  assert.deepEqual(ana.roster().map((p) => p.id), ["mm", "ana", "nobody"]); // known up front, in match order
-  assert.equal(mm.isHost, true);                                           // the first member hosts
-  assert.equal(ana.hostId, "mm");
-  clock.t += 11_000;
-  mm.tick(); await tick(); ana.tick();
-  assert.deepEqual(ana.roster().map((p) => p.id), ["mm", "ana"]);         // No Show never said a word
-  assert.equal(mm.roster().some((p) => p.id === "zed"), false);
-});
-
-test("adoptRound starts from the match's time and moves it once the host's clock is measured", async () => {
-  const bus = new MemoryBus();
-  const ch = { t: 100_000 }, ca = { t: 160_000 };          // Ana's clock is 60 s ahead of the host's
-  const members = [{ id: "host", name: "Host" }, { id: "ana", name: "Ana" }];
-  const host = new Room({ transport: bus.transport(), code: "ADPT", playerId: "host", now: () => ch.t, heartbeatMs: 0, members });
-  const ana = new Room({ transport: bus.transport(), code: "ADPT", playerId: "ana", now: () => ca.t, heartbeatMs: 0, members });
-  const starts = [];
-  ana.on("start", (r) => starts.push(r.clipId));
-  const plan = { clipId: "starter", lengthMs: 20_000, from: "host", startAt: 110_000 };  // 10 s from now on the host's clock
-  host.adoptRound(plan);
-  ana.adoptRound({ ...plan, estimate: 170_300 });         // a guess from the lobby message, 300 ms late
-  assert.equal(host.round.startAt, 110_000);
-  assert.equal(ana.round.startAt, 170_300);
-  assert.deepEqual(starts, ["starter"]);
-  host.join(); ana.join(); await tick(); await tick();    // Ana asks for the host's clock as she joins
-  assert.equal(ana.offset, -60_000);
-  assert.equal(ana.round.startAt, 170_000);               // corrected to the host's moment
-  assert.equal(ana.round.closeAt, 170_000 + 20_000 + RESULT_GRACE_MS);
-});
-
-test("the clock is measured again when the host changes", async () => {
-  const bus = new MemoryBus();
-  const c1 = { t: 1000 }, c2 = { t: 5000 }, c3 = { t: 9000 };
-  const a = clockRoom(bus, "ana", c1, 1), b = clockRoom(bus, "ben", c2, 2), c = clockRoom(bus, "cy", c3, 3);
-  a.join(); b.join(); c.join(); await tick();
-  c.tick(); await tick(); await tick();
-  assert.equal(c.offsetFrom, "ana");
-  assert.equal(c.offset, 1000 - 9000);
-  a.leave(); await tick();                                // Ben hosts now
-  c.tick(); await tick(); await tick();
-  assert.equal(c.offsetFrom, "ben");
-  assert.equal(c.offset, 5000 - 9000);
 });

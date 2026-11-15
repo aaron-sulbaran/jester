@@ -93,7 +93,6 @@
       <div class="start-actions">
         <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
         <button type="button" class="btn btn-quiet" id="playOnline">Play with friends online</button>
-        <button type="button" class="btn btn-quiet" id="anyoneOpen">Play with anyone</button>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
 
@@ -324,60 +323,6 @@
       </div>
       <p class="typed" id="sendNote" aria-live="polite"></p>
       <p class="aside"><a id="resultsSave" download="jester.webm" hidden>Save the video</a></p>
-    </section>
-
-    <!-- Play with anyone (anyone.ts): an open lobby matches you with up to three people online; ghosts from saved rounds fill the other places. -->
-    <section class="screen anyone" id="screen-anyone" data-state="join" hidden>
-      <div class="masking"><h2 class="tape">Play with anyone</h2></div>
-      <div class="note-wrap anyone-intro"><p class="note">I'll find up to three people to play with. Nobody around? You'll play against ghosts of earlier rounds.</p></div>
-      <form class="anyone-join" id="anyoneJoin" novalidate>
-        <label class="field"><span>Your name</span><input id="anyoneName" type="text" maxlength="20" autocomplete="nickname" /></label>
-        <button type="submit" class="btn btn-main" id="anyoneFind"><span class="ticket"><span class="ticket-text">Find players</span></span></button>
-      </form>
-      <p class="typed anyone-status" id="anyoneStatus" aria-live="polite"></p>
-      <ul class="anyone-who" id="anyoneWho" aria-label="Who is here"></ul>
-      <div class="anyone-play">
-        <div class="stage-wrap">
-          <div class="box">
-            <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
-            <div class="inside">
-              <div class="walls" aria-hidden="true"></div>
-              <div class="stage">
-                <canvas id="anyoneClip" width="960" height="540" aria-label="The move to copy"></canvas>
-                <div class="count" id="anyoneCount" aria-live="assertive" hidden></div>
-              </div>
-              <div class="valance" aria-hidden="true"><i></i></div>
-              <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
-              <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
-            </div>
-          </div>
-        </div>
-        <div class="anyone-side">
-          <figure class="print anyone-you"><canvas id="anyoneYou" width="480" height="360" aria-label="You, in a mirror"></canvas><figcaption>You</figcaption></figure>
-          <ol class="anyone-bars" id="anyoneBars" aria-label="Scores"></ol>
-        </div>
-      </div>
-      <div class="anyone-results" id="anyoneResults" hidden>
-        <ol class="anyone-podium" id="anyonePodium" aria-label="Ranking"></ol>
-        <p class="typed" id="anyoneBehind"></p>
-        <div class="stage-wrap reveal-wrap">
-          <div class="box">
-            <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
-            <div class="inside">
-              <div class="walls" aria-hidden="true"></div>
-              <div class="stage"><canvas id="anyoneReveal" width="960" height="540" aria-label="The reveal: everyone beside the clip"></canvas></div>
-              <div class="valance" aria-hidden="true"><i></i></div>
-              <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
-              <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <p class="problem" id="anyoneProblem" role="alert" hidden></p>
-      <div class="row-actions">
-        <button type="button" class="btn btn-quiet" id="anyoneBack">Back to the start</button>
-        <button type="button" class="btn btn-main" id="anyoneAgain" hidden><span class="ticket"><span class="ticket-text">Play again</span></span></button>
-      </div>
     </section>
 
     <!-- Something broke: say so and offer a way back. -->
