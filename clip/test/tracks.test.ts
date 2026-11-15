@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkTracks, pointNearFrame, rankCandidates, rejoinTracks } from "../src/index.ts";
+import { linkTracks, mergeOverlapping, pointNearFrame, rankCandidates, rejoinTracks } from "../src/index.ts";
 import type { Box, Detection, Track } from "../src/index.ts";
 import { frame, person, trackOf, range } from "./synth.ts";
 
@@ -191,4 +191,36 @@ test("pointNearFrame: the point at the frame, else the nearest, earlier on a tie
   assert.equal(pointNearFrame(track, 8)!.frame, 10);
   assert.equal(pointNearFrame(track, 0)!.frame, 2);
   assert.equal(pointNearFrame({ id: 1, shot: 0, points: [] }, 3), null);
+});
+
+test("mergeOverlapping: two pieces of one person that overlap with the same box become one track", () => {
+  const a = trackOf(0, range(0, 31), () => box(0.3));
+  const b = trackOf(1, range(25, 36), () => box(0.302));
+  const merged = mergeOverlapping([a, b]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]!.id, 0);
+  assert.deepEqual(merged[0]!.points.map((p) => p.frame), range(0, 61));
+  assert.equal(merged[0]!.points[27]!.box.cx, 0.3, "a shared frame keeps the earlier track's point");
+});
+
+test("mergeOverlapping: two tracks that traded one person's frames become one track", () => {
+  // The pose model saw her twice at frame 30; then her frames went to one track or the other until 40.
+  const traded = range(31, 9);
+  const a = trackOf(0, [...range(0, 31), ...traded.filter((f) => f % 2 === 1)], () => box(0.3));
+  const b = trackOf(1, [30, ...traded.filter((f) => f % 2 === 0), ...range(40, 21)], () => box(0.3));
+  const merged = mergeOverlapping([a, b]);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0]!.points.map((p) => p.frame), range(0, 61));
+});
+
+test("mergeOverlapping: two people side by side, two people crossing, and a newcomer in an old spot stay apart", () => {
+  const sideBySide = [trackOf(0, range(0, 61), () => box(0.3)), trackOf(1, range(0, 61), () => box(0.42))];
+  assert.equal(mergeOverlapping(sideBySide).length, 2);
+  const crossing = [trackOf(0, range(0, 41), (f) => box(0.2 + 0.015 * f)), trackOf(1, range(0, 41), (f) => box(0.8 - 0.015 * f))];
+  assert.equal(mergeOverlapping(crossing).length, 2);
+  // The first person walks off to the right; someone else steps into the spot they left while they are still in view.
+  const newcomer = [trackOf(0, range(0, 41), (f) => box(0.3 + 0.01 * f)), trackOf(1, range(30, 31), () => box(0.3))];
+  assert.equal(mergeOverlapping(newcomer).length, 2);
+  const otherShot = [trackOf(0, range(0, 31), () => box(0.3)), trackOf(1, range(25, 36), () => box(0.3), 1)];
+  assert.equal(mergeOverlapping(otherShot).length, 2);
 });

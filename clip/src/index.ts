@@ -2,7 +2,7 @@
 
 export type * from "./types.ts";
 export { boxFromLandmarks, iou } from "./boxes.ts";
-export { linkTracks, rejoinTracks } from "./tracks.ts";
+export { linkTracks, mergeOverlapping, rejoinTracks } from "./tracks.ts";
 export type { LinkOptions, RejoinOptions } from "./tracks.ts";
 export { bodyShape, repairIdentities, shapeDistance, shapeSignature } from "./identity.ts";
 export type { IdentityOptions, IdentityResult } from "./identity.ts";

@@ -300,3 +300,88 @@ export function rejoinTracks(tracks: readonly Track[], options: RejoinOptions = 
   }
   return joined.sort((a, b) => a.id - b.id);
 }
+
+/** Two boxes on the same frame this alike are one person seen twice. */
+const SAME_PERSON_IOU = 0.5;
+/** A point agrees with the other track when its box overlaps that track's box this much (the linking threshold)... */
+const AGREE_IOU = 0.3;
+/** ...on the same frame or up to this many frames either side... */
+const AGREE_FRAMES = 2;
+/** ...and at least this share of the points where the two overlap in time must agree. */
+const AGREE_SHARE = 0.8;
+
+const lastFrame = (track: Track) => track.points[track.points.length - 1]!.frame;
+
+/** The other track's point on `frame`, else the nearest one within AGREE_FRAMES (earlier first). */
+function pointNear(byFrame: ReadonlyMap<number, TrackPoint>, frame: number): TrackPoint | undefined {
+  for (let d = 0; d <= AGREE_FRAMES; d++) {
+    const point = byFrame.get(frame - d) ?? byFrame.get(frame + d);
+    if (point) return point;
+  }
+  return undefined;
+}
+
+/**
+ * How well two tracks that overlap in time read as one person there: the share of their points in
+ * the overlap whose box overlaps the other track's box at about the same time. Null when they do
+ * not overlap, are in different shots, show two different boxes on any frame they share (two
+ * people at once), or agree on less than AGREE_SHARE of the overlap.
+ */
+function overlapAgreement(earlier: Track, later: Track): number | null {
+  if (earlier.shot !== later.shot) return null;
+  const start = later.points[0]!.frame;
+  const end = Math.min(lastFrame(earlier), lastFrame(later));
+  if (end < start) return null;
+  const a = new Map(earlier.points.map((p) => [p.frame, p]));
+  const b = new Map(later.points.map((p) => [p.frame, p]));
+  let checked = 0;
+  let agreed = 0;
+  for (let frame = start; frame <= end; frame++) {
+    const p = a.get(frame);
+    const q = b.get(frame);
+    if (p && q && iou(p.box, q.box) < SAME_PERSON_IOU) return null;
+    for (const [point, other] of [[p, b], [q, a]] as const) {
+      if (!point) continue;
+      const near = pointNear(other, frame);
+      if (!near) continue;
+      checked++;
+      if (iou(point.box, near.box) >= AGREE_IOU) agreed++;
+    }
+  }
+  return checked > 0 && agreed / checked >= AGREE_SHARE ? agreed / checked : null;
+}
+
+/**
+ * Merges tracks that are one person overlapping in time, which re-joining cannot do since it only
+ * joins pieces that follow one another. It happens when the pose model sees someone twice for a few
+ * frames: the second box starts a track, and the two then trade that person's frames. Two tracks
+ * merge when every frame they share shows the same box and nearly all their points in the overlap
+ * agree with the other track. The best agreeing pair merges first, into the track that started
+ * earlier (it keeps its id, and its point on a shared frame); repeated until no pair qualifies.
+ * Tracks come back ordered by id.
+ */
+export function mergeOverlapping(tracks: readonly Track[]): Track[] {
+  let work = tracks.filter((t) => t.points.length > 0).map((t) => ({ ...t, points: [...t.points] }));
+  for (;;) {
+    let best: { into: Track; from: Track; agreement: number } | null = null;
+    for (const into of work) {
+      for (const from of work) {
+        if (into === from) continue;
+        const intoFirst = into.points[0]!.frame;
+        const fromFirst = from.points[0]!.frame;
+        if (intoFirst > fromFirst || (intoFirst === fromFirst && into.id > from.id)) continue;
+        const agreement = overlapAgreement(into, from);
+        if (agreement === null) continue;
+        const better = !best || agreement > best.agreement
+          || (agreement === best.agreement && (into.id < best.into.id || (into.id === best.into.id && from.id < best.from.id)));
+        if (better) best = { into, from, agreement };
+      }
+    }
+    if (!best) break;
+    const { into, from } = best;
+    const taken = new Set(into.points.map((p) => p.frame));
+    into.points = [...into.points, ...from.points.filter((p) => !taken.has(p.frame))].sort((x, y) => x.frame - y.frame);
+    work = work.filter((t) => t !== from);
+  }
+  return work.sort((a, b) => a.id - b.id);
+}
