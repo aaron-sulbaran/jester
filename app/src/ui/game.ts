@@ -14,7 +14,8 @@ import { jesterBars } from "./jesterBar.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
-import { playMyRole } from "../onlineBlind.ts";
+import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
+import { unpackCutouts, unpackFace } from "../packMedia.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -371,15 +372,20 @@ export function initGame(deps: GameDeps) {
     const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
     const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
     try {
-      await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
+      await whenMediaIn(room as never); // their pictures, so the recap and the crowning show real people
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
-      const results: RemoteResult[] = standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map((s) => ({
+      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
         name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
-      }));
+        // My own pictures are already here at full size; the others' arrive packed.
+        cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
+        face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
+      })));
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
       await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });

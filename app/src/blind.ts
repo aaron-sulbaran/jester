@@ -1115,6 +1115,9 @@ export interface RemoteResult {
   lagMs: number;
   /** Their pose recording in clip media ms (ResultRow.timeline); null if none. */
   timeline: { aspect: number; frames: { t: number; landmarks: unknown[] }[] } | null;
+  /** Their real cutouts (play-time clipMs) and face, if they sent them; without cutouts a stick figure stands in. */
+  cutouts?: Cutout[];
+  face?: HTMLCanvasElement | null;
 }
 
 /**
@@ -1134,7 +1137,9 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       look: isThing(guide) ? "outline" : "stick", part: r.part, cutouts: [], face: null,
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
-    // Stick-figure cutouts from the recording: media ms back to play ms, about 15 a second like a local turn.
+    seat.face = r.face ?? null;
+    if (r.cutouts && r.cutouts.length > 0) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;
     for (const f of r.timeline?.frames ?? []) {
