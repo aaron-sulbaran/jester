@@ -22,12 +22,17 @@ export const normalizeCode = (code) => String(code || "").trim().toUpperCase();
 //  - start in step: non-hosts measure how far the host's clock is from theirs (ping and reply, lowest delay wins),
 //    so "start at T" means the same moment on every device
 //  - late joiners sit out the round in progress and play the next one
+const MAX_MEDIA_CHARS = 3_000_000, MAX_CHUNK_CHARS = 60000, MAX_PIECES = 200;
+const validKind = (k) => typeof k === "string" && /^[A-Za-z0-9_]{1,20}$/.test(k);
+
 export class Room {
   constructor({ transport, code, playerId, name, now = () => Date.now(), heartbeatMs = 2000, silentMs = 10000 }) {
     this.transport = transport; this.code = normalizeCode(code); this.me = playerId; this.name = name || playerId; this.now = now;
     this.players = new Map();   // playerId -> { id, name, joinedAt }
     this.results = new Map();   // playerId -> { score, timeline, at }
     this.round = null;          // { clipId, startAt (local clock), roundNo }
+    this.media = new Map();     // playerId -> { kind: fullText }, pictures sent in chunks after a round
+    this.pendingMedia = new Map(); // "from|kind" -> { mid, n, pieces: Map(i -> data), at }
     this.listeners = { update: [], start: [] };
     this.skew = 0;              // estimated (my clock - sender clock), updated from each message
     this.offset = null;         // host clock minus my clock, measured by ping and reply (null until measured)
@@ -66,10 +71,33 @@ export class Room {
     for (const id of [...this.players.keys()]) {
       if (id === this.me) continue;
       const seen = this.lastSeen.get(id);
-      if (seen !== undefined && t - seen > this.silentMs) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); removed = true; }
+      if (seen !== undefined && t - seen > this.silentMs) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); this.#dropMedia(id); removed = true; }
     }
+    for (const [key, p] of [...this.pendingMedia]) if (t - p.at > 60000) this.pendingMedia.delete(key);
     if (removed) this.#emit("update");
     return removed;
+  }
+
+  #dropMedia(id) {
+    this.media.delete(id);
+    for (const key of [...this.pendingMedia.keys()]) if (key.startsWith(id + "|")) this.pendingMedia.delete(key);
+  }
+
+  // Send a long text (for example an image as a data URL) in chunks small enough for the channel.
+  async sendMedia(kind, text, { chunkChars = 40000, delayMs = 60 } = {}) {
+    if (!validKind(kind)) throw new Error("Bad media kind");
+    if (typeof text !== "string") throw new Error("Media must be a string");
+    if (text.length > MAX_MEDIA_CHARS) throw new Error("Media too large");
+    const size = Math.max(1, Math.min(MAX_CHUNK_CHARS, Math.floor(chunkChars) || 40000));
+    const n = Math.max(1, Math.ceil(text.length / size));
+    const mid = Math.random().toString(36).slice(2, 10) + this.now().toString(36);
+    const mine = { ...(this.media.get(this.me) ?? {}), [kind]: text };
+    this.media.set(this.me, mine);
+    for (let i = 0; i < n; i++) {
+      this.#send({ type: "media", kind, mid, i, n, data: text.slice(i * size, (i + 1) * size) });
+      if (delayMs > 0 && i < n - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+    this.#emit("update");
   }
 
   // Tell the room whether I am ready to play (for example: my whole body is in view). Sent only on change.
@@ -94,6 +122,7 @@ export class Room {
     const roundNo = (this.round?.roundNo ?? 0) + 1;
     const startAt = this.now() + delayMs;
     this.results = new Map();
+    this.media = new Map(); this.pendingMedia = new Map();
     const players = this.roster().map((p) => p.id); // who is in this round; later joiners sit it out
     this.round = { clipId, startAt, roundNo, extra, players };
     this.#send({ type: "start", clipId, startAt, roundNo, extra, players });
@@ -112,13 +141,29 @@ export class Room {
 
   // Players with a result, best first; players still playing are listed after, with score null.
   standings() {
-    const rows = this.roster().map((p) => ({ id: p.id, name: p.name, sittingOut: !!this.round?.players && !this.round.players.includes(p.id), score: this.results.get(p.id)?.score ?? null, timeline: this.results.get(p.id)?.timeline ?? null, extra: this.results.get(p.id)?.extra ?? null }));
+    const rows = this.roster().map((p) => ({ id: p.id, name: p.name, sittingOut: !!this.round?.players && !this.round.players.includes(p.id), score: this.results.get(p.id)?.score ?? null, timeline: this.results.get(p.id)?.timeline ?? null, extra: this.results.get(p.id)?.extra ?? null, media: this.media.get(p.id) ?? {} }));
     return rows.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
   }
   // Everyone in this round who is still here has sent a result (players who dropped or joined late do not count).
   get allDone() {
     const ids = (this.round?.players ?? this.roster().map((p) => p.id)).filter((id) => this.players.has(id));
     return ids.length > 0 && ids.every((id) => this.results.has(id));
+  }
+
+  #receiveMedia(m) {
+    if (!validKind(m.kind) || typeof m.mid !== "string" || m.mid.length === 0 || m.mid.length > 64) return;
+    if (!Number.isInteger(m.i) || !Number.isInteger(m.n) || m.n < 1 || m.n > MAX_PIECES || m.i < 0 || m.i >= m.n) return;
+    if (typeof m.data !== "string" || m.data.length > MAX_CHUNK_CHARS) return;
+    const key = m.from + "|" + m.kind;
+    let p = this.pendingMedia.get(key);
+    if (!p || p.mid !== m.mid) { p = { mid: m.mid, n: m.n, pieces: new Map(), at: this.now() }; this.pendingMedia.set(key, p); } // newer mid wins
+    if (p.n !== m.n) return;
+    p.pieces.set(m.i, m.data);
+    if (p.pieces.size < p.n) return;
+    let text = "";
+    for (let i = 0; i < p.n; i++) text += p.pieces.get(i);
+    this.pendingMedia.delete(key);
+    this.media.set(m.from, { ...(this.media.get(m.from) ?? {}), [m.kind]: text });
   }
 
   #receive(m) {
@@ -141,12 +186,14 @@ export class Room {
         break;
       }
       case "ready": { const p = this.players.get(m.from); if (p) p.ready = !!m.ready; break; }
-      case "leave": this.players.delete(m.from); this.results.delete(m.from); break;
+      case "leave": this.players.delete(m.from); this.results.delete(m.from); this.#dropMedia(m.from); break;
+      case "media": this.#receiveMedia(m); break;
       case "start": {
         // translate the host's start time into my clock (skew includes network delay, fine for a party game)
         const startAt = this.offset !== null ? m.startAt - this.offset : m.startAt + this.skew; // measured offset if I have one
         this.round = { clipId: m.clipId, startAt, roundNo: m.roundNo, extra: m.extra ?? {}, players: m.players ?? null };
         this.results = new Map();
+        this.media = new Map(); this.pendingMedia = new Map();
         this.#emit("start", this.round);
         break;
       }
