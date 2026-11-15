@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { skeletonGate } from "../../engine/src/index.ts";
-import { buildGuide, linkTracks } from "../src/index.ts";
+import { buildGuide, linkTracks, shotEndMs } from "../src/index.ts";
 import type { Box, ClipSource } from "../src/index.ts";
 import { frame, outlineOfBox, person } from "./synth.ts";
 
@@ -18,7 +18,7 @@ test("buildGuide: timeline time starts at 0 at the shot's first frame and range 
   const guide = buildGuide(input);
   assert.equal(guide.timeline!.frames[0]!.tMs, 0);
   assert.equal(guide.timeline!.frames[19]!.tMs, 1900);
-  assert.deepEqual(guide.range, { startMs: 2000, endMs: 3900 });
+  assert.deepEqual(guide.range, { startMs: 2000, endMs: 4000 });
   assert.equal(guide.timeline!.frames.length, 20);
 });
 
@@ -75,4 +75,12 @@ test("buildGuide: a frame where the track has no point has a null outline", () =
 test("buildGuide: a point's outline is carried through unchanged", () => {
   const guide = buildGuide(input);
   assert.deepEqual(guide.outlines[3], outlineOfBox(boxAt(23)));
+});
+
+test("shotEndMs: a shot ends where the next one starts, the last shot at the end of what was read", () => {
+  assert.equal(shotEndMs(frames, { start: 0, end: 20 }, source), 2000);
+  assert.equal(shotEndMs(frames, { start: 20, end: 40 }, source), 4000);
+  // A clip read only in part (capped) ends at the cap, never before its last sample.
+  assert.equal(shotEndMs(frames, { start: 20, end: 40 }, { durationMs: 3950 }), 3950);
+  assert.equal(shotEndMs(frames, { start: 20, end: 40 }, { durationMs: 0 }), 3900);
 });

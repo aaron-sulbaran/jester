@@ -827,6 +827,30 @@ interface ClipSound {
 /** The sound playing now, so a new one (or leaving) never leaves an old one running. */
 let playingSound: ClipSound | null = null;
 
+/** The clip's sound fades in over this long when a turn or preview starts, and out over this long when it ends, instead of cutting. */
+const FADE_IN_MS = 150, FADE_OUT_MS = 400;
+/** The fade running on each clip, so a new fade, a seek or a new sound cancels it. */
+const fades = new WeakMap<HTMLVideoElement, () => void>();
+
+/**
+ * Moves the clip's volume to `to` over `ms`, then calls `done`. Anything that seeks the clip meanwhile (the
+ * next turn, the reveal) cancels the fade and puts the volume back to full, so a fade never pauses or quiets
+ * someone else's playback.
+ */
+function fadeVolume(video: HTMLVideoElement, to: number, ms: number, done?: () => void) {
+  fades.get(video)?.();
+  const from = video.volume, t0 = performance.now();
+  const cancel = () => { clearInterval(timer); video.removeEventListener("seeking", interrupted); fades.delete(video); };
+  const interrupted = () => { cancel(); video.volume = 1; };
+  const timer = window.setInterval(() => {
+    const u = Math.min(1, (performance.now() - t0) / ms);
+    video.volume = from + (to - from) * u;
+    if (u >= 1) { cancel(); done?.(); }
+  }, 20);
+  video.addEventListener("seeking", interrupted);
+  fades.set(video, cancel);
+}
+
 function clipSound(scene: Scene, speed: number): ClipSound {
   playingSound?.stop();
   const video = scene.video;
@@ -836,7 +860,9 @@ function clipSound(scene: Scene, speed: number): ClipSound {
     ready() {
       if (!video) return Promise.resolve();
       return seek ??= (async () => {
+        fades.get(video)?.();
         video.pause();
+        video.volume = 1;
         video.currentTime = scene.startMs / 1000;
         await seeked(video);
       })();
@@ -848,8 +874,11 @@ function clipSound(scene: Scene, speed: number): ClipSound {
         if (stopped) return;
         video.playbackRate = speed;
         video.preservesPitch = true;
+        fades.get(video)?.();
+        video.volume = 0;
         await playWithSound(video);
-        if (stopped) { video.pause(); return; }
+        if (stopped) { video.pause(); video.volume = 1; return; }
+        fadeVolume(video, 1, FADE_IN_MS);
       }
       started = lastWall = performance.now();
       lastMs = 0;
@@ -866,8 +895,14 @@ function clipSound(scene: Scene, speed: number): ClipSound {
       return lastMs + (wall - lastWall);
     },
     stop() {
+      if (stopped) return;
       stopped = true;
-      if (video) { video.pause(); video.playbackRate = 1; }
+      if (video) {
+        const settle = () => { video.pause(); video.playbackRate = 1; video.volume = 1; };
+        // Still sounding: fade out, then pause. The turn's clock and frames have already ended.
+        if (started >= 0 && !video.paused && !video.ended) fadeVolume(video, 0, FADE_OUT_MS, settle);
+        else { fades.get(video)?.(); settle(); }
+      }
       if (playingSound === sound) playingSound = null;
     },
   };

@@ -8,6 +8,7 @@
 import { constants } from "../../engine/src/index.ts";
 import type { BoxFrame, BoxTrack } from "../../engine/src/index.ts";
 import { iou } from "./boxes.ts";
+import { shotEndMs } from "./guide.ts";
 import type { Box, ClipSource, Guide, Outline, Pace } from "./types.ts";
 
 /** One thing the object detector found in one frame. `category` is the model's name, such as "dog". */
@@ -326,7 +327,7 @@ export function buildThingGuide(input: {
     schema: "guide/1",
     fingerprint: input.fingerprint,
     source,
-    range: { startMs, endMs: frames[shot.end - 1]!.tMs },
+    range: { startMs, endMs: shotEndMs(frames, shot, source) },
     subject: { kind: "thing", label: input.label },
     channel: "trajectory",
     timeline: null,
