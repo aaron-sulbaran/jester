@@ -55,10 +55,10 @@ export class Room {
   }
 
   // Send my score and compact timeline once my round is over.
-  submitResult({ score, timeline = null }) {
-    const entry = { score, timeline, at: this.now() };
+  submitResult({ score, timeline }) {
+    const entry = { score, timeline: timeline ?? null, at: this.now() };
     this.results.set(this.me, entry);
-    this.#send({ type: "result", roundNo: this.round?.roundNo ?? 0, score, timeline });
+    this.#send({ type: "result", roundNo: this.round?.roundNo ?? 0, score, timeline: timeline ?? null });
     this.#emit("update");
   }
 
