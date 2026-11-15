@@ -22,7 +22,8 @@ export function installFeel() {
   // A soft tap for every button and clip card. Programmatic clicks from the skip key count too.
   document.addEventListener("click", (e) => {
     const hit = (e.target as Element | null)?.closest?.("button, summary, label.upload");
-    if (hit && !(hit as HTMLButtonElement).disabled) sfx.click();
+    if (!hit || (hit as HTMLButtonElement).disabled) return;
+    if (hit.classList.contains("btn-main")) sfx.ticket(); else sfx.click();
   }, { capture: true });
   installKeys();
   $("demoRow").hidden = !DEMO;
@@ -228,7 +229,7 @@ function watched(p: Player): Player {
         if (lost === showing) return;
         showing = lost;
         notice.hidden = !lost;
-        if (lost) sfx.lost();
+        // No sound: the notice shows during the scored part of the turn, while the clip's own sound plays.
       }, 100);
       unwatch = () => { clearInterval(timer); notice.hidden = true; unwatch = null; };
       p.start((f) => {
