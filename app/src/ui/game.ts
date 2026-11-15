@@ -20,6 +20,7 @@ import { BANK_PREFIX, UPLOAD_ID, getHostUpload, sceneFromBank, waitForUploadedSc
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
 import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
 import { unpackCutouts, unpackFace } from "../packMedia.ts";
+import { keepFinished, sameDancer } from "../recapRules.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -411,9 +412,12 @@ export function initGame(deps: GameDeps) {
       await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
+      type Standing = { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null };
+      // Everyone who finished, as of now: the room forgets a player it drops while their pictures are still coming.
+      const finished = room.standings() as Standing[];
       await whenMediaIn(room as never); // their pictures, so the recap and the crowning show real people
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const standings = keepFinished(finished, room.standings() as Standing[]);
       const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
         name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
@@ -422,8 +426,18 @@ export function initGame(deps: GameDeps) {
         face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
       })));
       // What this device got from each player, for finding out why someone is missing from a recap.
-      const summary = results.map((r) => ({ name: r.name, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
+      const summary = results.map((r) => ({ name: r.name, role: r.guideIndex, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
       console.info("[online] recap inputs", summary);
+      // A dealt role with nobody on it in the recap: that dancer stays as filmed, neither covered nor replaced.
+      const dealt = Object.keys(round.extra?.assign ?? {});
+      const missing = dealt.filter((id) => !standings.some((s) => s.id === id));
+      if (missing.length) console.warn("[online] dealt a role but missing from the recap:", missing, "players now:", standings.map((s) => s.id));
+      // Two roles that follow the same dancer (a tracking slip in the clip) stack both players on one dancer.
+      const people = played.guides.map((g, i) => ({ i, g })).filter(({ g }) => g.subject.kind === "person");
+      for (let a = 0; a < people.length; a++) for (let b = a + 1; b < people.length; b++) {
+        const share = sameDancer(people[a]!.g.boxTrack.frames.map((f) => f.box), people[b]!.g.boxTrack.frames.map((f) => f.box));
+        if (share > 0.2) console.warn(`[online] roles ${people[a]!.i} and ${people[b]!.i} are on the same dancer in ${Math.round(share * 100)}% of the clip`);
+      }
       (window as unknown as { __jesterRecap?: unknown }).__jesterRecap = summary;
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
