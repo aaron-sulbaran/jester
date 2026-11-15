@@ -90,7 +90,7 @@ The Chamberlain (`app/review-agent.ts`, a LangChain deep agent) decides which cl
 npm run chamberlain                          # synthetic cases and every desk case
 npm run chamberlain -- --dry-run             # list the cases and their truth, no model calls
 npm run chamberlain -- --source synthetic    # or desk; --only id1,id2; --model claude-opus-5-5; --concurrency 2
-npm run chamberlain -- --mode fast           # deep (default: a plan and the playability-checker subagent) or fast (one call)
+npm run chamberlain -- --mode fast           # deep (default: the playability-checker subagent) or fast (one call)
 ```
 
 Keys are read from `JESTER_REVIEW_ENV`, else `jester-deploy/.env.review` beside a parent of this repo, and never printed. Tracing is off by default; with both `LANGSMITH_API_KEY` and `JESTER_REVIEW_TRACE=1` in that file (the same two settings the desk's tracing needs), synthetic runs are traced to the LangSmith project `jester-chamberlain-eval` (or `LANGSMITH_PROJECT`), and the report links each trace. Desk cases are never traced (`mayTrace` in `src/chamberlainCases.ts`): a case read from the cases folder is always a desk case, whatever the file says, since its frames, title and credit come from real people. A real submission is never traced: with a LANGSMITH_TRACING or LANGCHAIN_TRACING_V2 variable in the environment, or a tracer passed in, `tracingRefusal` in `app/review-agent.ts` refuses it before anything is loaded or sent. For a review that passes, inherited tracing variables are then removed (`stopInheritedTracing`), so a synthetic case is traced only through the runner's own tracer.
