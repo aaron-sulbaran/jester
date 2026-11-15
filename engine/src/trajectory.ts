@@ -3,7 +3,7 @@
 // the player's body moved with how the box moved: velocity correlation at one global lag, plus
 // matched events (jump, crouch, move left or right). Pure functions only.
 
-import { EVENTS, GRID_HZ, GRID_MS, LAG, SCORER_VERSION, TRAJECTORY } from "./constants.ts";
+import { EVENTS, GRID_HZ, GRID_MS, LAG, ORIENTATION, SCORER_VERSION, TRAJECTORY } from "./constants.ts";
 import { LM, MID, midpoint, torsoLength } from "./geometry.ts";
 import { gridLength, resampleBoxes, resamplePoses } from "./resample.ts";
 import { clamp01, tierFor, timingCredit } from "./scoring.ts";
@@ -414,6 +414,20 @@ export interface TrajectoryRoundOptions {
   mirror?: boolean;
   /** Which part of the player plays the object (default the whole body). */
   bodyPart?: BodyPart;
+  /**
+   * 0.11.0: also score with the player's left and right swapped and keep the better; an exact tie keeps the
+   * `mirror` reading. Default ORIENTATION.eitherSideTrajectory (off: an object has no same side).
+   */
+  eitherSide?: boolean;
+}
+
+export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, options: TrajectoryRoundOptions = {}): TrajectoryRoundResult {
+  const mirror = options.mirror ?? true;
+  const once = (m: boolean): TrajectoryRoundResult => ({ ...scoreTrajectoryOnce(reference, player, { ...options, mirror: m }), orientation: m ? "mirror" : "same-side" });
+  const preferred = once(mirror);
+  if (!(options.eitherSide ?? ORIENTATION.eitherSideTrajectory)) return preferred;
+  const other = once(!mirror);
+  return (other.score ?? -1) > (preferred.score ?? -1) ? other : preferred;
 }
 
 /**
@@ -432,7 +446,7 @@ export function scaledTowardReference(ply: { x: Signal; y: Signal; h: Signal }, 
   return { x: scale(ply.x, ref.x), y: scale(ply.y, ref.y), h: ply.h };
 }
 
-export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, options: TrajectoryRoundOptions = {}): TrajectoryRoundResult {
+function scoreTrajectoryOnce(reference: BoxTrack, player: PoseTimeline, options: TrajectoryRoundOptions): TrajectoryRoundResult {
   const lastRef = reference.frames.reduce((m, f) => (Number.isFinite(f.tMs) && f.tMs > m ? f.tMs : m), -1);
   const n = gridLength(lastRef);
   const ref = referenceSignals(reference, n);

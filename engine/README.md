@@ -27,7 +27,7 @@ For subjects with no usable skeleton (cartoons, sprites, objects), pass a `box-t
 
 ## How the pose score works
 
-1. Each body becomes 12 limb directions (arms weigh 1.5, legs 1, torso lines 0.75, head 0.5). Size, distance and framing do not matter. The player is compared as a mirror image.
+1. Each body becomes 12 limb directions (arms weigh 1.5, legs 1, torso lines 0.75, head 0.5). Size, distance and framing do not matter. (0.11.0) The player is compared both as a mirror image (dancer's right arm, player's left) and with the same side (player's own right arm): the whole round is scored both ways and the better score is kept, mirror on an exact tie. `result.orientation` says which reading won ("mirror" or "same-side"); `comparePoses` does the same per call. Switch: `ORIENTATION` in `src/constants.ts`, or `{ eitherSide: false }`.
 2. Per limb: full credit within 15 degrees, zero past 60, `1 - x^2` between. Limbs under 0.5 visibility drop out.
 3. Limbs the performer is moving weigh more than limbs they hold still.
 4. One global lag (-200 to +800 ms) is found for the round, with 100 ms slack per frame. Lag up to 300 ms is free.

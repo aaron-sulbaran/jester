@@ -4,11 +4,11 @@
 
 import { Room, broadcastChannelTransport, makeRoomCode, normalizeCode } from "../../../spikes/pose-match/rooms.mjs";
 import { hostDeal } from "../onlineBlind.ts";
-import { demoScene, dribbleScene } from "../blind.ts";
+import { demoScene, dribbleScene, duoScene } from "../blind.ts";
 import { hostedTransportFromEnv } from "../supabaseTransport.ts";
 import { escapeHtml } from "../escape.ts";
 
-export const ONLINE_SCENES = { dribble: dribbleScene, demo: demoScene } as const;
+export const ONLINE_SCENES = { duo: duoScene, dribble: dribbleScene, demo: demoScene } as const;
 export type OnlineSceneId = keyof typeof ONLINE_SCENES;
 export type LobbyRoom = InstanceType<typeof Room>;
 export interface OnlineRound { clipId: string; startAt: number; roundNo: number; extra?: { assign?: Record<string, number>; speed?: number } }
@@ -18,6 +18,23 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(room: LobbyRoom, round: OnlineRound): void }) {
   let room: LobbyRoom | null = null;
   const me = "p" + Math.random().toString(36).slice(2, 7);
+
+  // The clip cards: pick one (remembered for next time), or "Surprise me" for a random one.
+  const KEY = "jester.onlineMode";
+  const modes = [...document.querySelectorAll<HTMLButtonElement>("#roomModes .mode")];
+  const pickMode = (id: string, remember = true) => {
+    for (const m of modes) m.setAttribute("aria-checked", String(m.dataset.scene === id));
+    if (remember) { try { localStorage.setItem(KEY, id); } catch { /* private mode: it just will not be remembered */ } }
+  };
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(KEY); } catch { /* ignore */ }
+  pickMode(modes.some((m) => m.dataset.scene === saved) ? saved! : "duo", false);
+  modes.forEach((m) => m.addEventListener("click", () => pickMode(m.dataset.scene!)));
+  const chosenScene = (): OnlineSceneId => {
+    const id = modes.find((m) => m.getAttribute("aria-checked") === "true")?.dataset.scene ?? "duo";
+    const ids = Object.keys(ONLINE_SCENES) as OnlineSceneId[];
+    return id === "surprise" ? ids[Math.floor(Math.random() * ids.length)]! : (id as OnlineSceneId);
+  };
 
   const problem = (text: string) => { const el = $("roomProblem"); el.textContent = text; el.hidden = !text; };
 
@@ -66,7 +83,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   $("roomBack").addEventListener("click", () => { leave(); hooks.goHome(); });
   $("roomDeal").addEventListener("click", () => {
     if (!room) return;
-    const id = $<HTMLSelectElement>("roomScene").value as OnlineSceneId;
+    const id = chosenScene();
     hostDeal(room as never, ONLINE_SCENES[id](), id, { speed: 1 });
   });
 

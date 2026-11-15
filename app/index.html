@@ -97,11 +97,12 @@
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
-      <p class="aside"><button type="button" class="link" id="howtoLink">How to play</button></p>
+      <nav class="start-nav" aria-label="Help"><button type="button" class="btn btn-quiet" id="howtoLink">How to play</button></nav>
       <div class="modes-pick" role="radiogroup" aria-label="Game mode">
         <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
         <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
       </div>
+      <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
 
       <div class="bank" id="bank" role="group" aria-label="Clips"></div>
       <p class="typed bank-note" id="bankNote" hidden></p>
@@ -135,7 +136,8 @@
         </div>
       </details>
 
-      <p class="aside">
+      <!-- Team tools: shown on a local dev server or with ?dev=1, never to visitors (game.ts sets body.dev). -->
+      <p class="aside dev-only">
         <label class="link upload">Play a file from this computer (testing)<input id="upload" type="file" accept="video/*" /></label>
         <button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button>
       </p>
@@ -158,12 +160,14 @@
           <ul id="roomRoster" class="how"></ul>
           <p class="aside">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
           <div id="roomHostRow" hidden>
-            <label class="field"><span>Clip</span>
-              <select id="roomScene">
-                <option value="dribble">Pickup game: someone, and something they keep bouncing</option>
-                <option value="demo">Dance break: someone dancing, and something flying around</option>
-              </select>
-            </label>
+            <div class="field"><span>Pick what you will play (the host chooses for everyone)</span>
+              <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick what you will play">
+                <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              </div>
+            </div>
             <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
             <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
           </div>
@@ -298,7 +302,7 @@
       </div>
       <progress id="revealBar" value="0" max="1"></progress>
       <div class="reveal-pace" role="group" aria-label="Reveal speed">
-        <button type="button" id="revealFast" class="btn btn-quiet">Speed: <span id="revealFastLabel">1x</span></button>
+        <button type="button" id="revealFast" class="btn btn-quiet"><span>Speed: <span id="revealFastLabel">1x</span></span></button>
         <button type="button" id="revealSkip" class="btn btn-quiet">Skip to results</button>
       </div>
     </section>

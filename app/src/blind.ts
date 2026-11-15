@@ -14,14 +14,14 @@
 // This file is the game and makes no DOM of its own: the screens come in as a `BlindUi` (Aaron's look
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
-import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject } from "../../engine/src/index.ts";
+import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
 import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
 import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
-import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
+import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
@@ -601,6 +601,25 @@ export function demoScene(): Scene {
   }]);
 }
 
+/** Two dancers side by side and no ball: everyone dances, so nobody is stuck being the ball. */
+export function duoScene(): Scene {
+  const starterAspect = 4 / 3;
+  const forward = makeSequenceTimeline(DEMO_SEQUENCE, { idleDegrees: 2, aspect: starterAspect });
+  const backward = makeSequenceTimeline([...DEMO_SEQUENCE].reverse(), { idleDegrees: 2, aspect: starterAspect });
+  const durationMs = Math.floor(Math.min(forward[forward.length - 1].t, backward[backward.length - 1].t) * 1000);
+  const dancer = (samples: typeof forward, centre: number) => (tMs: number) => {
+    const s = sampleAt(samples, tMs / 1000);
+    // 80% size, moved to `centre` of the wide frame; a uniform scale and shift keeps every limb angle.
+    return s?.landmarks
+      ? (s.landmarks as LandmarkObject[]).map((l) => [((l.x * starterAspect - starterAspect / 2) * 0.8 + centre * DEMO_ASPECT) / DEMO_ASPECT, 0.12 + 0.8 * l.y, l.visibility ?? 1] as const)
+      : null;
+  };
+  return syntheticScene("Dance duo", durationMs, [
+    { label: "the dancer on the left", poseAt: dancer(forward, 0.3) },
+    { label: "the dancer on the right", poseAt: dancer(backward, 0.7) },
+  ], []);
+}
+
 const smooth = (a: number, b: number, t: number) => { const u = Math.min(1, Math.max(0, (t - a) / (b - a))); return u * u * (3 - 2 * u); };
 
 /**
@@ -762,29 +781,155 @@ async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasEl
   stage.playerCanvas.style.opacity = "";
 }
 
+// ---- The clip's sound during a turn ----
+
+/**
+ * The clip's own sound for a turn or a preview, and the turn's clock taken from it, so sound and figure stay
+ * together even if the clip stalls. The clip itself stays hidden. Play time ms (0 at the start of the stretch,
+ * slowed to the game's speed) is (media ms - scene.startMs) / speed, the same mapping as slowScene. A scene
+ * with no video (the drawn demos) stays silent and its clock is wall time.
+ */
+interface ClipSound {
+  /** Pauses the clip and seeks it to the stretch's start, ready to play. Safe to call ahead of `play`. */
+  ready(): Promise<void>;
+  /** Starts the sound (muted if the browser refuses sound) and the clock. */
+  play(): Promise<void>;
+  /** Play time ms, or -1 before `play`. */
+  now(): number;
+  stop(): void;
+}
+
+/** The sound playing now, so a new one (or leaving) never leaves an old one running. */
+let playingSound: ClipSound | null = null;
+
+function clipSound(scene: Scene, speed: number): ClipSound {
+  playingSound?.stop();
+  const video = scene.video;
+  let started = -1, lastMs = 0, lastWall = 0, stopped = false;
+  let seek: Promise<void> | null = null;
+  const sound: ClipSound = {
+    ready() {
+      if (!video) return Promise.resolve();
+      return seek ??= (async () => {
+        video.pause();
+        video.currentTime = scene.startMs / 1000;
+        await seeked(video);
+      })();
+    },
+    async play() {
+      if (stopped) return;
+      if (video) {
+        await sound.ready();
+        if (stopped) return;
+        video.playbackRate = speed;
+        video.preservesPitch = true;
+        await playWithSound(video);
+        if (stopped) { video.pause(); return; }
+      }
+      started = lastWall = performance.now();
+      lastMs = 0;
+    },
+    now() {
+      if (started < 0) return -1;
+      const wall = performance.now();
+      // The clip's own time while it plays; if it stops (refused, or the file ends early) wall time carries on.
+      if (video && !video.paused) {
+        lastMs = Math.max(0, (video.currentTime * 1000 - scene.startMs) / speed);
+        lastWall = wall;
+        return lastMs;
+      }
+      return lastMs + (wall - lastWall);
+    },
+    stop() {
+      stopped = true;
+      if (video) { video.pause(); video.playbackRate = 1; }
+      if (playingSound === sound) playingSound = null;
+    },
+  };
+  playingSound = sound;
+  return sound;
+}
+
+/**
+ * Browsers allow sound only from a click: called inside the click that starts a turn, this lets the clip play
+ * with sound after the countdown (play then pause at once, so nothing is heard now).
+ */
+function allowSound(video: HTMLVideoElement | null) {
+  if (!video) return;
+  try {
+    video.muted = false;
+    const p = video.play();
+    video.pause();
+    p?.catch(() => {});
+  } catch { /* no sound allowed: the turn falls back to muted */ }
+}
+
+/** Collects the player's frames for one turn on `clock` (play time ms), until it reaches `durationMs`. */
+function collectOnClock(durationMs: number, clock: () => number, player: Player, onLive: (clipMs: number, pose: LandmarkObject[] | null, aspect: number) => void): Promise<WebcamFrame[]> {
+  return new Promise((resolve) => {
+    const frames: WebcamFrame[] = [];
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      player.stop();
+      resolve(frames);
+    };
+    player.start((f) => {
+      if (done) return;
+      frames.push(f);
+      onLive(f.clipTimeMs ?? -1, (f.landmarks as LandmarkObject[] | null) ?? null, f.aspect);
+      if ((f.clipTimeMs ?? -1) >= durationMs) finish();
+    }, clock);
+    // The end is checked on a timer too, so the turn ends on time even if the camera stops sending frames.
+    const timer = window.setInterval(() => { if (clock() >= durationMs) finish(); }, 50);
+  });
+}
+
 /** Stops a preview still playing when the turn starts. */
 let stopPreview: (() => void) | null = null;
 
-/** Plays the role once on the stage, unscored, then shows its first frame again. */
-async function previewRole(s: Seat, scene: Scene, ui: BlindUi, leadMs: number) {
+/** Plays the role once on the stage with the clip's sound, unscored, at the game's speed, then shows its first frame again. */
+async function previewRole(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number) {
   stopPreview?.();
   const { guideCanvas } = ui.playStage();
   const view = roleView(s, guideCanvas, scene);
   const scratch = document.createElement("canvas");
-  const started = performance.now();
+  const sound = clipSound(scene, speed);
   const finished = await new Promise<boolean>((resolve) => {
+    let over = false;
+    const end = (done: boolean) => {
+      if (over) return;
+      over = true;
+      clearInterval(timer);
+      sound.stop();
+      if (stopPreview === stop) stopPreview = null;
+      resolve(done);
+    };
+    const stop = () => end(false);
+    stopPreview = stop;
     const timer = window.setInterval(() => {
-      const ms = performance.now() - started;
-      paintRole(guideCanvas, s, view, Math.min(ms, scene.durationMs), leadMs, scratch);
-      if (ms >= scene.durationMs) { clearInterval(timer); stopPreview = null; resolve(true); }
+      const ms = sound.now();
+      paintRole(guideCanvas, s, view, Math.min(Math.max(0, ms), scene.durationMs), leadMs, scratch);
+      if (ms >= scene.durationMs) end(true);
     }, 1000 / 30);
-    stopPreview = () => { clearInterval(timer); stopPreview = null; resolve(false); };
+    void sound.play();
   });
   if (finished) drawFirstFrame(s, scene, ui);
 }
 
 async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: BlindUi, leadMs: number): Promise<void> {
   stopPreview?.();
+  // Still inside the Start click: allow the clip's sound now, and seek it to the start during the countdown.
+  allowSound(scene.video);
+  const sound = clipSound(scene, speed);
+  void sound.ready();
+  try { await turn(s, scene, speed, deps, ui, leadMs, sound); }
+  finally { sound.stop(); }
+}
+
+async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: BlindUi, leadMs: number, sound: ClipSound): Promise<void> {
   // A refused camera can hand the turn to the simulated player: the look's camera card turns simMode on, then rejects.
   const player = deps.simMode() ? simulatedFor(s, scene, deps) : await deps.getCamera().catch((err: unknown) => { if (deps.simMode()) return simulatedFor(s, scene, deps); throw err; });
   const g = s.guide;
@@ -814,7 +959,8 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
     return { ...view, view: scaleView(view.view, k, ax, ay) };
   };
   const paint = () => {
-    paintRole(stage.guideCanvas, s, sizedView(), Math.max(0, clipMs), clipMs >= 0 ? leadMs : 0, scratch);
+    // The clip's clock right now, so the figure moves with the sound between camera frames.
+    paintRole(stage.guideCanvas, s, sizedView(), clipMs >= 0 ? Math.min(scene.durationMs, sound.now()) : 0, clipMs >= 0 ? leadMs : 0, scratch);
     fitCanvas(stage.playerCanvas, aspect);
     drawFrame(stage.playerCanvas, deps.simMode() ? null : stage.cam, pose, { mirror: true, color: s.color });
   };
@@ -841,10 +987,13 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
   let restart: () => void = () => {};
   const restarted = new Promise<"restart">((resolve) => { restart = () => resolve("restart"); });
   ui.turnStarted?.(restart);
+  // The clip's sound starts after the countdown and its time is the turn's clock (frames, cutouts and scoring).
+  await sound.play();
   const frames = await Promise.race([
-    collectFrames(scene.durationMs, null, player, (f) => { clipMs = f.clipMs; pose = f.player; aspect = f.playerAspect; }),
+    collectOnClock(scene.durationMs, () => sound.now(), player, (ms, p, a) => { clipMs = ms; pose = p; aspect = a; }),
     restarted,
   ]);
+  sound.stop();
   player.setCapture?.(null);
   clearInterval(painter);
   clipMs = -1; pose = null; paint();
@@ -1040,11 +1189,11 @@ function mediaTimeline(s: Seat, scene: Scene, speed: number): ResultRow["timelin
   return { ...rec, frames: rec.frames.map((f) => ({ ...f, t: scene.startMs + f.t * speed })) };
 }
 
-function roleOf(s: Seat, scene: Scene, ui: BlindUi, leadMs: number): RoleInfo {
+function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number): RoleInfo {
   return {
     look: s.look, text: roleText(),
     parts: Object.entries(BODY_PARTS).map(([key, p]) => ({ key: key as BodyPart, label: p.label.toLowerCase() })),
-    preview: () => previewRole(s, scene, ui, leadMs),
+    preview: () => previewRole(s, scene, speed, ui, leadMs),
   };
 }
 
@@ -1065,7 +1214,9 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     let problem: string | undefined;
     for (;;) {
       drawFirstFrame(s, scene, ui);
-      s.part = await ui.showPart(s, { ...roleOf(s, scene, ui, leadMs), problem });
+      // A preview still playing stops when the player starts, or leaves.
+      try { s.part = await ui.showPart(s, { ...roleOf(s, scene, speed, ui, leadMs), problem }); }
+      finally { stopPreview?.(); }
       try { await playTurn(s, scene, speed, deps, ui, leadMs); break; }
       catch (err) {
         if (err instanceof RestartTurn) { problem = undefined; continue; }
@@ -1139,7 +1290,7 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
     seat.face = r.face ?? null;
-    if (r.cutouts && r.cutouts.length > 0) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = r.cutouts; return seat; } // their own pictures
     // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;

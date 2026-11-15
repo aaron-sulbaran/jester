@@ -93,12 +93,16 @@ test("still: a genuine copy keeps its score (the still gate is fully open)", () 
   }
 });
 
-test("still: waving the other hand is not a copy of this clip", () => {
-  // The same wave done with the left hand: the right forearm the clip moves stays still.
+test("still: waving the other hand is not a mirror copy of this clip, but it is a same-side copy (0.11.0)", () => {
+  // The same wave done with the left hand: the right forearm the clip moves stays still. Read as a mirror copy
+  // it barely moved; but it is exactly what a player copying with the same side does, so it scores as a copy.
   const other = timeline((t) => { const p = wave(t); return { ...p, lUpper: -p.rUpper, lFore: -p.rFore, rUpper: -14, rFore: -18 }; }, { durationS: D, transform: mirrorCopy });
+  const mirrorOnly = scorePoseRound(ref, other, { eitherSide: false });
+  assert.ok(mirrorOnly.motion.moved < MOTION.movedLow + 0.05, `moved ${mirrorOnly.motion.moved}`);
+  assert.ok(mirrorOnly.score !== null && mirrorOnly.score < 20, `score ${mirrorOnly.score}`);
   const r = scorePoseRound(ref, other);
-  assert.ok(r.motion.moved < MOTION.movedLow + 0.05, `moved ${r.motion.moved}`);
-  assert.ok(r.score !== null && r.score < 20, `score ${r.score}`);
+  assert.equal(r.orientation, "same-side");
+  assert.ok(r.score !== null && r.score >= 50, `score ${r.score}`);
 });
 
 test("still: moved share is 0 for a statue, 1 for an exact copy, and 1 when the clip never moves", () => {
