@@ -15,7 +15,7 @@
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
-import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index.ts";
+import { boxFromLandmarks, hideUnsureJoints, type Guide, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
@@ -513,12 +513,17 @@ function steadyRole(g: Guide): Guide {
   return { ...g, timeline, boxTrack };
 }
 
-/** The role as drawn: every point shown, using the tracker's best guess where it was unsure. Scoring keeps the real visibility. */
+/**
+ * The role as drawn: every point shown, using the tracker's best guess where it was briefly unsure, except
+ * joints it stays unsure of for a while (hideUnsureJoints), which are left out so limbs do not flicker at
+ * guessed spots. Scoring keeps the real visibility.
+ */
 function fullFigure(g: Guide): Guide {
   if (!g.timeline || isThing(g)) return g;
+  const shown = hideUnsureJoints(g.timeline);
   return {
     ...g,
-    timeline: { ...g.timeline, frames: g.timeline.frames.map((f) => ({ ...f, landmarks: f.landmarks && f.landmarks.map(([x, y, v]) => [x, y, Math.max(v, DRAWN_VISIBILITY)] as const) })) },
+    timeline: { ...shown, frames: shown.frames.map((f) => ({ ...f, landmarks: f.landmarks && f.landmarks.map(([x, y, v]) => [x, y, v === 0 ? 0 : Math.max(v, DRAWN_VISIBILITY)] as const) })) },
   };
 }
 
