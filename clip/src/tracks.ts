@@ -20,6 +20,8 @@ const FRESH_GAP = 5;
 const END_POINTS = 5;
 /** A heading is carried across at most this many frames of a gap. */
 const PREDICT_FRAMES = 15;
+/** A track needs this many points before its usual box (see `usualBox`) means anything. */
+const USUAL_MIN_POINTS = 3;
 
 interface LiveTrack {
   track: Track;
@@ -49,6 +51,57 @@ function headedBox(track: Track, frames: number): Box {
   const { vx, vy } = headingOf(track);
   const ahead = Math.min(frames, PREDICT_FRAMES);
   return { ...last, cx: last.cx + vx * ahead, cy: last.cy + vy * ahead };
+}
+
+/** Adds the detection to the track and updates the track's heading. */
+function follow(live: LiveTrack, frameDetections: FrameDetections, detection: number, frame: number) {
+  const person = frameDetections.people[detection]!;
+  const previous = live.track.points[live.track.points.length - 1]!;
+  const elapsed = frame - previous.frame;
+  live.vx = (person.box.cx - previous.box.cx) / elapsed;
+  live.vy = (person.box.cy - previous.box.cy) / elapsed;
+  live.lastFrame = frame;
+  live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline });
+}
+
+/** The track's usual box: the median centre and size of its last END_POINTS boxes, so one odd box does not count. */
+function usualBox(track: Track): Box {
+  const recent = track.points.slice(-END_POINTS).map((p) => p.box);
+  return {
+    cx: median(recent.map((b) => b.cx)), cy: median(recent.map((b) => b.cy)),
+    w: median(recent.map((b) => b.w)), h: median(recent.map((b) => b.h)),
+  };
+}
+
+/**
+ * Detections no track took this frame, matched to recently seen tracks that found no one, by
+ * overlap with each track's usual box instead of its last one. Greedy, best overlap first.
+ */
+function secondChance(
+  frameDetections: FrameDetections,
+  frame: number,
+  live: readonly LiveTrack[],
+  usedTracks: Set<LiveTrack>,
+  usedDetections: Set<number>,
+  minIou: number,
+) {
+  const pairs: Pair[] = [];
+  for (const l of live) {
+    if (usedTracks.has(l) || frame - l.lastFrame - 1 > FRESH_GAP || l.track.points.length < USUAL_MIN_POINTS) continue;
+    const usual = usualBox(l.track);
+    frameDetections.people.forEach((person, detection) => {
+      if (usedDetections.has(detection)) return;
+      const overlap = iou(usual, person.box);
+      if (overlap >= minIou) pairs.push({ live: l, detection, overlap, drift: pairDrift(l, person.box, frame) });
+    });
+  }
+  pairs.sort((a, b) => b.overlap - a.overlap || byTieOrder(a, b));
+  for (const pair of pairs) {
+    if (usedTracks.has(pair.live) || usedDetections.has(pair.detection)) continue;
+    usedTracks.add(pair.live);
+    usedDetections.add(pair.detection);
+    follow(pair.live, frameDetections, pair.detection, frame);
+  }
 }
 
 function byTieOrder(a: Pair, b: Pair): number {
@@ -100,14 +153,13 @@ export function linkTracks(
       const chosen = contenders[0]!;
       usedTracks.add(chosen.live);
       usedDetections.add(chosen.detection);
-      const person = frameDetections.people[chosen.detection]!;
-      const previous = chosen.live.track.points[chosen.live.track.points.length - 1]!;
-      const elapsed = frame - previous.frame;
-      chosen.live.vx = (person.box.cx - previous.box.cx) / elapsed;
-      chosen.live.vy = (person.box.cy - previous.box.cy) / elapsed;
-      chosen.live.lastFrame = frame;
-      chosen.live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline });
+      follow(chosen.live, frameDetections, chosen.detection, frame);
     }
+
+    // Second chance before a new track starts: a track that found no one this frame is compared
+    // again with its usual box (the median of its last few), so one odd box (an arm thrown out, a
+    // box that slid onto the next dancer) does not lose the person it was following.
+    secondChance(frameDetections, frame, live, usedTracks, usedDetections, minIou);
 
     frameDetections.people.forEach((person, detection) => {
       if (usedDetections.has(detection)) return;

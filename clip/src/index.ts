@@ -6,6 +6,8 @@ export { linkTracks, rejoinTracks } from "./tracks.ts";
 export type { LinkOptions, RejoinOptions } from "./tracks.ts";
 export { bodyShape, repairIdentities, shapeDistance, shapeSignature } from "./identity.ts";
 export type { IdentityOptions, IdentityResult } from "./identity.ts";
+export { trackPeople } from "./people.ts";
+export type { TrackedPeople, TrackPeopleOptions } from "./people.ts";
 export { frameSignature, signatureDistance, findCuts, shotRanges } from "./cuts.ts";
 export { crossingShare, motionPerFrame, rankCandidates, pickConfirmFrame, pointNearFrame, withConfirmBoxes } from "./rank.ts";
 export { checkClip, checkSubject } from "./rules.ts";

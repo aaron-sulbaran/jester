@@ -23,6 +23,23 @@ test("linkTracks: a gap of 8 frames keeps one track, a gap of 20 makes two", () 
   assert.equal(linkTracks(build(20), []).length, 2);
 });
 
+test("linkTracks: one odd box does not lose the person, even when the next box no longer overlaps it", () => {
+  // Frame 20's box slides right (an arm thrown out), then the person steps left. The step does not
+  // overlap the odd box, but it does overlap where the person usually was.
+  const at = (i: number) => (i < 20 ? 0.3 : i === 20 ? 0.335 : 0.27);
+  const frames = Array.from({ length: 40 }, (_, i) => frame(i, [person(box(at(i)))]));
+  const tracks = linkTracks(frames, []);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.points.length, 40);
+});
+
+test("linkTracks: a second person beside someone already followed this frame gets their own track", () => {
+  const frames = Array.from({ length: 20 }, (_, i) => frame(i, i < 10 ? [person(box(0.3))] : [person(box(0.3)), person(box(0.31))]));
+  const tracks = linkTracks(frames, []);
+  assert.equal(tracks.length, 2);
+  assert.deepEqual(tracks.map((t) => t.points.length), [20, 10]);
+});
+
 test("linkTracks: two people side by side keep stable ids", () => {
   const frames = Array.from({ length: 20 }, (_, i) =>
     frame(i, [person(box(0.25 + i * 0.002)), person(box(0.75 - i * 0.002))]));
