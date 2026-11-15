@@ -303,7 +303,6 @@ export function initGame(deps: GameDeps) {
     const say = (text: string) => { problem.textContent = text; problem.hidden = false; };
     problem.hidden = true;
     if (!file) return say("Pick a clip to send.");
-    if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
     const title = $<HTMLInputElement>("submitTitle").value.trim();
     if (!title) return say("Give your clip a name.");
     const send = $<HTMLButtonElement>("submitSend");
@@ -317,6 +316,15 @@ export function initGame(deps: GameDeps) {
     void rememberSubmission(file, title);
     $("submitForm").hidden = true;
     $("submitThanks").hidden = false;
+  });
+
+  // Send another: the form comes back empty, and the clip just sent is still watched (submissionWatch.ts).
+  $("submitAgain").addEventListener("click", () => {
+    $<HTMLFormElement>("submitForm").reset();
+    $("submitProblem").hidden = true;
+    $("submitThanks").hidden = true;
+    $("submitForm").hidden = false;
+    $<HTMLInputElement>("submitFile").focus();
   });
 
   $("upload").addEventListener("change", async (e) => {
