@@ -210,6 +210,9 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     const host = room.isHost as boolean;
     renderSeats(roster, hostId);
     $("roomLobby").dataset.role = host ? "host" : "guest";
+    // The chat goes under the shorter side: the lineup for the host, the ready ticket for a guest.
+    const chatHome = $(host ? "roomSideWho" : "roomSidePlay");
+    if ($("roomChat").parentElement !== chatHome) chatHome.appendChild($("roomChat"));
     $("roomHostRow").hidden = !host;
     $("roomGuestRow").hidden = host;
     $("roomNeedTwo").hidden = roster.length >= 2;

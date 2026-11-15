@@ -228,6 +228,7 @@
         <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
              ticket, and a chat that lives only on each device until you leave. -->
         <div id="roomLobby" hidden>
+          <div class="room-side" id="roomSideWho">
           <div class="room-door">
             <div class="room-code-card">
               <div class="masking room-code-tape"><p class="tape">Room code</p></div>
@@ -246,6 +247,8 @@
           <div class="room-cast-wrap">
             <ul id="roomRoster" class="room-cast" aria-label="Players in the room"></ul>
           </div>
+          </div>
+          <div class="room-side" id="roomSidePlay">
           <div class="room-table">
             <div id="roomHostRow" hidden>
               <div class="field room-pick"><span class="room-step">Pick the clip</span>
@@ -281,7 +284,9 @@
             </div>
             <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
           </div>
-          <section class="room-chat" aria-labelledby="roomChatHead">
+          </div>
+          <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->
+          <section class="room-chat" id="roomChat" aria-labelledby="roomChatHead">
             <div class="room-chat-page">
               <h3 class="room-chat-head" id="roomChatHead">Chat</h3>
               <div class="room-chat-lines" id="roomChatLines">
