@@ -202,7 +202,7 @@ function torsoAt(g: Guide, ms: number): Torso | null {
  * ellipse round each subject's blended box is filled with a
  * heavily blurred copy of the frame underneath.
  */
-function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number) {
+function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number, plate: HTMLCanvasElement | null = null) {
   if (ms < 0) return;
   for (const g of guides) {
     // An ellipse round the blended box (the raw outline changed shape every frame, which made the cover
@@ -218,17 +218,144 @@ function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video:
     sc.filter = "none";
     sc.fillStyle = "rgba(0,0,0,0.2)";
     sc.fillRect(0, 0, W, H);
+    // The empty set where it is known; the blur shows only where no frame ever saw behind the subject.
+    if (plate) sc.drawImage(plate, 0, 0, W, H);
     sc.globalCompositeOperation = "destination-in";
     sc.save();
-    // 1.55 and 1.4 reach past the box corners; the fade starts at 70% of the way out.
+    // 1.7 and 1.5 reach past the box corners and a raised arm; the fade starts at 70% of the way out.
     sc.translate(box.cx * W, box.cy * H);
-    sc.scale((box.w * W) / 2 * 1.55, (box.h * H) / 2 * 1.4);
+    sc.scale((box.w * W) / 2 * 1.7, (box.h * H) / 2 * 1.5);
     const fade = sc.createRadialGradient(0, 0, 0, 0, 0, 1);
     fade.addColorStop(0.7, "rgba(0,0,0,1)"); fade.addColorStop(1, "rgba(0,0,0,0)");
     sc.fillStyle = fade;
     sc.fillRect(-1, -1, 2, 2);
     sc.restore();
     c.drawImage(s, 0, 0);
+  }
+}
+
+function seeked(v: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => { v.removeEventListener("seeked", done); clearTimeout(t); resolve(); };
+    const t = setTimeout(done, 1500);
+    v.addEventListener("seeked", done);
+  });
+}
+
+/**
+ * The clip's set with nobody in it: about 40 frames across the stretch, and for each pixel the median of the
+ * frames where no subject was over it (each subject's box, grown). Pixels no frame saw are filled from around them.
+ * Null when the camera moves (the frames disagree away from the subjects) or the frames cannot be read.
+ */
+async function backgroundPlate(video: HTMLVideoElement, scene: Scene, W: number, H: number): Promise<HTMLCanvasElement | null> {
+  const w = 320, h = Math.max(1, Math.round((w * H) / W)), N = 40;
+  const work = document.createElement("canvas");
+  work.width = w; work.height = h;
+  const wc = work.getContext("2d", { willReadFrequently: true })!;
+  const samples: Uint8ClampedArray[] = [], covered: Uint8Array[] = [];
+  const wasPaused = video.paused;
+  video.pause();
+  try {
+    for (let k = 0; k < N; k++) {
+      const ms = ((k + 0.5) / N) * scene.durationMs;
+      video.currentTime = (scene.startMs + ms) / 1000;
+      await seeked(video);
+      wc.drawImage(video, 0, 0, w, h);
+      samples.push(wc.getImageData(0, 0, w, h).data);
+      const cov = new Uint8Array(w * h);
+      for (const g of scene.guides) {
+        const b = boxAt(g, ms);
+        if (!b) continue;
+        const x0 = Math.max(0, Math.floor((b.cx - b.w * 0.8) * w)), x1 = Math.min(w, Math.ceil((b.cx + b.w * 0.8) * w));
+        const y0 = Math.max(0, Math.floor((b.cy - b.h * 0.7) * h)), y1 = Math.min(h, Math.ceil((b.cy + b.h * 0.7) * h));
+        for (let y = y0; y < y1; y++) cov.fill(1, y * w + x0, y * w + x1);
+      }
+      covered.push(cov);
+    }
+  } catch {
+    return null; // a clip from another site without CORS cannot be read back
+  } finally {
+    if (!wasPaused) void video.play().catch(() => {});
+  }
+  // A moving camera: frames next to each other differ a lot where nobody is.
+  let diff = 0, n = 0;
+  for (let k = 1; k < N; k++) {
+    const a = samples[k - 1]!, b = samples[k]!;
+    for (let p = 0; p < w * h; p += 7) {
+      if (covered[k]![p] || covered[k - 1]![p]) continue;
+      diff += Math.abs(a[p * 4]! - b[p * 4]!) + Math.abs(a[p * 4 + 1]! - b[p * 4 + 1]!) + Math.abs(a[p * 4 + 2]! - b[p * 4 + 2]!);
+      n++;
+    }
+  }
+  if (n === 0 || diff / n / 3 > 14) return null;
+  const out = wc.createImageData(w, h);
+  const r: number[] = [], gr: number[] = [], bl: number[] = [];
+  const med = (v: number[]) => { v.sort((x, y) => x - y); return v[v.length >> 1]!; };
+  for (let p = 0; p < w * h; p++) {
+    r.length = gr.length = bl.length = 0;
+    for (let k = 0; k < N; k++) {
+      if (covered[k]![p]) continue;
+      const d = samples[k]!;
+      r.push(d[p * 4]!); gr.push(d[p * 4 + 1]!); bl.push(d[p * 4 + 2]!);
+    }
+    if (r.length < 3) continue;
+    out.data[p * 4] = med(r); out.data[p * 4 + 1] = med(gr); out.data[p * 4 + 2] = med(bl); out.data[p * 4 + 3] = 255;
+  }
+  fillHoles(out.data, w, h);
+  wc.putImageData(out, 0, 0);
+  return work;
+}
+
+/**
+ * Fills the transparent pixels of an RGBA image smoothly from the pixels around them (pull-push: halve the
+ * image until the holes close, then bring the colour back up), so a spot nobody ever uncovered gets a soft
+ * guess at the set behind it instead of a hard-edged patch.
+ */
+function fillHoles(px: Uint8ClampedArray, w: number, h: number) {
+  type Level = { w: number; h: number; c: Float32Array; a: Float32Array };
+  const base: Level = { w, h, c: new Float32Array(w * h * 3), a: new Float32Array(w * h) };
+  for (let p = 0; p < w * h; p++) {
+    const a = px[p * 4 + 3]! / 255;
+    base.a[p] = a;
+    for (let k = 0; k < 3; k++) base.c[p * 3 + k] = px[p * 4 + k]! * a;
+  }
+  const levels = [base];
+  while (levels.length < 12) {
+    const f = levels[levels.length - 1]!;
+    if (f.w <= 1 && f.h <= 1) break;
+    const nw = Math.max(1, Math.ceil(f.w / 2)), nh = Math.max(1, Math.ceil(f.h / 2));
+    const n: Level = { w: nw, h: nh, c: new Float32Array(nw * nh * 3), a: new Float32Array(nw * nh) };
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      const q = (y >> 1) * nw + (x >> 1), p = y * f.w + x;
+      n.a[q]! += f.a[p]!;
+      for (let k = 0; k < 3; k++) n.c[q * 3 + k]! += f.c[p * 3 + k]!;
+    }
+    // Keep colour premultiplied, alpha capped at 1, so a coarse pixel with any known pixel under it counts fully.
+    for (let q = 0; q < nw * nh; q++) {
+      const a = n.a[q]!;
+      if (a > 0) { const s = Math.min(1, a) / a; n.a[q] = Math.min(1, a); for (let k = 0; k < 3; k++) n.c[q * 3 + k]! *= s; }
+    }
+    levels.push(n);
+  }
+  for (let li = levels.length - 2; li >= 0; li--) {
+    const f = levels[li]!, up = levels[li + 1]!;
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      const p = y * f.w + x, a = f.a[p]!;
+      if (a >= 1) continue;
+      // Bilinear from the coarser level, mixed in where this level is not fully known.
+      const fx = Math.min(up.w - 1, Math.max(0, (x - 0.5) / 2)), fy = Math.min(up.h - 1, Math.max(0, (y - 0.5) / 2));
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(up.w - 1, x0 + 1), y1 = Math.min(up.h - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+      const at = (xx: number, yy: number, k: number) => { const q = yy * up.w + xx, ua = up.a[q]!; return ua > 0 ? up.c[q * 3 + k]! / ua : 0; };
+      for (let k = 0; k < 3; k++) {
+        const v = (at(x0, y0, k) * (1 - tx) + at(x1, y0, k) * tx) * (1 - ty) + (at(x0, y1, k) * (1 - tx) + at(x1, y1, k) * tx) * ty;
+        f.c[p * 3 + k] = f.c[p * 3 + k]! + v * (1 - a);
+      }
+      f.a[p] = 1;
+    }
+  }
+  for (let p = 0; p < w * h; p++) {
+    for (let k = 0; k < 3; k++) px[p * 4 + k] = base.c[p * 3 + k]!;
+    px[p * 4 + 3] = 255;
   }
 }
 
@@ -745,6 +872,9 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   const toPlay = (ms: number) => ms / speed;
   const layers = revealLayers(seats, speed);
   const video = scene.video;
+  // A picture of the empty set, so the played subjects can be painted out cleanly (null for a moving camera).
+  const plate = video ? await backgroundPlate(video, scene, W, H) : null;
+  if (video) { video.currentTime = scene.startMs / 1000; await seeked(video); }
   const realMs = scene.durationMs * speed;
   /** The clip with no players at reveal time ms (`from` ms into the stretch, for a video that was seeked there). */
   const background = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
@@ -755,7 +885,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   const roles = [...new Set(seats.map((s) => s.guide))];
   const withoutSubjects = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
     background(from)(c, ms);
-    if (video) eraseSubjects(c, W, H, video, roles, toPlay(from + ms));
+    if (video) eraseSubjects(c, W, H, video, roles, toPlay(from + ms), plate);
   };
   // A label at the top centre, clear of the stage's valance, readable on any clip.
   const caption = (c: CanvasRenderingContext2D, text: string, color: string) => {
