@@ -58,7 +58,7 @@ const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((re
   signal?.addEventListener("abort", stop, { once: true });
 });
 
-const SCREENS = ["howto", "start", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "start", "submit", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 /** Screens where a game is under way: leaving from these asks first. */
 const MID_GAME: readonly ScreenName[] = ["handover", "turn", "drumroll", "reveal"];
@@ -282,7 +282,19 @@ export function initGame(deps: GameDeps) {
     openCast();
   });
 
-  // ---- Submit your own: present but quiet ----
+  // ---- Send in a clip: an invite under the Play ticket opens its own screen ----
+
+  $("submitOpen").addEventListener("click", () => {
+    // After a clip went in, the next visit starts with an empty form again.
+    if (!$("submitThanks").hidden) {
+      $<HTMLFormElement>("submitForm").reset();
+      $("submitForm").hidden = false;
+      $("submitThanks").hidden = true;
+      $("submitProblem").hidden = true;
+    }
+    show("submit");
+  });
+  $("submitBack").addEventListener("click", () => show("start"));
 
   $("submitForm").addEventListener("submit", async (e) => {
     e.preventDefault();
