@@ -30,7 +30,7 @@ And one honest line about who it is for: it gets a group of friends moving aroun
 - **Set up the game.** Say how many are playing. Two or more can take turns on one laptop, play a **Duel** where everyone copies the same person and the best copy wins, or each play on their own device.
 - **Pick a mode.** In **Blind**, you see only your part, and nobody sees the real clip until the end. In **Normal**, you dance along with the clip, which plays beside you with your part outlined in your colour.
 - **Up to 4 players** type their names and pick their jester's colour, and Jester deals each one a **secret part** of the clip: one of the people in it.
-- **Pass the laptop.** "Everyone else, look away." Each player copies their part with their whole body, a hand, their head or a foot, and can watch it once before it counts. In Blind mode the part is a 3D jester moving the way that person moves, never the clip itself, with the plain stick figure on a corner card that a tap swaps in. When you copy a person with your whole body, a taped frame on your camera view shows where to stand, at that person's place and size in the clip.
+- **Pass the laptop.** "Everyone else, look away." Each player copies their part with their whole body, a hand, their head or a foot, and can watch it before it counts. In Blind mode the part is a 3D jester moving the way that person moves, never the clip itself, with the plain stick figure on a corner card that a tap swaps in. When you copy a person with your whole body, a taped frame on your camera view shows where to stand, at that person's place and size in the clip.
 - **3, 2, 1, copy.** Your part plays on the left, your camera on the right, and clips made from a video play their sound. On one laptop you can play at full speed, a bit slower, or at half speed.
 - **The reveal.** After a drum roll, the original clip and your cast play side by side, with every player's cutout drawn on their part and their names and scores, and then the curtains close. It is recorded in the browser as a video you can save or send.
 - **The crown.** Each player's face goes on a jester, the spotlight settles on the winner, and everyone leaves with an award.
@@ -84,7 +84,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 - A limb gets full credit within 15 degrees and none past 60. Limbs the dancer is moving weigh more than limbs they hold still.
 - Both motions are resampled to 30 frames a second, and one reaction delay is found for the whole turn. Up to 0.65 seconds late costs nothing, since you are reacting to moves you cannot see coming.
 - Standing still scores close to zero: the score pays for accuracy above what standing still would earn on that clip, and for how much of the clip's movement you actually make. When the clip travels across the frame, part of the score comes from where you are.
-- A limb the clip uses but your camera cannot see caps the score at 50.
+- An arm or leg the clip uses but your camera mostly cannot see caps the score at 50.
 - Things, and single body parts, are scored on their path instead: how well your movement follows theirs, plus jumps, crouches and moves left or right.
 - Every round played in testing is saved with its exact motions, and one command re-scores them all, so each change to the scoring is checked against real rounds before it ships.
 
@@ -139,7 +139,7 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 | Things in clips | MediaPipe Object Detector with EfficientDet-Lite0 |
 | Video decoding | Mediabunny on WebCodecs, with a video element fallback |
 | Saved analyses | IndexedDB, keyed by the file's SHA-256 |
-| Reveal video | Canvas capture and MediaRecorder (WebM) |
+| Reveal video | Canvas capture and MediaRecorder (WebM, or MP4 where WebM is not supported) |
 | The 3D jester guide | three.js |
 | Deep agents | LangChain deepagents (`createDeepAgent`); Claude Sonnet 5.5 for the Chamberlain; Claude Opus 5.5 with Muse Spark 1.3 subagents for the referee coach; LangSmith tracing |
 | Submissions, the round log and rooms | Supabase (Storage, tables, Realtime) |
