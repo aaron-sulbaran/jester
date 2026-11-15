@@ -56,4 +56,4 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - Hotlinked fonts or images: everything is bundled in `app/public`.
 - A glossy app look: rounded cards, glass or blur. Things are paper, tape, stamps and tickets.
 - A cartoon placeholder face; use a grey head and shoulders silhouette.
-- Face photos never leave the device.
+- A face picture or cutout leaves the laptop only when players choose it: live to the others in their online room (never saved), or in the results video they send. The room screen says so before anything is sent.
