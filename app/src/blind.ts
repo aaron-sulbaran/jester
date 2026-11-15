@@ -760,7 +760,8 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
 async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement }, onFrame: (f: { landmarks: LandmarkObject[] | null; aspect: number }) => void) {
   const host = stage.guideCanvas.parentElement!;
   const hint = document.createElement("div");
-  hint.style.cssText = "position:absolute;left:0;right:0;bottom:6%;text-align:center;font:800 clamp(18px,3vw,34px) system-ui,sans-serif;color:#fff;text-shadow:0 2px 8px #000,0 0 3px #000;padding:0 14px;z-index:6;pointer-events:none";
+  // Styled by the look (.framing-hint in style.css): a paper tag at the bottom of the stage.
+  hint.className = "framing-hint";
   hint.textContent = "Step into view so your whole body is in the picture.";
   host.appendChild(hint);
   stage.playerCanvas.style.opacity = "1"; // the camera is hidden until the countdown; bring it in so they can position themselves
@@ -768,11 +769,11 @@ async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasEl
   await new Promise<void>((resolve) => {
     let finished = false;
     const done = () => { if (!finished) { finished = true; resolve(); } };
-    const late = window.setTimeout(() => { hint.style.pointerEvents = "auto"; hint.style.cursor = "pointer"; hint.onclick = done; hint.dataset.late = "1"; }, 12000);
+    const late = window.setTimeout(() => { hint.classList.add("late"); hint.onclick = done; hint.dataset.late = "1"; }, 12000);
     player.start((f) => {
       onFrame({ landmarks: f.landmarks as LandmarkObject[] | null, aspect: f.aspect });
       const r = calibrator.update(f.landmarks as never, 30);
-      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " (Click here to start anyway.)" : "");
+      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " Can't fit? Click here to start anyway." : "");
       if (r.passed) { clearTimeout(late); done(); }
     }, () => -1);
   });
@@ -1161,8 +1162,10 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     c.fillStyle = color; c.fillText(text, W / 2, H * 0.1);
     c.restore();
   };
-  // Each player's picture on the cast card: a cutout from the middle of their turn.
-  const faces = seats.map((s) => s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
+  // Each player's picture on the cast card: their face, the same picture the crowning jesters wear, so it always
+  // shows who they are; a cutout from the middle of their turn only when no face was caught (a crop there can
+  // miss the head).
+  const faces = seats.map((s) => s.face ?? s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
   const segments: Segment[] = [
     { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
     {

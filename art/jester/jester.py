@@ -11,7 +11,7 @@ import bpy
 from mathutils import Vector
 
 P = argparse.ArgumentParser()
-P.add_argument('--out', default='app/public/look/jester')
+P.add_argument('--out', default='app/public/jester')
 P.add_argument('--test', action='store_true', help='Render one still for art direction')
 P.add_argument('--badge', action='store_true', help='Render the cap and collar with the face left open, for player face badges')
 P.add_argument('--run', action='store_true', help='Render a side profile run cycle (16 frames) for the loading bars')

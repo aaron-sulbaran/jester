@@ -64,8 +64,9 @@ const MID_GAME: readonly ScreenName[] = ["watch", "handover", "turn", "drumroll"
 function show(name: ScreenName) {
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   document.body.dataset.screen = name;
-  // Home shows everywhere except the start screen and How to play.
+  // Home shows everywhere except the start screen and How to play; How to play's tag only on the start screen.
   $("gameNav").hidden = name === "start" || name === "howto";
+  $("howtoLink").hidden = name !== "start";
   window.scrollTo(0, 0);
 }
 
@@ -474,6 +475,17 @@ export function initGame(deps: GameDeps) {
     $("partProblem").hidden = false;
     restart();
   });
+
+  // ---- Sound: one switch for the game's sounds and the host's voice (sfx.ts keeps it, default on) ----
+
+  const soundButton = $<HTMLButtonElement>("soundToggle");
+  const showSound = () => {
+    const on = sfx.soundOn();
+    soundButton.setAttribute("aria-pressed", String(on));
+    soundButton.textContent = on ? "Sound: on" : "Sound: off";
+  };
+  soundButton.addEventListener("click", () => { sfx.setSound(!sfx.soundOn()); showSound(); });
+  showSound();
 
   // ---- How to play ----
 
