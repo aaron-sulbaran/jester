@@ -10,6 +10,7 @@ import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
+import { jesterBars } from "./jesterBar.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
 /** A CSS custom property from the skin, or the fallback. */
@@ -30,19 +31,41 @@ export interface GameDeps extends BlindDeps {
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-/** Resolves on the next click of `el`. */
-const clicked = (el: HTMLElement) => new Promise<void>((r) => el.addEventListener("click", () => r(), { once: true }));
+const left = () => new DOMException("Left the game", "AbortError");
+/** Waits `ms`, or rejects at once if the game is left. */
+const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) return reject(left());
+  const t = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(); }, ms);
+  const stop = () => { clearTimeout(t); reject(left()); };
+  signal?.addEventListener("abort", stop, { once: true });
+});
+/** Resolves on the next click of `el`, or rejects if the game is left first. */
+const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) return reject(left());
+  const on = () => { signal?.removeEventListener("abort", stop); resolve(); };
+  const stop = () => { el.removeEventListener("click", on); reject(left()); };
+  el.addEventListener("click", on, { once: true });
+  signal?.addEventListener("abort", stop, { once: true });
+});
 
-const SCREENS = ["start", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "start", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
+/** Screens where a game is under way: leaving from these asks first. */
+const MID_GAME: readonly ScreenName[] = ["watch", "handover", "turn", "drumroll", "reveal"];
 
 /** Shows one screen and hides the rest. The body carries the name too, so the look can theme per screen. */
 function show(name: ScreenName) {
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   document.body.dataset.screen = name;
+  // Home shows everywhere except the start screen and How to play.
+  $("gameNav").hidden = name === "start" || name === "howto";
   window.scrollTo(0, 0);
 }
+
+/** How many times each player may start their turn over, per game, and for how long after the countdown. */
+const RESTARTS_PER_PLAYER = 1;
+const RESTART_WINDOW_MS = 5000;
+const HOWTO_SEEN = "jester.howtoSeen";
 
 interface StarterClip { id: string; title: string; hint: string; make: () => Scene }
 
@@ -297,16 +320,80 @@ export function initGame(deps: GameDeps) {
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
+    game = new AbortController();
+    const signal = game.signal;
+    restartsLeft.clear();
+    for (const n of cast) restartsLeft.set(n, RESTARTS_PER_PLAYER);
+    running = true;
     try {
       if (mode === "watch") await watchFirst(scene);
       await runBlindGame(scene, cast, ui, deps, { speed, colors: playerColors(), theme: revealTheme() });
     } catch (err) {
+      if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
       console.error("The game stopped:", err);
       $("oopsText").textContent = (err as Error).message;
       show("oops");
+    } finally {
+      running = false;
     }
   }
+
+  // ---- Home, leaving, and starting a turn over ----
+
+  /** The game under way: leaving aborts it, so its pending screens stop waiting and a new game never collides. */
+  let game: AbortController | null = null;
+  let running = false;
+  const sig = () => game?.signal;
+  const live = () => { if (game?.signal.aborted) throw left(); };
+  /** The current turn's restart, kept so leaving mid-turn can end the turn at once. */
+  let activeRestart: (() => void) | null = null;
+  let restartTimer = 0;
+  const restartsLeft = new Map<string, number>();
+  let currentPlayer = "";
+
+  function hideRestart() {
+    clearTimeout(restartTimer);
+    $("restart").hidden = true;
+  }
+
+  function goHome() {
+    if (game && !game.signal.aborted) {
+      game.abort();
+      activeRestart?.(); // ends a turn in progress straight away
+    }
+    activeRestart = null;
+    hideRestart();
+    stopPodium();
+    show("start");
+  }
+
+  const leaveDialog = $<HTMLDialogElement>("leaveDialog");
+  $("home").addEventListener("click", () => {
+    const screen = document.body.dataset.screen as ScreenName;
+    if (running && MID_GAME.includes(screen)) leaveDialog.showModal();
+    else goHome();
+  });
+  $("leaveStay").addEventListener("click", () => leaveDialog.close());
+  $("leaveGo").addEventListener("click", () => { leaveDialog.close(); goHome(); });
+
+  $("restartGo").addEventListener("click", () => {
+    const restart = activeRestart;
+    if (!restart) return;
+    restartsLeft.set(currentPlayer, Math.max(0, (restartsLeft.get(currentPlayer) ?? 0) - 1));
+    hideRestart();
+    $("partProblem").textContent = "Starting over. Take your time; that was your one start over this game.";
+    $("partProblem").hidden = false;
+    restart();
+  });
+
+  // ---- How to play ----
+
+  $("howtoLink").addEventListener("click", () => show("howto"));
+  $("howtoGo").addEventListener("click", () => {
+    try { localStorage.setItem(HOWTO_SEEN, "1"); } catch { /* private window: it just shows again next time */ }
+    show("start");
+  });
 
   /** Watch first: the whole group watches the clip once (or more) before the parts are dealt. */
   async function watchFirst(s: Scene) {
@@ -331,14 +418,19 @@ export function initGame(deps: GameDeps) {
     const again = $("watchAgain");
     again.addEventListener("click", play);
     play();
-    await clicked($("watchGo"));
-    again.removeEventListener("click", play);
-    cancelAnimationFrame(raf);
-    s.video?.pause();
+    try { await clicked($("watchGo"), sig()); }
+    finally {
+      again.removeEventListener("click", play);
+      cancelAnimationFrame(raf);
+      s.video?.pause();
+    }
   }
 
   const ui: BlindUi = {
     async handover(player, previous) {
+      live();
+      activeRestart = null;
+      hideRestart();
       show("handover");
       const screen = $("screen-handover");
       screen.style.setProperty("--who", player.color);
@@ -348,10 +440,16 @@ export function initGame(deps: GameDeps) {
       const go = $<HTMLButtonElement>("handoverGo");
       go.querySelector(".ticket-text")!.textContent = `I'm ${player.name}`;
       go.focus();
-      await clicked(go);
+      await clicked(go, sig());
     },
 
     async showPart(player, role) {
+      live();
+      activeRestart = null;
+      hideRestart();
+      // A start over keeps its own note; anything else clears it.
+      const startingOver = currentPlayer === player.name && $("partProblem").textContent!.startsWith("Starting over");
+      currentPlayer = player.name;
       show("turn");
       turn.dataset.state = "part";
       turn.style.setProperty("--who", player.color);
@@ -359,8 +457,10 @@ export function initGame(deps: GameDeps) {
       $("turnSecret").textContent = mode === "watch" ? "You saw the clip. This shape is your part." : "What are you? You'll find out at the end.";
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
-      $("partProblem").textContent = role.problem ?? "";
-      $("partProblem").hidden = !role.problem;
+      if (!startingOver || role.problem) {
+        $("partProblem").textContent = role.problem ?? "";
+        $("partProblem").hidden = !role.problem;
+      }
       const chips = $("partChips");
       chips.innerHTML = "";
       let chosen: BodyPart = role.parts[0]?.key ?? "body";
@@ -383,8 +483,9 @@ export function initGame(deps: GameDeps) {
         watch.disabled = false;
       };
       watch.addEventListener("click", onWatch);
-      await clicked($("partGo"));
-      watch.removeEventListener("click", onWatch);
+      try { await clicked($("partGo"), sig()); }
+      finally { watch.removeEventListener("click", onWatch); }
+      $("partProblem").hidden = true;
       return chosen;
     },
 
@@ -401,14 +502,31 @@ export function initGame(deps: GameDeps) {
         el.classList.remove("tick");
         void el.offsetWidth; // restart the tick animation
         el.classList.add("tick");
-        await wait(1000);
+        try { await wait(1000, sig()); } catch (err) { el.hidden = true; throw err; }
       }
       el.hidden = true;
     },
 
+    turnStarted(restart) {
+      activeRestart = restart;
+      if ((restartsLeft.get(currentPlayer) ?? 0) <= 0) return;
+      // Only in the first few seconds: after that the moves have been seen, so no peeking and retrying.
+      const box = $("restart");
+      box.hidden = false;
+      box.style.setProperty("--window", `${RESTART_WINDOW_MS}ms`);
+      box.classList.remove("running");
+      void box.offsetWidth;
+      box.classList.add("running");
+      clearTimeout(restartTimer);
+      restartTimer = window.setTimeout(hideRestart, RESTART_WINDOW_MS);
+    },
+
     async beat() {
+      live();
+      activeRestart = null;
+      hideRestart();
       show("drumroll");
-      await wait(1500);
+      await wait(1500, sig());
     },
 
     revealCanvas: () => revealCanvas,
@@ -419,6 +537,7 @@ export function initGame(deps: GameDeps) {
     },
 
     results(r) {
+      live();
       setPace(1);
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
@@ -428,8 +547,11 @@ export function initGame(deps: GameDeps) {
     },
 
     async revealReady(url) {
+      if (game?.signal.aborted) return;
       videoUrl = url;
-      await crown();
+      // The game itself has finished; the crowning and results need no leave check.
+      running = false;
+      try { await crown(); } catch { return; /* left from the crowning */ }
       showResults();
     },
   };
@@ -512,10 +634,12 @@ export function initGame(deps: GameDeps) {
     const again = () => { cancel = true; void run(); };
     $("crownAgain").addEventListener("click", again);
     void run();
-    await clicked($("crownGo"));
-    cancel = true;
-    $("crownAgain").removeEventListener("click", again);
-    for (const x of jesters) x.j.stop();
+    try { await clicked($("crownGo"), sig()); }
+    finally {
+      cancel = true;
+      $("crownAgain").removeEventListener("click", again);
+      for (const x of jesters) x.j.stop();
+    }
   }
 
   // ---- Results ----
@@ -593,5 +717,10 @@ export function initGame(deps: GameDeps) {
   $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
 
-  show("start");
+  // Every loading bar, here and in the practice area, gets the running jester.
+  jesterBars(document);
+
+  let seen = false;
+  try { seen = localStorage.getItem(HOWTO_SEEN) === "1"; } catch { /* storage blocked: treat as seen, never trap them */ seen = true; }
+  show(seen ? "start" : "howto");
 }

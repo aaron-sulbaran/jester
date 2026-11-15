@@ -36,6 +36,31 @@
   </svg>
 
   <main id="game">
+    <!-- Home: on every screen once you leave the start. Mid-game it asks first. -->
+    <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
+      <button type="button" class="tab-btn" id="home">Home</button>
+    </nav>
+    <dialog class="leave" id="leaveDialog" aria-labelledby="leaveAsk">
+      <div class="note-wrap"><p class="note" id="leaveAsk">Leave this game? Nobody's scores are kept.</p></div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="leaveStay">Keep playing</button>
+        <button type="button" class="btn btn-main" id="leaveGo"><span class="ticket"><span class="ticket-text">Leave</span></span></button>
+      </div>
+    </dialog>
+
+    <!-- How to play: opens on a first visit, and from the start screen. -->
+    <section class="screen" id="screen-howto" hidden>
+      <div class="masking"><h2 class="tape">How to play</h2></div>
+      <ol class="steps">
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="clip-q">?</span></span><b>Pick a clip.</b><span>In Blind, nobody sees it. In Watch first, you all watch it together.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 200 130"><path d="M50 22 H150 Q156 22 156 28 V88 H44 V28 Q44 22 50 22 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M60 34 H140 V78 H60 Z" fill="#2848C8"/><path d="M30 92 H170 L160 106 H40 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M128 118 Q160 124 176 108" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round"/><path d="M168 100 L178 107 L166 114" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>Pass the laptop.</b><span>Each player gets a secret part from the clip: a person, or a thing like a ball.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="-20 -30 340 300"><use href="/art.svg#dog" width="300" height="180" y="60" style="color: rgba(255, 254, 250, .32)" /><use href="/art.svg#player" x="95" y="-20" width="140" height="190" style="color: var(--ticket)" /></svg></span><b>Copy the shape.</b><span>Stand back so your whole body is in view. Get inside the shape and move when it moves, like a mirror.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 300 180"><use href="/art.svg#crawl" /></svg></span><b>See what you did.</b><span>Everyone is cut out into the clip, then the best jester gets the spotlight.</span></li>
+      </ol>
+      <p class="typed">Not ready when your turn starts? You can start over once, in the first 5 seconds.</p>
+      <button type="button" class="btn btn-main" id="howtoGo"><span class="ticket"><span class="ticket-text">Got it</span></span></button>
+    </section>
+
     <!-- Start: pick a mode and a clip from the bank, play in one click. -->
     <section class="screen" id="screen-start">
       <header class="masthead">
@@ -43,7 +68,8 @@
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
-      <div class="modes-pick" role="radiogroup" aria-label="How to play">
+      <p class="aside"><button type="button" class="link" id="howtoLink">How to play</button></p>
+      <div class="modes-pick" role="radiogroup" aria-label="Game mode">
         <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
         <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
       </div>
@@ -164,6 +190,10 @@
             <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
           </div>
         </div>
+        <div class="restart" id="restart" hidden>
+          <button type="button" class="btn btn-quiet" id="restartGo">Not ready? Start over</button>
+          <span class="restart-bar" aria-hidden="true"><i></i></span>
+        </div>
       </div>
       <div class="part-panel">
         <p class="problem" id="partProblem" role="alert" hidden></p>
@@ -201,7 +231,7 @@
       </div>
       <progress id="revealBar" value="0" max="1"></progress>
       <div class="reveal-pace" role="group" aria-label="Reveal speed">
-        <button type="button" id="revealFast" class="btn btn-quiet">Faster &#x23E9; <span id="revealFastLabel">1x</span></button>
+        <button type="button" id="revealFast" class="btn btn-quiet">Speed: <span id="revealFastLabel">1x</span></button>
         <button type="button" id="revealSkip" class="btn btn-quiet">Skip to results</button>
       </div>
     </section>
