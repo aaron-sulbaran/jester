@@ -64,7 +64,7 @@ let total = 0;
 for (const [model, u] of usage) {
   const cost = costUsd(model, u);
   total += cost;
-  console.log(`${model}: ${u.calls} calls, ${u.input} in, ${u.output} out, about $${cost.toFixed(3)}${model.startsWith("muse") ? " (Model API credit)" : ""}`);
+  console.log(`${model}: ${u.calls} calls, ${u.input} in (${u.cacheRead} from cache), ${u.output} out, about $${cost.toFixed(3)}${model.startsWith("muse") ? " (Model API credit)" : ""}`);
 }
 console.log(`Total about $${total.toFixed(3)} in ${((Date.now() - started) / 1000).toFixed(0)} s.`);
 const checks = {
