@@ -55,5 +55,6 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - Em dashes or emoji on screen. All caps.
 - Hotlinked fonts or images: everything is bundled in `app/public`.
 - A glossy app look: rounded cards, glass or blur. Things are paper, tape, stamps and tickets.
+- A bare common word as the class for a new style, such as `.lost`, `.won` or `.hidden`. Put a new feature's CSS on its element's id or on a prefixed class. A bare `.lost` for a notice once pulled every losing jester onto the winner at the crowning, because the crowning marks losing seats `.lost` too.
 - A cartoon placeholder face; use a grey head and shoulders silhouette.
 - A face picture or cutout leaves the laptop only when players choose it: live to the others in their online room (never saved), or in the results video they send. The room screen says so before anything is sent.
