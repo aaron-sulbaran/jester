@@ -502,7 +502,8 @@ async function openLink() {
     player = null;
     show(ytSection, false);
     const site = link.site === "tiktok" ? "TikTok" : "Instagram";
-    if (link.embedUrl) {
+    // Instagram's embed refused the posts tried (Saturday night), so Instagram goes to another tab.
+    if (link.site === "tiktok" && link.embedUrl) {
       embedFrame.src = link.embedUrl;
       show(embedSection, true);
       setStatus(`The ${site} clip is below. Press Grab from this page, or open it in its own tab and use Grab from another tab.`);
