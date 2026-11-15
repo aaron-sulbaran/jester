@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "eval": "node src/eval.ts",
+    "serve": "node src/serve.ts",
     "freeze": "node src/freeze.ts",
     "pull": "node src/pull.ts",
     "upload": "node src/upload.ts",
