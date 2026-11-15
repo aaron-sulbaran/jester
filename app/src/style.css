@@ -1000,7 +1000,7 @@ body[data-screen="turn"] #clipReady { display: none; }
 .btn-quiet:has(> .ico) { gap: .45em; padding-left: .85em; }
 .btn-quiet:has(> .ico)::before { display: none; }
 /* In a text link the icon sits on the line with the words. */
-.link > .ico, .aside a > .ico { margin-right: .35em; vertical-align: -.42em; }
+.link > .ico, .aside a > .ico, .library-find > span > .ico { margin-right: .35em; vertical-align: -.42em; }
 /* Sound: the horn plays when sound is on and is crossed out when it is off. */
 #soundToggle[aria-pressed="true"] .ico-off, #soundToggle[aria-pressed="false"] .ico-on { display: none; }
 /* A yellow ticket carries the hat stamp instead, so a control that turns into one (Join, from an invite link) hides its icon. */
