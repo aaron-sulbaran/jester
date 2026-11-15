@@ -40,7 +40,8 @@ const resolved = (base: string, e: BankEntry): BankClip => ({
 /** The bank at `base`, or null when there is none there (a dev server answers a missing file with its page, so that counts too). */
 async function readBank(base: string): Promise<BankClip[] | null> {
   try {
-    const response = await fetch(resolveBankPath(base, "index.json"), { cache: "no-cache" });
+    // A slow venue network should end in the "did not load" message, not a library that stays blank.
+    const response = await fetch(resolveBankPath(base, "index.json"), { cache: "no-cache", signal: AbortSignal.timeout(10000) });
     if (!response.ok) return null;
     const read = readBankIndex(await response.json());
     return read.error === null ? read.data.map((e) => resolved(base, e)) : null;

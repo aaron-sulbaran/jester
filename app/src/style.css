@@ -278,7 +278,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 /* Blind cards: the clip stays hidden, and its performers stand in a spotlight on the card's own colour, one per
    person and a ball for a thing. Normal shows the poster over them. */
 #bank .clip-pic { background: radial-gradient(ellipse 58% 75% at 50% 100%, rgba(255, 255, 255, .5), transparent 70%), repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px), var(--pic, #2E4593); }
-.clip-cast { position: absolute; left: 10%; right: 10%; bottom: 7%; height: 70%; width: 80%; color: var(--ink); opacity: .85; }
+.clip-cast { position: absolute; left: 6%; right: 6%; bottom: 5%; height: 80%; width: 88%; color: var(--ink); filter: url(#die-cut); }
 body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 
 /* The clips: a grid of small taped photos that scrolls up and down, snapping to whole rows so a photo is never

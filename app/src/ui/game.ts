@@ -232,13 +232,18 @@ export function initGame(deps: GameDeps) {
   /** "for 2 players", "for a duel". */
   const forPick = () => (isDuel() ? "for a duel" : `for ${count} ${count === 1 ? "player" : "players"}`);
 
-  /** Little performers on a lit backdrop: one per person, and a ball for the clip's things when they are parts. */
+  /**
+   * Little performers on a lit backdrop: a dancing jester per person, each in the next player colour and its own
+   * pose (public/jester/card-1 to card-7, stills of the 3D jester), and a ball for the clip's things when they
+   * are parts.
+   */
   function performers(c: BankClip): string {
     const people = Math.min(5, c.people);
     const things = withThingsFor(c) ? Math.min(2, c.things) : 0;
-    const w = people * 46 + things * 30 + 8;
-    const figs = Array.from({ length: people }, (_, i) => `<use href="/art.svg#player" x="${4 + i * 46}" y="4" width="46" height="62" />`).join("")
-      + Array.from({ length: things }, (_, i) => `<use href="/art.svg#ball" x="${8 + people * 46 + i * 30}" y="44" width="22" height="22" />`).join("");
+    const step = 44, jw = 58, jh = 62;
+    const w = (people ? (people - 1) * step + jw : 0) + things * 30 + 8;
+    const figs = Array.from({ length: people }, (_, i) => `<image href="/jester/card-${i + 1}.webp" x="${4 + i * step}" y="6" width="${jw}" height="${jh}" />`).join("")
+      + Array.from({ length: things }, (_, i) => `<use href="/art.svg#ball" x="${8 + (people ? (people - 1) * step + jw : 0) + i * 30}" y="46" width="22" height="22" />`).join("");
     return `<svg class="clip-cast" viewBox="0 0 ${w} 70" preserveAspectRatio="xMidYMax meet">${figs}</svg>`;
   }
 
@@ -389,6 +394,9 @@ export function initGame(deps: GameDeps) {
   setHow(how);
   setCount(count);
 
+  // Until the bank answers, the empty library says so instead of standing blank.
+  $("libraryNone").hidden = false;
+  $("libraryNone").textContent = "Getting the clips.";
   void listBank().then((r) => {
     bank = r.data ?? [];
     renderBank();
