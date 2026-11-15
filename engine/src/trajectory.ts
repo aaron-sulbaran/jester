@@ -416,6 +416,22 @@ export interface TrajectoryRoundOptions {
   bodyPart?: BodyPart;
 }
 
+/**
+ * The player's x and y scaled up so their range (5th to 95th percentile) matches the reference's, by at most
+ * `partEventMaxScale`. An axis that hardly moves (under `partEventMinRange` torso lengths) is left alone, so a
+ * still hand's jitter never turns into bounces. Never scaled down.
+ */
+export function scaledTowardReference(ply: { x: Signal; y: Signal; h: Signal }, ref: { x: Signal; y: Signal }): { x: Signal; y: Signal; h: Signal } {
+  const range = (s: Signal) => percentile(s, 0.95) - percentile(s, 0.05);
+  const scale = (p: Signal, r: Signal): Signal => {
+    const pr = range(p), rr = range(r);
+    if (!(pr >= TRAJECTORY.partEventMinRange) || !(rr > pr)) return p;
+    const k = Math.min(rr / pr, TRAJECTORY.partEventMaxScale);
+    return p.map((v) => v * k);
+  };
+  return { x: scale(ply.x, ref.x), y: scale(ply.y, ref.y), h: ply.h };
+}
+
 export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, options: TrajectoryRoundOptions = {}): TrajectoryRoundResult {
   const lastRef = reference.frames.reduce((m, f) => (Number.isFinite(f.tMs) && f.tMs > m ? f.tMs : m), -1);
   const n = gridLength(lastRef);
@@ -456,7 +472,10 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
 
   // Events on both sides.
   const refEvents = detectEvents(ref, REFERENCE_THRESHOLDS).filter((e) => bodyPart === "body" || e.type !== "crouch");
-  const plyEvents = detectEvents(ply, PLAYER_THRESHOLDS);
+  // 0.8.0: a body part copies an object at its own size (a hand dribbling at a desk moves far less than the
+  // ball). Size is scored by activity; events only ask whether each beat was hit. So for a part, the player's
+  // path is scaled up toward the object's range before looking for jumps and moves.
+  const plyEvents = detectEvents(bodyPart === "body" ? ply : scaledTowardReference(ply, ref), PLAYER_THRESHOLDS);
 
   if (axisList.length === 0 && refEvents.length === 0) return { ...base, axes, score: null, tier: null, failure: "nothing-to-mimic" };
 

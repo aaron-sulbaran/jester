@@ -105,7 +105,7 @@ test("objects: chance does not reward any rhythm on a rhythmic clip", () => {
 // ---- A body part plays the object (0.7.0) ----
 
 /** Move the given landmark indices by the object's motion (raw camera: x opposite), leave the rest still. */
-function partFollows(obj: (t: number) => Box, ids: readonly number[], { hide = [] as readonly number[] } = {}) {
+function partFollows(obj: (t: number) => Box, ids: readonly number[], { hide = [] as readonly number[], amp = 0.6 } = {}) {
   let mx = 0, my = 0;
   for (let t = 0; t < 20; t += 0.1) { mx += obj(t).cx; my += obj(t).cy; }
   mx /= 200; my /= 200;
@@ -115,7 +115,7 @@ function partFollows(obj: (t: number) => Box, ids: readonly number[], { hide = [
     ...tl,
     frames: tl.frames.map((f) => {
       const b = obj(f.tMs / 1000);
-      const dx = -(b.cx - mx) * 0.6, dy = (b.cy - my) * 0.6;
+      const dx = -(b.cx - mx) * amp, dy = (b.cy - my) * amp;
       return { ...f, landmarks: f.landmarks!.map((l, k) => (hide.includes(k) ? ([l[0], l[1], 0] as const) : ids.includes(k) ? ([l[0] + dx, l[1] + dy, l[2]] as const) : l)) };
     }),
   };
@@ -145,4 +145,27 @@ test("body part: works seated, with hips and legs out of view", () => {
 test("body part: the head follows a car when the whole body steps", () => {
   const r = scoreTrajectoryRound(boxTrack(car, 20), timeline(follow(car), { durationS: 20 }), { bodyPart: "head" });
   assert.ok(r.score !== null && r.score >= 85, `head ${r.score}`);
+});
+
+// ---- A hand dribbling at its own size (0.8.0) ----
+
+/** A basketball dribbled fast: it leaves the hand, hits the floor and comes back every 0.6 s. */
+const dribble = (t: number): Box => ({ cx: 0.4, cy: 0.55 + 0.3 * Math.abs(Math.sin((Math.PI * t) / 0.6)), w: 0.05, h: 0.09 });
+
+test("body part: a small, quick hand dribble that keeps the beat scores well", () => {
+  // The hand moves a third of the ball's travel, about half a torso length: what a hand at a desk does.
+  const r = scoreTrajectoryRound(boxTrack(dribble, 20), partFollows(dribble, RIGHT_HAND, { amp: 0.3 }), { bodyPart: "rightHand" });
+  assert.ok(r.score !== null && r.score >= 80, `small dribble ${r.score} (events ${r.eventF1})`);
+});
+
+test("body part: a small hand dribble at the wrong tempo still scores low", () => {
+  const offBeat = (t: number): Box => ({ ...dribble(t), cy: 0.55 + 0.3 * Math.abs(Math.sin((Math.PI * t) / 0.85)) });
+  const r = scoreTrajectoryRound(boxTrack(dribble, 20), partFollows(offBeat, RIGHT_HAND, { amp: 0.3 }), { bodyPart: "rightHand" });
+  assert.ok(r.score !== null && r.score <= 40, `off beat ${r.score}`);
+});
+
+test("body part: a hand held still does not get its jitter blown up into bounces", () => {
+  const still = (t: number): Box => ({ ...dribble(0), cy: 0.55 + 0.01 * Math.sin(7 * t) });
+  const r = scoreTrajectoryRound(boxTrack(dribble, 20), partFollows(still, RIGHT_HAND, { amp: 0.6 }), { bodyPart: "rightHand" });
+  assert.ok(r.score !== null && r.score <= 10, `still hand ${r.score}`);
 });

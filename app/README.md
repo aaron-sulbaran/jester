@@ -18,7 +18,13 @@ npm run build    # typecheck + static build in dist/
 
 The clip lab, http://localhost:5173/clip-lab.html (dev server only, not in the build), runs the clip side on one video so the result can be checked by eye. `?clip=<name>` runs `public/_clips/<name>` (git ignored, put test clips there), `?pick=<number>` chooses that person, `?fresh=1` ignores the saved analysis. After each run `window.__clipLab` holds a summary.
 
-The lab's switches can be set from the URL too: `?overlay=skeleton|outline|both`, `?look=outline|stick`, `?place=fit|exact`. Its table shows how many blind mode roles the clip gives.
+The lab's switches can be set from the URL too: `?overlay=skeleton|outline|both`, `?look=outline|stick`, `?place=fit|exact`. Its table shows how many blind mode roles the clip gives, and how many track pieces were joined into how many tracks.
+
+On the pick frame, a dashed box is a person who is not in that frame, drawn where they are nearest to it, so every person found can be chosen.
+
+`?model=heavy` (or `lite`) runs a fresh analysis with that pose model and does not save it; the table's "Seconds taken" is the number to compare with the default `full`. The game always uses `full`.
+
+People the pose model drops for a while (behind another dancer, at the back) come back as a new track. `analyze.ts` links with a 1 second gap and then joins pieces with `rejoinTracks` from `clip/` (up to 3 seconds apart, near where the earlier piece ended or was heading, a similar size). Saved analyses keep their frames and run this again when opened, so they pick up the joining without a fresh analysis.
 
 `?nocam=1` ticks "Simulated player": a stand-in copies the clip with 150 ms lag and an adjustable wobble, no camera needed.
 
@@ -41,6 +47,21 @@ const mine = confirmSubject(prepared.data, prepared.data.candidates[0]!.trackId)
 Each guide carries, one entry per frame at the same times: `timeline` (pose, for the engine's pose channel), `boxTrack` (the box over time) and `outlines` (a closed polygon of up to 60 points in normalized image coordinates, null where the person is missing). `range` is the clip's media time for that stretch.
 
 To draw what a player sees without the clip: `placeSubject(guide, canvas, "fit" | "exact")` from `../clip` gives the placement once per guide, and `drawBlind(canvas, guide, guideFrameAt(guide, mediaMs), "outline" | "stick", view)` from `src/clipside/blind.ts` draws one frame. "fit" centres the subject on its own average position at about 70 percent of the canvas height and shrinks it if its movement would leave the canvas; "exact" keeps it where it is in the clip frame. The clip lab shows both.
+
+## Blind mode: the game (src/blind.ts)
+
+`blind.ts` is the whole game and makes no DOM. Screens plug in as a `BlindUi` (typed at the top of the file); `src/blindScreens.ts` is the plain stand-in on the ids in `index.html` until the look's screens replace it. `?blind=1` opens it, `?nocam=1` plays it with simulated players.
+
+```ts
+const scene = demoScene() /* or */ dribbleScene() /* or */ await videoScene(file, video, onProgress); // a string means "why not"
+const rows = await runBlindGame(scene, names, ui, { simMode, noise, getCamera }, { speed: 0.75 });
+```
+
+- Roles: one per subject in the scene (people from `subjectGuides`; things once jester#15 merges and `videoScene` passes `{ things: true }`). They repeat only when there are more players than subjects.
+- What a player sees: never the role's name. `ui.showPart` is called while the stage shows the role's first frame; the player picks a body part (offered for every role) and can watch it once (`role.preview()`, unscored). A person copied with the whole body is scored limb by limb (pose channel); anything copied with a hand or the head is scored as that part following the role's box (trajectory channel).
+- During a turn the role is drawn smoothly (blended between samples) with a faint copy `leadMs` (400) ahead, so the next move shows coming.
+- Speed: `speed` 1, 0.75 or 0.5 slows every turn. Turns are scored in the clip's own time (the player's frames are sped back up), so slow motion does not change scores, and lag is forgiven in proportion. The reveal plays at the clip's own speed with each cutout sped up to match.
+- End: `ui.results(rows)` (name, role, look, score, winner or tied, plus `guide` and `timeline` in clip media ms for Lisa's `drawReveal`), then the reveal records on `ui.revealCanvas()` and `ui.revealReady(url)` hands over a webm to play and download. The reveal is four segments in one file (`recordSegments` in `src/cutout.ts`): a title card, the cast over the clip at the clip's own speed, the busiest 6 seconds side by side with the original, and a cast card (each player's cutout, role, score, winner).
 
 ## How the engine is wired
 

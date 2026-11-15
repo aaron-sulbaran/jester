@@ -21,3 +21,12 @@ td { padding: 2px 12px 2px 0; }
 #revealCanvas, #revealVideo { width: 100%; max-width: 640px; display: block; border-radius: 10px; background: #000; }
 #revealDownload { color: #f5c542; }
 select { background: #15131a; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 4px 8px; }
+
+.modes { display: flex; gap: 8px; margin: 0 0 8px; }
+.tab { background: #2a2a35; color: #ddd; }
+.tab.on { background: #f5c542; color: #111; }
+.simrow { margin: 0 0 12px; }
+#blindNames input { margin-right: 6px; }
+#blindBoard td { padding: 4px 12px 4px 0; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+#blindCanvas, #blindVideo { width: 100%; max-width: 960px; border-radius: 8px; background: #000; }

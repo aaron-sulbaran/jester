@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkTracks } from "../src/index.ts";
-import type { Box } from "../src/index.ts";
-import { frame, person } from "./synth.ts";
+import { linkTracks, pointNearFrame, rankCandidates, rejoinTracks } from "../src/index.ts";
+import type { Box, Detection, Track } from "../src/index.ts";
+import { frame, person, trackOf, range } from "./synth.ts";
 
 const box = (cx: number, cy = 0.5, w = 0.1, h = 0.4): Box => ({ cx, cy, w, h });
 
@@ -16,11 +16,11 @@ test("linkTracks: one person across 30 frames is one track of 30 points", () => 
   assert.equal(tracks[0]!.points[7]!.tMs, 700);
 });
 
-test("linkTracks: a gap of 3 frames keeps one track, a gap of 8 makes two", () => {
+test("linkTracks: a gap of 8 frames keeps one track, a gap of 20 makes two", () => {
   const build = (missing: number) =>
-    Array.from({ length: 30 }, (_, i) => frame(i, i >= 10 && i < 10 + missing ? [] : [person(box(0.5))]));
-  assert.equal(linkTracks(build(3), []).length, 1);
-  assert.equal(linkTracks(build(8), []).length, 2);
+    Array.from({ length: 40 }, (_, i) => frame(i, i >= 10 && i < 10 + missing ? [] : [person(box(0.5))]));
+  assert.equal(linkTracks(build(8), []).length, 1);
+  assert.equal(linkTracks(build(20), []).length, 2);
 });
 
 test("linkTracks: two people side by side keep stable ids", () => {
@@ -61,4 +61,117 @@ test("linkTracks: a cut ends every track and moves on to the next shot", () => {
   assert.deepEqual(tracks.map((t) => t.shot), [0, 1]);
   assert.equal(tracks[0]!.points.length, 10);
   assert.equal(tracks[1]!.points[0]!.frame, 10);
+});
+
+/** Links and re-joins, as the clip side does. */
+const follow = (frames: Parameters<typeof linkTracks>[0]) => rejoinTracks(linkTracks(frames, []));
+
+test("rejoinTracks: one person who drops out for 20 frames comes back as the same track", () => {
+  const frames = Array.from({ length: 80 }, (_, i) =>
+    frame(i, i >= 30 && i < 50 ? [] : [person(box(i < 30 ? 0.5 : 0.53))]));
+  assert.equal(linkTracks(frames, []).length, 2, "linking alone splits them");
+  const tracks = follow(frames);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.id, 0);
+  assert.equal(tracks[0]!.points.length, 60);
+  assert.ok(tracks[0]!.points.every((p, i, all) => i === 0 || p.frame > all[i - 1]!.frame));
+});
+
+test("rejoinTracks: two different people one after the other stay two tracks", () => {
+  const elsewhere = Array.from({ length: 80 }, (_, i) =>
+    frame(i, i < 30 ? [person(box(0.2))] : i >= 40 ? [person(box(0.75))] : []));
+  assert.equal(follow(elsewhere).length, 2, "a different place");
+  const bigger = Array.from({ length: 80 }, (_, i) =>
+    frame(i, i < 30 ? [person(box(0.5))] : i >= 40 ? [person(box(0.5, 0.5, 0.18, 0.75))] : []));
+  assert.equal(follow(bigger).length, 2, "the same place but a much bigger person");
+});
+
+/** Two people swapping sides, 0.01 of the width a frame; each is missing on the frames given. */
+function swap(missingLeft: (i: number) => boolean, missingRight: (i: number) => boolean) {
+  return Array.from({ length: 61 }, (_, i) => {
+    const people: Detection[] = [];
+    if (!missingLeft(i)) people.push(person(box(0.2 + 0.01 * i)));
+    if (!missingRight(i)) people.push(person(box(0.8 - 0.01 * i)));
+    return frame(i, people);
+  });
+}
+
+function assertSwapped(tracks: Track[]) {
+  assert.equal(tracks.length, 2);
+  for (const track of tracks) {
+    const first = track.points[0]!.box.cx;
+    const last = track.points[track.points.length - 1]!.box.cx;
+    assert.ok(first < 0.5 ? last > 0.5 : last < 0.5, `track ${track.id} crossed over (${first} to ${last})`);
+    assert.ok(track.points.every((p, i, all) => i === 0 || (first < 0.5 ? p.box.cx > all[i - 1]!.box.cx : p.box.cx < all[i - 1]!.box.cx)), `track ${track.id} kept one direction`);
+  }
+}
+
+test("rejoinTracks: two people who swap sides while one is briefly lost are not merged into each other", () => {
+  const tracks = follow(swap(() => false, (i) => i >= 25 && i <= 35));
+  assertSwapped(tracks);
+  assert.deepEqual(tracks.map((t) => t.points.length).sort((a, b) => a - b), [50, 61]);
+});
+
+test("rejoinTracks: two people lost together while crossing come back on the side each was heading", () => {
+  const lost = (i: number) => i >= 26 && i <= 34;
+  assertSwapped(follow(swap(lost, lost)));
+  const longer = (i: number) => i >= 24 && i <= 44;
+  assertSwapped(follow(swap(longer, longer)));
+});
+
+test("rejoinTracks: four dancers who drop on and off come out as four people", () => {
+  const spots = [0.2, 0.4, 0.6, 0.8];
+  const gone = (dancer: number, i: number) =>
+    (dancer === 1 && i >= 20 && i < 45) || (dancer === 2 && i >= 30 && i < 50) || (dancer === 3 && i >= 70 && i < 82) || (dancer === 0 && i >= 100 && i < 130);
+  const frames = Array.from({ length: 150 }, (_, i) => frame(i, spots.flatMap((cx, dancer) =>
+    gone(dancer, i) ? [] : [person(box(cx + 0.02 * Math.sin(i / 6 + dancer), 0.5 + 0.01 * Math.cos(i / 5)))])));
+  const linked = linkTracks(frames, []);
+  assert.ok(linked.length > 4, "linking alone splits some dancers");
+  const tracks = rejoinTracks(linked);
+  assert.equal(tracks.length, 4);
+  const people = rankCandidates(tracks, { sampleHz: 15, frameCount: frames.length });
+  assert.equal(people.length, 4);
+  for (const track of tracks) {
+    const xs = track.points.map((p) => p.box.cx);
+    assert.ok(Math.max(...xs) - Math.min(...xs) < 0.1, `track ${track.id} stayed with one dancer`);
+  }
+});
+
+const piece = (id: number, from: number, to: number, cx: number, shot = 0): Track =>
+  trackOf(id, range(from, to - from + 1), () => ({ cx, cy: 0.5, w: 0.2, h: 0.6 }), shot);
+
+test("rejoinTracks: one person split three times becomes one track with the first id", () => {
+  const joined = rejoinTracks([piece(1, 0, 39, 0.5), piece(2, 40, 79, 0.55), piece(3, 82, 120, 0.5)]);
+  assert.equal(joined.length, 1);
+  assert.equal(joined[0]!.id, 1);
+  assert.equal(joined[0]!.points.length, 40 + 40 + 39);
+});
+
+test("rejoinTracks: two people side by side each keep their own pieces", () => {
+  const joined = rejoinTracks([piece(1, 0, 30, 0.2), piece(2, 0, 30, 0.8), piece(3, 31, 60, 0.82), piece(4, 32, 60, 0.21)]);
+  assert.deepEqual(joined.map((t) => [t.id, t.points.length, t.points.at(-1)!.box.cx]), [[1, 60, 0.21], [2, 61, 0.82]]);
+});
+
+test("rejoinTracks: overlapping in time, far apart, too long a gap and other shots stay apart", () => {
+  assert.equal(rejoinTracks([piece(1, 0, 30, 0.5), piece(2, 20, 50, 0.5)]).length, 2);
+  assert.equal(rejoinTracks([piece(1, 0, 30, 0.1), piece(2, 31, 50, 0.9)]).length, 2);
+  assert.equal(rejoinTracks([piece(1, 0, 30, 0.5), piece(2, 90, 120, 0.5)]).length, 2);
+  assert.equal(rejoinTracks([piece(1, 0, 30, 0.5), piece(2, 31, 60, 0.5, 1)]).length, 2);
+  assert.equal(rejoinTracks([piece(1, 0, 30, 0.5), piece(2, 60, 90, 0.5)]).length, 1, "3 seconds or less joins");
+});
+
+test("rejoinTracks: a wide frame counts sideways steps in box heights", () => {
+  // 0.3 of the width is half a box height in a square frame but 0.9 in a 16:9 one.
+  const pieces = () => [piece(1, 0, 30, 0.4), piece(2, 31, 60, 0.7)];
+  assert.equal(rejoinTracks(pieces(), { aspect: 1 }).length, 1);
+  assert.equal(rejoinTracks(pieces(), { aspect: 16 / 9 }).length, 2);
+});
+
+test("pointNearFrame: the point at the frame, else the nearest, earlier on a tie", () => {
+  const track = trackOf(0, [2, 3, 4, 10, 11], (f) => box(f / 20));
+  assert.equal(pointNearFrame(track, 3)!.frame, 3);
+  assert.equal(pointNearFrame(track, 7)!.frame, 4);
+  assert.equal(pointNearFrame(track, 8)!.frame, 10);
+  assert.equal(pointNearFrame(track, 0)!.frame, 2);
+  assert.equal(pointNearFrame({ id: 1, shot: 0, points: [] }, 3), null);
 });

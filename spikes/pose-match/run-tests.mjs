@@ -3,3 +3,6 @@ import "./score.test.mjs";
 import "./level.test.mjs";
 import "./webcam.test.mjs";
 import "./calibration.test.mjs";
+import "./recorder.test.mjs";
+import "./reveal.test.mjs";
+import "./rooms.test.mjs";

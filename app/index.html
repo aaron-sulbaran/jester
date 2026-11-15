@@ -12,6 +12,15 @@
     <p class="sub">Copy the clip. Get a score.</p>
   </header>
 
+  <nav class="modes">
+    <button id="modeSolo" class="tab on">Solo</button>
+    <button id="modeBlind" class="tab">Blind mode (pass the laptop)</button>
+  </nav>
+  <div class="row simrow">
+    <label><input id="simPlayer" type="checkbox" /> Simulated player (no camera)</label>
+    <label id="noiseWrap" class="hidden">Wobble <input id="noise" type="range" min="0" max="40" value="10" /> <span id="noiseVal">10</span> deg</label>
+  </div>
+
   <section id="setup" class="panel">
     <div class="row">
       <button id="demoClip">Use the starter clip</button>
@@ -21,20 +30,54 @@
     <div class="row hidden" id="partRow">
       <label>Be the object with your <select id="bodyPart"></select></label>
     </div>
-    <div class="row">
-      <label><input id="simPlayer" type="checkbox" /> Simulated player (no camera)</label>
-      <label id="noiseWrap" class="hidden">Wobble <input id="noise" type="range" min="0" max="40" value="10" /> <span id="noiseVal">10</span> deg</label>
-    </div>
     <progress id="progress" value="0" max="1"></progress>
     <p id="status">Pick a clip to start.</p>
     <button id="start" disabled>Start round</button>
+  </section>
+
+  <section id="blind" class="panel hidden">
+    <div id="blindSetup">
+      <p>Everyone gets a secret role from the clip: a person, or a thing like a ball. Nobody is told what they are. You see only a moving outline or stick figure, never the clip, and copy it. At the end, everyone is put back together in one video.</p>
+      <div class="row">
+        <button id="blindDribble">Dribble: one player dribbles, one is the ball</button>
+        <button id="blindDemo">Dancer and a ball</button>
+        <label class="file">Or pick a video <input id="blindFile" type="file" accept="video/*" /></label>
+      </div>
+      <div class="row">
+        <label>Players <select id="blindCount"><option>2</option><option selected>3</option><option>4</option></select></label>
+        <span id="blindNames"></span>
+      </div>
+      <div class="row">
+        <label>Speed <select id="blindSpeed"><option value="1">100% (the clip's own speed)</option><option value="0.75" selected>75%</option><option value="0.5">50% (first time)</option></select></label>
+      </div>
+      <p id="blindStatus">Pick a clip.</p>
+      <button id="blindDeal" disabled>Deal secret roles</button>
+    </div>
+    <div id="blindTurn" class="hidden">
+      <h2 id="turnTitle"></h2>
+      <p id="turnText"></p>
+      <div class="row hidden" id="turnPartRow"><label>Copy it with your <select id="turnPart"></select></label></div>
+      <button id="turnPreview" class="hidden">Watch it once</button>
+      <button id="turnReveal">Show my role</button>
+      <button id="turnStart" class="hidden">Start my turn</button>
+      <button id="turnNext" class="hidden">Pass the laptop</button>
+    </div>
+    <div id="blindEnd" class="hidden">
+      <h2>The reveal</h2>
+      <table id="blindBoard"></table>
+      <p id="blindEndStatus"></p>
+      <canvas id="blindCanvas" width="960" height="540"></canvas>
+      <video id="blindVideo" class="hidden" controls playsinline></video>
+      <p><a id="blindDownload" class="hidden" download="jester-blind-reveal.webm">Download the reveal</a></p>
+      <button id="blindAgain">Play again</button>
+    </div>
   </section>
 
   <section id="stage" class="stage">
     <figure>
       <video id="clip" playsinline muted></video>
       <canvas id="clipCanvas" width="480" height="360"></canvas>
-      <figcaption>Clip</figcaption>
+      <figcaption id="clipCaption">Clip</figcaption>
     </figure>
     <figure>
       <video id="cam" playsinline muted></video>

@@ -97,3 +97,15 @@ export function withConfirmBoxes(
     return { ...candidate, boxAtConfirm };
   });
 }
+
+/**
+ * The track's point nearest to `frame` (the earlier one on a tie), so a pick frame can show
+ * someone who is not on it where they were closest to it. Null for a track with no points.
+ */
+export function pointNearFrame(track: Track, frame: number): Track["points"][number] | null {
+  let best: Track["points"][number] | null = null;
+  for (const point of track.points) {
+    if (!best || Math.abs(point.frame - frame) < Math.abs(best.frame - frame)) best = point;
+  }
+  return best;
+}
