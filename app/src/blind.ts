@@ -105,6 +105,11 @@ export interface GameOptions {
   speed?: number;
   /** How far ahead (ms of play time) the faint look-ahead copy of the role runs; 0 turns it off. */
   leadMs?: number;
+  /**
+   * Record the reveal video at the end (default true). Online blind mode turns it off: each device plays
+   * one role, so the group reveal is drawn from everyone's results once they are all in.
+   */
+  reveal?: boolean;
 }
 
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -676,6 +681,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     timeline: mediaTimeline(s, scene, speed),
   }));
   ui.results(rows);
+  if (options.reveal === false) return rows;
   const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share));
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
