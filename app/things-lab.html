@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Things lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 760px; background: #fff; color: #111; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    h2 { font-size: 1rem; margin: 16px 0 6px; }
+    p.sub { margin: 0 0 12px; color: #555; }
+    progress { width: 100%; }
+    #status { min-height: 1.4em; }
+    canvas { display: block; width: 100%; height: auto; background: #000; }
+    #blind { background: #f2efe8; }
+    video { display: none; }
+    #things { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+    #things button { text-align: left; padding: 6px 8px; font: inherit; cursor: pointer; }
+    #things button[aria-pressed="true"] { font-weight: bold; outline: 2px solid #f5c542; }
+    #things .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+    #things .why { color: #a33; font-weight: normal; }
+    table { border-collapse: collapse; margin-top: 12px; }
+    td { border: 1px solid #ccc; padding: 4px 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Things lab</h1>
+  <p class="sub">Pick a video with an animal or a ball in it. Boxes show every thing found; pick one to see what a blind mode player would see.</p>
+  <input id="file" type="file" accept="video/*" />
+  <progress id="progress" value="0" max="1"></progress>
+  <p id="status">Pick a video to start.</p>
+
+  <section id="play" class="hidden">
+    <canvas id="overlay" width="720" height="405"></canvas>
+    <h2>Things found, best first</h2>
+    <div id="things"></div>
+  </section>
+
+  <section id="blindView" class="hidden">
+    <h2 id="blindTitle">What the player sees</h2>
+    <canvas id="blind" width="720" height="405"></canvas>
+  </section>
+
+  <table id="facts"></table>
+
+  <video id="video" playsinline muted loop></video>
+  <script type="module" src="./src/things-lab.ts"></script>
+</body>
+</html>
