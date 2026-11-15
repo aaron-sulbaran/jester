@@ -15,7 +15,7 @@
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
-import { boxFromLandmarks, hideUnsureJoints, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
+import { boxFromLandmarks, hideUnsureJoints, partName, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
@@ -93,7 +93,7 @@ export interface RoleInfo {
 export interface ResultRow {
   name: string;
   color: string;
-  /** "the ball, with the right hand" or "Person 2". */
+  /** What the player played, from `partName`: "the left hand of the person on the left", "the ball, with the right hand", or "Person 2" on a clip read before parts were named. */
   role: string;
   look: Look;
   score: number | null;
@@ -637,7 +637,7 @@ export function demoScene(): Scene {
   const samples = makeSequenceTimeline(DEMO_SEQUENCE, { idleDegrees: 2, aspect: starterAspect });
   const durationMs = Math.floor(samples[samples.length - 1].t * 1000);
   return syntheticScene("Demo scene", durationMs, [{
-    label: "the dancer",
+    label: "the person in the clip",
     poseAt: (tMs) => {
       const s = sampleAt(samples, tMs / 1000);
       // Shrink to 80% and move to the left third. A uniform scale and shift keeps every limb angle.
@@ -665,8 +665,8 @@ export function duoScene(): Scene {
       : null;
   };
   return syntheticScene("Dance duo", durationMs, [
-    { label: "the dancer on the left", poseAt: dancer(forward, 0.3) },
-    { label: "the dancer on the right", poseAt: dancer(backward, 0.7) },
+    { label: "the person on the left", poseAt: dancer(forward, 0.3) },
+    { label: "the person on the right", poseAt: dancer(backward, 0.7) },
   ], []);
 }
 
@@ -705,7 +705,7 @@ export function dribbleScene(): Scene {
     return { pose, box };
   };
   return syntheticScene("Dribble", durationMs,
-    [{ label: "the dribbler", poseAt: (tMs) => toTuples(frameAt(tMs).pose) }],
+    [{ label: "the person in the clip", poseAt: (tMs) => toTuples(frameAt(tMs).pose) }],
     [{ label: "the basketball", boxAt: (tMs) => frameAt(tMs).box }]);
 }
 
@@ -1371,7 +1371,7 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
   const tied = scores.filter((x) => x !== null && x === top).length > 1;
   const rows: ResultRow[] = seats.map((s, i) => ({
     name: s.name, color: s.color, look: s.look,
-    role: s.part !== "body" ? `${s.guide.subject.label}, with the ${BODY_PARTS[s.part].label.toLowerCase()}` : s.guide.subject.label,
+    role: partName(s.guide.subject, s.part),
     score: s.result?.score ?? null, tier: s.result?.tier ?? null,
     winner: top !== null && scores[i] === top, tied,
     guide: s.original,
