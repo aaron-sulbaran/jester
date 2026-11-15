@@ -771,7 +771,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="wins place-title"></span><span class="aside place-blurb"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
@@ -781,10 +781,7 @@ export function initGame(deps: GameDeps) {
       podiumJesters.push(j);
       li.querySelector("b")!.textContent = r.name;
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
-      const rank = rankFor(r.score);
-      letters(li.querySelector<HTMLElement>(".place-title")!, rank.title);
-      li.querySelector(".place-blurb")!.textContent = rank.blurb;
-      li.querySelector(".place-award")!.textContent = `Award: ${awards[i]}`;
+      li.querySelector(".place-award")!.textContent = awards[i]!;
       const score = li.querySelector<HTMLElement>(".place-score")!;
       if (r.score == null) score.textContent = "no score";
       else countUp(score, r.score, 250 + i * 180);

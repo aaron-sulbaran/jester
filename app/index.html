@@ -62,7 +62,7 @@
     </dialog>
     <!-- The camera and tracker are starting (ui/feel.ts). Shown only if it takes a moment. -->
     <dialog class="leave" id="cameraWait" aria-labelledby="cameraWaitText">
-      <div class="note-wrap"><p class="note" id="cameraWaitText">Starting the camera and the pose tracker...</p></div>
+      <div class="note-wrap"><p class="note" id="cameraWaitText">Starting the camera...</p></div>
       <progress id="cameraWaitBar" value="0" max="1"></progress>
       <button type="button" class="btn btn-quiet" id="cameraWaitCancel">Cancel</button>
     </dialog>
@@ -72,7 +72,7 @@
       <div class="note-wrap"><p class="note" id="cameraText"></p></div>
       <div class="row-actions">
         <button type="button" class="btn btn-quiet" id="cameraHome">Go home</button>
-        <button type="button" class="btn btn-quiet" id="cameraUnderstudy">Let the simulated player take this turn</button>
+        <button type="button" class="btn btn-quiet" id="cameraUnderstudy">Let the computer play this turn</button>
         <button type="button" class="btn btn-main" id="cameraRetry"><span class="ticket"><span class="ticket-text">Try the camera again</span></span></button>
       </div>
     </dialog>
@@ -216,7 +216,7 @@
         <button type="button" class="chip" data-speed="0.5" aria-pressed="false">Half speed</button>
       </div>
       <!-- Only with ?demo=1 (ui/feel.ts): the simulated player plays every turn, so no camera is needed. -->
-      <label class="consent" id="demoRow" hidden><input type="checkbox" id="demoUnderstudy" checked /><span>Demo: the simulated player plays every turn, so no camera is needed.</span></label>
+      <label class="consent" id="demoRow" hidden><input type="checkbox" id="demoUnderstudy" checked /><span>Demo: the computer plays every turn, so no camera is needed.</span></label>
       <div class="row-actions">
         <button type="button" class="btn btn-quiet" id="castBack">Back</button>
         <button type="button" class="btn btn-main" id="deal"><span class="ticket"><span class="ticket-text">Deal the secret parts</span></span></button>

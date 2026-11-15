@@ -16,10 +16,10 @@ test("camera errors map to the right card", () => {
   assert.equal(cameraTrouble(undefined).kind, "tracker");
 });
 
-test("every camera card offers the simulated player and has no em dashes", () => {
+test("camera cards use plain words and no em dashes", () => {
   for (const e of [named("NotAllowedError"), named("NotFoundError"), named("NotReadableError"), new TypeError("getUserMedia"), new Error("x")]) {
     const c = cameraTrouble(e);
-    assert.match(c.text, /simulated player/);
+    assert.doesNotMatch(c.title + c.text, /simulated|tracker|pose/i);
     assert.doesNotMatch(c.title + c.text, /—/);
   }
 });
@@ -36,10 +36,10 @@ test("ranks follow the score tiers", () => {
   assert.equal(rankFor(Number.NaN).title, "No score");
 });
 
-test("rank tiers are ordered best first and every one has a blurb", () => {
+test("rank tiers are ordered best first", () => {
   for (let i = 1; i < RANKS.length; i++) assert.ok(RANKS[i - 1]!.min > RANKS[i]!.min);
   assert.equal(RANKS[RANKS.length - 1]!.min, 0);
-  for (const r of RANKS) { assert.ok(r.blurb.length > 0); assert.doesNotMatch(r.title + r.blurb, /—/); }
+  for (const r of RANKS) assert.doesNotMatch(r.title, /—/);
 });
 
 test("everyone gets an award, the winner gets the crown", () => {

@@ -1,7 +1,9 @@
 // The host: a canned line (feelText.ts) spoken by the browser's own speech at the drum roll, the crowning and the
-// results. No network and no keys; a browser without speech stays quiet. The clip's own sound is not touched.
+// results. No network and no keys; a browser without speech stays quiet. It follows the game's sound switch
+// (soundOn in sfx.ts). The clip's own sound is not touched.
 
 import { hostLine, type HostEvent } from "./feelText.ts";
+import { soundOn } from "./sfx.ts";
 
 const speech = typeof window !== "undefined" && "speechSynthesis" in window ? window.speechSynthesis : null;
 
@@ -16,7 +18,7 @@ speech?.getVoices();
 
 /** Says a line for `event`, cutting off any line still being said. */
 export function say(event: HostEvent, vars: { winner?: string; title?: string } = {}) {
-  if (!speech) return;
+  if (!speech || !soundOn()) return;
   try {
     speech.cancel();
     const u = new SpeechSynthesisUtterance(hostLine(event, vars));
