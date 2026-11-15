@@ -13,6 +13,7 @@ import { videoScene, type Scene } from "../blind.ts";
 import { bankSceneId, packScene, sceneFromBank, setHostUpload, UPLOAD_ID } from "../onlineClip.ts";
 import { addressWithRoom, joinLink, linkShown, roomCodeFromSearch } from "../roomLink.ts";
 import { FaceJester, variantFor, type JesterAnim } from "./faceJester.ts";
+import { playersFor } from "../castWords.ts";
 
 export const ONLINE_SCENES = { duo: duoScene, dribble: dribbleScene, demo: demoScene } as const;
 export type OnlineSceneId = keyof typeof ONLINE_SCENES;
@@ -99,21 +100,81 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
 
   // ---- The host's choices: the clip (remembered for next time), and Blind or Normal ----
 
+  // The clip: taped cards like the start screen's library. Surprise me (a random bank clip nobody sees first), one
+  // card per bank clip, and Upload your own. The built-in test scenes show only on ?dev=1.
   const KEY = "jester.onlineMode";
-  const modes = [...document.querySelectorAll<HTMLButtonElement>("#roomModes .mode")];
-  const pickMode = (id: string, remember = true) => {
-    for (const m of modes) m.setAttribute("aria-checked", String(m.dataset.scene === id));
-    if (remember) { try { localStorage.setItem(KEY, id); } catch { /* private mode: it just will not be remembered */ } }
-  };
+  const pickRow = $("roomModes");
+  const bankSelect = $<HTMLSelectElement>("roomBankSelect");
+  const uploadInput = $<HTMLInputElement>("roomUploadFile");
+  const uploadStatus = $("roomUploadStatus");
+  let bank: BankClip[] = [];
+  let uploaded: Scene | null = null;
+  const allCards = () => [...pickRow.querySelectorAll<HTMLButtonElement>("[role=radio]")];
+  /** The cards this player can see: the test scenes only with ?dev=1. */
+  const cards = () => allCards().filter((b) => !b.hidden && (!b.classList.contains("dev-only") || document.body.classList.contains("dev")));
+  const keyOf = (b: HTMLElement) => (b.dataset.scene === "bank" ? `bank:${b.dataset.clip}` : b.dataset.scene ?? "");
+  const pickedCard = () => cards().find((b) => b.getAttribute("aria-checked") === "true") ?? null;
+  function pickCard(key: string, remember = true) {
+    const target = cards().find((b) => keyOf(b) === key) ?? cards()[0] ?? null;
+    for (const b of allCards()) b.setAttribute("aria-checked", String(b === target));
+    if (target?.dataset.scene === "bank") bankSelect.value = target.dataset.clip ?? "";
+    $("roomUploadRow").hidden = target?.dataset.scene !== UPLOAD_ID;
+    if (remember && target) { try { localStorage.setItem(KEY, keyOf(target)); } catch { /* private mode: it just will not be remembered */ } }
+    updateDeal();
+  }
   let saved: string | null = null;
   try { saved = localStorage.getItem(KEY); } catch { /* ignore */ }
-  pickMode(modes.some((m) => m.dataset.scene === saved) ? saved! : "duo", false);
-  modes.forEach((m) => m.addEventListener("click", () => pickMode(m.dataset.scene!)));
-  const chosenScene = (): string => {
-    const id = modes.find((m) => m.getAttribute("aria-checked") === "true")?.dataset.scene ?? "duo";
-    const ids = Object.keys(ONLINE_SCENES) as OnlineSceneId[];
-    return id === "surprise" ? ids[Math.floor(Math.random() * ids.length)]! : id;
+  pickRow.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[role=radio]");
+    if (b) pickCard(keyOf(b));
+  });
+
+  /** One taped photo per bank clip. In Blind the picture stays under a question mark, as on the start screen. */
+  function bankCard(clip: BankClip, i: number): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "clip";
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", "false");
+    b.dataset.scene = "bank";
+    b.dataset.clip = clip.id;
+    b.innerHTML = `<span class="washi w-${["mint", "dots", "pink"][i % 3]}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
+    if (clip.poster) {
+      // The poster url comes from the bank, so it is set as an attribute rather than written into markup.
+      const img = document.createElement("img");
+      img.src = clip.poster;
+      img.alt = "";
+      img.loading = "lazy";
+      b.querySelector(".clip-pic")!.prepend(img);
+    }
+    const players = playersFor(clip.people, clip.things);
+    b.querySelector(".clip-name")!.textContent = clip.title;
+    b.querySelector(".clip-hint")!.textContent = `${players} ${players === 1 ? "player" : "players"}, ${Math.round(clip.durationMs / 1000)} s`;
+    return b;
+  }
+  const surpriseHint = () => {
+    $("roomSurpriseHint").textContent = !bank.length ? "One of the built-in scenes, at random."
+      : playMode === "blind" ? "Any clip from the bank. Nobody sees it until the end." : "Any clip from the bank, at random.";
   };
+  void listBank().then((r) => {
+    bank = r.data ?? [];
+    bankSelect.innerHTML = bank.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.title)}</option>`).join("");
+    const upload = pickRow.querySelector('[data-scene="upload"]');
+    for (const [i, clip] of bank.entries()) pickRow.insertBefore(bankCard(clip, i), upload);
+    surpriseHint();
+    pickCard(saved ?? "surprise", false);
+  });
+  /** What Deal will play: a bank clip (Surprise me picks one now), the upload, or a built-in scene. */
+  function chosenPick(): { scene: string; clip?: string } {
+    const b = pickedCard();
+    const scene = b?.dataset.scene ?? "surprise";
+    if (scene === "surprise") {
+      if (bank.length) return { scene: "bank", clip: bank[Math.floor(Math.random() * bank.length)]!.id };
+      const ids = Object.keys(ONLINE_SCENES) as OnlineSceneId[];
+      return { scene: ids[Math.floor(Math.random() * ids.length)]! };
+    }
+    return scene === "bank" ? { scene, clip: b!.dataset.clip } : { scene };
+  }
 
   // One paper switch, like the start screen's. It starts on whatever the host had picked there.
   const plays = [...document.querySelectorAll<HTMLButtonElement>("#roomPlayMode .mode")];
@@ -122,29 +183,12 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     playMode = m;
     for (const b of plays) b.setAttribute("aria-checked", String(b.dataset.play === m));
     $("roomPlaySays").textContent = plays.find((b) => b.dataset.play === m)?.querySelector("span")?.textContent ?? "";
+    pickRow.dataset.play = m; // posters show in Normal only, as on the start screen
+    surpriseHint();
   };
   plays.forEach((b) => b.addEventListener("click", () => setPlay(b.dataset.play as PlayMode)));
   setPlay("blind");
 
-  // Video bank: the host picks a clip; every device loads it from the bank. Upload: the host reads their own file.
-  const bankSelect = $<HTMLSelectElement>("roomBankSelect");
-  const uploadInput = $<HTMLInputElement>("roomUploadFile");
-  const uploadStatus = $("roomUploadStatus");
-  let bank: BankClip[] = [];
-  let uploaded: Scene | null = null;
-  const syncClipRows = () => {
-    const id = modes.find((m) => m.getAttribute("aria-checked") === "true")?.dataset.scene;
-    $("roomBankRow").hidden = id !== "bank";
-    $("roomUploadRow").hidden = id !== "upload";
-    updateDeal();
-  };
-  modes.forEach((m) => m.addEventListener("click", syncClipRows));
-  void listBank().then((r) => {
-    bank = r.data ?? [];
-    bankSelect.innerHTML = bank.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.title)}</option>`).join("");
-    const card = modes.find((m) => m.dataset.scene === "bank");
-    if (card) card.hidden = bank.length === 0;
-  });
   uploadInput.addEventListener("change", async () => {
     const file = uploadInput.files?.[0];
     uploaded = null; setHostUpload(null);
@@ -243,7 +287,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   function updateDeal() {
     if (!room) return;
     const roster = room.roster() as Member[];
-    const waitingOnUpload = chosenScene() === UPLOAD_ID && !uploaded;
+    const waitingOnUpload = pickedCard()?.dataset.scene === UPLOAD_ID && !uploaded;
     $<HTMLButtonElement>("roomDeal").disabled = !room.isHost || roster.length < 2 || waitingOnUpload;
   }
 
@@ -359,22 +403,23 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   $("roomDeal").addEventListener("click", async () => {
     if (!room) return;
     problem("");
-    const id = chosenScene();
+    const pick = chosenPick();
     const deal = $<HTMLButtonElement>("roomDeal");
     deal.disabled = true;
     try {
-      if (id === UPLOAD_ID) {
+      if (pick.scene === UPLOAD_ID) {
         if (!uploaded) return;
         // Deal first, then send the clip's guides: the others wait for them to arrive.
         hostDeal(room as never, uploaded, UPLOAD_ID, { speed: 1, mode: playMode });
         await room.sendMedia("scene", packScene(uploaded).data!);
-      } else if (id === "bank") {
-        const clipId = bankSelect.value;
+      } else if (pick.scene === "bank" && pick.clip) {
+        const clipId = pick.clip;
+        bankSelect.value = clipId;
         const s = await sceneFromBank(clipId, hooks.clipVideo);
         if (s.error !== null) return problem(s.error);
         hostDeal(room as never, s.data, bankSceneId(clipId), { speed: 1, mode: playMode });
       } else {
-        hostDeal(room as never, ONLINE_SCENES[id as OnlineSceneId](), id, { speed: 1, mode: playMode });
+        hostDeal(room as never, ONLINE_SCENES[pick.scene as OnlineSceneId](), pick.scene, { speed: 1, mode: playMode });
       }
     } catch (err) {
       problem((err as Error).message);

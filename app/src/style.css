@@ -460,10 +460,28 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .room-table .aside { display: block; text-align: left; }
 .room-pick { width: 100%; gap: 10px; }
 .room-step { font: 700 30px/1 var(--hand); letter-spacing: -.045em; }
-#roomModes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
-#roomModes .mode { width: auto; padding: 10px 14px 12px; }
-#roomModes .mode b { font-size: 25px; }
-#roomModes .mode span { font-size: 13px; }
+/* The clip pick: one row of taped photos that scrolls sideways, like the start screen's library. The padding leaves
+   room for the tape, the picked card's star and the hard shadows inside the scrolling row. */
+#roomModes {
+  display: flex; gap: 22px; align-items: flex-start; overflow: auto hidden; overscroll-behavior-x: contain;
+  padding: 26px 18px 20px; margin: -14px -18px -6px; scroll-snap-type: x proximity; scroll-padding-inline: 18px;
+  scrollbar-width: thin; scrollbar-color: #B48C61 transparent;
+}
+#roomModes .clip { flex: 0 0 auto; width: 172px; padding: 9px 9px 11px; scroll-snap-align: start; }
+#roomModes .clip:nth-child(even) { rotate: 1.4deg; }
+#roomModes .clip .washi { top: -12px; width: 60px; height: 20px; }
+#roomModes .clip-name { margin-top: 2px; font-size: 21px; overflow-wrap: anywhere; min-height: 2em; }
+#roomModes .clip-hint { font-size: 13px; }
+#roomModes .clip-q { font-size: 46px; }
+#roomModes .clip-star { top: -18px; right: -14px; width: 52px; height: 52px; }
+#roomModes .clip[aria-checked="true"] { translate: -2px -4px; box-shadow: 9px 11px 0 var(--shade); }
+#roomModes .clip[aria-checked="true"] .clip-star { display: block; }
+.room-upload-card .clip-pic { background: var(--card) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
+/* Posters show in Normal only, set by the lobby's own switch (not the start screen's). */
+#roomModes[data-play="blind"] .clip-pic img { display: none; }
+#roomModes[data-play="blind"] .clip-pic .clip-q { display: inline; }
+#roomModes[data-play="normal"] .clip-pic img { display: block; }
+#roomModes[data-play="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .room-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 #roomPlayMode { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg; }
 #roomPlayMode .mode { width: auto; min-width: 120px; min-height: 48px; padding: 6px 20px 8px; place-items: center; text-align: center; background: none; box-shadow: none; rotate: 0deg; transition: background-color .18s var(--ease); }
@@ -549,10 +567,8 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
   .room-seat { width: 100px; }
   .room-seat .face-jester { width: 100px; height: 100px; margin-bottom: -10px; }
   .room-seat-name { font-size: 21px; }
-  #roomModes { gap: 10px; }
-  #roomModes .mode { padding: 8px 10px 10px; }
-  #roomModes .mode b { font-size: 21px; }
-  #roomModes .mode span { font-size: 13px; }
+  #roomModes { gap: 16px; }
+  #roomModes .clip { width: 150px; }
   #roomHostRow, #roomGuestRow { justify-items: stretch; }
   .room-chat-lines { height: calc(var(--lh) * 4); }
   /* The ticket spans the phone, so the stamp lands on its stub inside the edge. */

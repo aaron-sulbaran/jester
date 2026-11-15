@@ -483,16 +483,30 @@
           <div class="room-side" id="roomSidePlay">
           <div class="room-table">
             <div id="roomHostRow" hidden>
-              <div class="field room-pick"><span class="room-step">Pick the clip</span>
-                <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick the clip">
-                  <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              <div class="field room-pick"><span class="room-step" id="roomPickHead">Pick the clip</span>
+                <!-- Taped clip cards, like the start screen's library: Surprise me, one card per bank clip (room.ts adds
+                     them), then Upload your own. The three built-in scenes are for the team only (?dev=1). -->
+                <div class="room-pick-row" id="roomModes" role="radiogroup" aria-labelledby="roomPickHead">
+                  <button type="button" class="clip surprise" role="radio" data-scene="surprise" aria-checked="true">
+                    <span class="washi w-pink" aria-hidden="true"></span>
+                    <span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span>
+                    <span class="clip-name">Surprise me</span>
+                    <span class="clip-hint" id="roomSurpriseHint">Any clip from the bank. Nobody sees it until the end.</span>
+                    <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+                  </button>
+                  <button type="button" class="clip room-upload-card" role="radio" data-scene="upload" aria-checked="false">
+                    <span class="washi w-dots" aria-hidden="true"></span>
+                    <span class="clip-pic" aria-hidden="true"><span class="clip-q">+</span></span>
+                    <span class="clip-name">Upload your own</span>
+                    <span class="clip-hint">A video from your laptop. Your friends never get the file.</span>
+                    <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+                  </button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="duo" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Dance duo</span><span class="clip-hint">Built-in test scene: two dancers.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="demo" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Dance break</span><span class="clip-hint">Built-in test scene: a dancer and a ball.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="dribble" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Pickup game</span><span class="clip-hint">Built-in test scene: dribbling.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
                 </div>
-                <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
+                <!-- Kept for scripts: always in step with the picked bank card. -->
+                <div id="roomBankRow" hidden><select id="roomBankSelect" aria-hidden="true" tabindex="-1"></select></div>
                 <div class="field" id="roomUploadRow" hidden>
                   <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
                   <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
