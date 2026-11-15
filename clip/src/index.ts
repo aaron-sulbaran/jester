@@ -26,3 +26,4 @@ export {
   boxPolygon, boxEllipse, buildThingGuide, thingGuides, THING_STILL, THING_OTHER_SHOT, thingObjectName, thingHint, boxTrackAt,
 } from "./things.ts";
 export type { ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingLinkOptions } from "./things.ts";
+export { meanCentreX, medianCentreX, nameByPosition, positionNames } from "./positions.ts";
