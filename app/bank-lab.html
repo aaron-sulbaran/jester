@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bank lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 820px; background: #fff; color: #111; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    h2 { font-size: 1.05rem; margin: 22px 0 6px; }
+    p.sub { margin: 0 0 12px; color: #555; }
+    button { font: inherit; padding: 6px 12px; cursor: pointer; }
+    button:disabled { cursor: default; opacity: 0.5; }
+    progress { width: 100%; }
+    .status { min-height: 1.4em; margin: 6px 0; }
+    .bad { color: #a33; }
+    .good { color: #1d6b2f; }
+    canvas { display: block; width: 100%; height: auto; background: #000; }
+    video { display: none; }
+    label { display: block; margin: 8px 0 2px; font-weight: 600; }
+    input[type="text"] { font: inherit; width: 100%; box-sizing: border-box; padding: 6px; }
+    ul { padding-left: 20px; margin: 6px 0; }
+    .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border-radius: 2px; }
+    .clip { display: flex; gap: 12px; align-items: center; border-top: 1px solid #ddd; padding: 8px 0; }
+    .clip img { width: 120px; height: 68px; object-fit: cover; background: #222; flex: none; }
+    .clip .what { flex: 1; min-width: 0; }
+    .clip .credit { color: #555; font-size: 0.9rem; }
+    #seedLog li.bad { color: #a33; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Bank lab</h1>
+  <p class="sub">Adds clips to Jester's video bank. Each clip's moves are found here once, so the game plays it with no waiting. Dev server only.</p>
+
+  <section>
+    <h2>1. The bank folder</h2>
+    <button id="pickFolder">Pick the bank folder</button>
+    <button id="reuseFolder" class="hidden">Use the same folder again</button>
+    <p id="folderStatus" class="status">Pick the folder <code>jester-deploy/bank</code>. The browser asks once to let this page write there.</p>
+  </section>
+
+  <section id="addSection">
+    <h2>2. Add a clip</h2>
+    <input id="file" type="file" accept="video/mp4,video/webm" />
+    <progress id="progress" value="0" max="1"></progress>
+    <p id="addStatus" class="status">Pick an MP4 or WebM video. People, animals, balls and cars are found.</p>
+    <div id="found" class="hidden">
+      <canvas id="overlay" width="720" height="405"></canvas>
+      <ul id="subjects"></ul>
+      <ul id="skipped"></ul>
+      <label for="title">Title (hint at the clip without saying who is who)</label>
+      <input id="title" type="text" maxlength="80" />
+      <label for="credit">Credit (who made it, and its licence)</label>
+      <input id="credit" type="text" maxlength="120" />
+      <p><button id="add" disabled>Add to the bank</button></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Starter clips</h2>
+    <p class="sub">Free Wikimedia Commons clips with their credits filled in. Needs them in <code>app/public/_clips/</code>. Clips already in the bank under the same title are left alone.</p>
+    <button id="seed" disabled>Add the starter clips</button>
+    <ul id="seedLog"></ul>
+  </section>
+
+  <section>
+    <h2>In the bank</h2>
+    <p id="bankStatus" class="status">Pick the bank folder to see what is in it.</p>
+    <div id="bankList"></div>
+    <p><button id="check">Check what the game sees</button></p>
+    <p id="checkStatus" class="status"></p>
+  </section>
+
+  <video id="video" playsinline muted></video>
+  <script type="module" src="./src/bank-lab.ts"></script>
+</body>
+</html>
