@@ -164,6 +164,8 @@ test("the cast check is scored by the thing roles left after its drops", () => {
   const drops = (labels: string[]) => ({ ...decided("approve"), castDrops: labels.map((label) => ({ label, why: "" })) });
   assert.equal(castHolds(c.truth, c.input.facts, drops(["Car 2", "Car 3", "Car 4"])), true);
   assert.equal(castHolds(c.truth, c.input.facts, drops(["Car 4"])), false);
+  // The right count with the wrong piece kept: Car 1, the longest, must stay.
+  assert.equal(castHolds(c.truth, c.input.facts, drops(["Car 1", "Car 3", "Car 4"])), false);
   assert.equal(castHolds(c.truth, c.input.facts, decided("approve")), false);
   // Cases without a cast truth, and failed reviews, are not scored on it.
   assert.equal(castHolds({ want: "approve", alsoOk: [] }, c.input.facts, decided("approve")), true);

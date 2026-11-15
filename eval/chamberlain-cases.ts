@@ -20,6 +20,8 @@ export interface SyntheticCase {
   car?: boolean;
   /** How many thing roles should be left after the cast check (cases with a cast only). */
   castThings?: number;
+  /** Things that must stay after the cast check (for a split object, the piece seen the longest). */
+  castKeep?: string[];
   want: Verdict;
   alsoOk?: Verdict[];
   nameCheck?: NameCheck[];
@@ -86,13 +88,13 @@ export const SYNTHETIC: SyntheticCase[] = [
     id: "cast-split-car", about: "one parked car split by the tracker into three pieces, plus a 1.2 s blip (the Brain Rot pattern)",
     title: "jumping jacks", credit: "Sam", move: "jumping-jacks", car: true,
     facts: castFacts([DANCER, castLine("Car 1", "thing", [[3.6, 21.6]], CAR_AT), castLine("Car 2", "thing", [[18.4, 29.6]], { ...CAR_AT, w: 0.36 }), castLine("Car 3", "thing", [[1.2, 3.6]], CAR_AT), castLine("Car 4", "thing", [[24.4, 25.6]], { x: 0.14, y: 0.6, w: 0.28, h: 0.13 })]),
-    want: "approve", castThings: 1,
+    want: "approve", castThings: 1, castKeep: ["Car 1"],
   },
   {
     id: "cast-one-car", about: "one parked car, tracked whole: nothing to drop",
     title: "jumping jacks", credit: "Sam", move: "jumping-jacks", car: true,
     facts: castFacts([DANCER, castLine("Car 1", "thing", [[0.5, 29.5]], CAR_AT)]),
-    want: "approve", castThings: 1,
+    want: "approve", castThings: 1, castKeep: ["Car 1"],
   },
   {
     id: "cast-ghost-ball", about: "a ball seen for under a second that is in none of the frames",
@@ -107,7 +109,7 @@ export function syntheticCase(s: SyntheticCase): EvalCase {
   return {
     id: s.id, source: "synthetic", about: s.about,
     input: { title: s.title, credit: s.credit, facts: { ...CLEAN_FACTS, ...s.facts }, frames: figureFrames(s.move, { ...(s.words ? { words: s.words } : {}), ...(s.car ? { car: true } : {}) }), synthetic: true },
-    truth: { want: s.want, alsoOk: s.alsoOk ?? [], ...(s.nameCheck ? { nameCheck: s.nameCheck } : {}), ...(s.castThings !== undefined ? { castThings: s.castThings } : {}) },
+    truth: { want: s.want, alsoOk: s.alsoOk ?? [], ...(s.nameCheck ? { nameCheck: s.nameCheck } : {}), ...(s.castThings !== undefined ? { castThings: s.castThings } : {}), ...(s.castKeep ? { castKeep: s.castKeep } : {}) },
     truthFrom: "written with the case",
     before: null,
   };

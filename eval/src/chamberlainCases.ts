@@ -47,7 +47,7 @@ export interface Decision {
   playability?: "plays well" | "does not play" | "unsure";
   precedent?: string;
   /** The cast check: things it found to be pieces of another subject or not really there, and what it saw. */
-  castDrops?: { label: string; why: string }[];
+  castDrops?: { label: string; reason?: string; of?: string; why: string }[];
   castNote?: string;
 }
 
@@ -71,7 +71,7 @@ export interface CaseFile {
  * What a case should get: `want`, or one of `alsoOk`; when given, one of these name checks; and when given,
  * this many thing roles left after the cast check's drops.
  */
-export interface Truth { want: Verdict; alsoOk: Verdict[]; nameCheck?: NameCheck[]; castThings?: number }
+export interface Truth { want: Verdict; alsoOk: Verdict[]; nameCheck?: NameCheck[]; castThings?: number; castKeep?: string[] }
 
 export interface EvalCase {
   id: string;
@@ -157,11 +157,16 @@ export function classify(truth: Truth | null, decision: Decision | null): Outcom
   return "escalated";
 }
 
-/** False when the case says how many thing roles should be left and this decision's drops leave another number. */
+/**
+ * False when the case says how many thing roles should be left, or which things must stay, and this decision's
+ * drops leave another number or drop one of them (for a split object, the piece seen the longest is kept).
+ */
 export function castHolds(truth: Truth | null, facts: ClipFacts, decision: Decision | null): boolean {
-  if (truth?.castThings === undefined || !decision) return true;
+  if ((truth?.castThings === undefined && !truth?.castKeep) || !decision) return true;
+  const dropped = new Set((decision.castDrops ?? []).map((d) => d.label));
   const things = facts.subjects.filter((s) => s.kind === "thing").length;
-  return things - (decision.castDrops ?? []).length === truth.castThings;
+  const countOk = truth.castThings === undefined || things - dropped.size === truth.castThings;
+  return countOk && (truth.castKeep ?? []).every((label) => !dropped.has(label));
 }
 
 /** False when the case names the name checks it allows and this decision's is not one of them. */

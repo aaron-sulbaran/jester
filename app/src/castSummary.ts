@@ -73,6 +73,7 @@ export function castText(cast: readonly CastLine[]): string {
  */
 export function applyCast<T extends CastGuide>(guides: readonly T[], drops: readonly string[]): T[] {
   const dropped = new Set(drops);
-  const kept = guides.filter((g) => g.subject.kind === "person" || !dropped.has(g.subject.label));
+  // Only a subject that is plainly a thing is ever removed; anything else, people included, stays.
+  const kept = guides.filter((g) => g.subject.kind !== "thing" || !dropped.has(g.subject.label));
   return kept.length ? kept : [...guides];
 }

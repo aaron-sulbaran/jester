@@ -39,6 +39,9 @@ test("castSummary: when, where and how big each subject is seen", () => {
 test("applyCast: drops only things, and never empties the cast", () => {
   assert.deepEqual(applyCast(brainRot, ["Car 2", "Car 3", "Car 4"]).map((g) => g.subject.label), ["Person 1", "Car 1"]);
   assert.deepEqual(applyCast(brainRot, ["Person 1"]).map((g) => g.subject.label), ["Person 1", "Car 1", "Car 2", "Car 3", "Car 4"]);
+  // Only a subject that is plainly a thing is removed, whatever its label or a malformed kind.
+  const oddKind = [{ ...brainRot[0]!, subject: { kind: "Person" as never, label: "Car 2" } }, brainRot[1]!];
+  assert.equal(applyCast(oddKind, ["Car 2"]).length, 2);
   const onlyThings = brainRot.slice(1, 3);
   assert.equal(applyCast(onlyThings, ["Car 1", "Car 2"]).length, 2);
 });
@@ -49,27 +52,51 @@ const facts = (cast = castSummary(brainRot)): ClipFacts => ({
 });
 
 test("allowedDrops: known things only, once each, never a person, never every subject", () => {
-  const why = "same car";
-  assert.deepEqual(allowedDrops(facts(), [{ label: "Car 2", why }, { label: "Car 2", why }, { label: "Person 1", why }, { label: "Car 9", why }]), [{ label: "Car 2", why }]);
+  const dup = (label: string, of = "Car 1") => ({ label, reason: "duplicate_of" as const, of, why: "same car" });
+  assert.deepEqual(allowedDrops(facts(), [dup("Car 2"), dup("Car 2"), dup("Person 1"), dup("Car 9")]), [dup("Car 2")]);
   const thingsOnly = facts(castSummary(brainRot.slice(1, 3)));
-  assert.deepEqual(allowedDrops(thingsOnly, [{ label: "Car 1", why }, { label: "Car 2", why }]), []);
+  assert.deepEqual(allowedDrops(thingsOnly, [dup("Car 2"), { label: "Car 1", reason: "not_in_frames", why: "x" }]), [dup("Car 2")]);
+  // No cast summary: nothing to check a drop against, so no drops.
+  assert.deepEqual(allowedDrops({ ...facts(), cast: undefined }, [dup("Car 2")]), []);
+  // A drop without a reason code is not accepted.
+  assert.deepEqual(allowedDrops(facts(), [{ label: "Car 2", why: "same car" }]), []);
+});
+
+test("allowedDrops: a thing is never left out only for being still", () => {
+  const still = castSummary([track("Person 1", "person", 0, 30, { cx: 0.5, cy: 0.6, w: 0.3, h: 0.6 }), track("Car 1", "thing", 0.5, 29.5, car)]);
+  assert.deepEqual(allowedDrops(facts(still), [{ label: "Car 1", reason: "not_in_frames", why: "parked; does not move" }]), []);
+  assert.deepEqual(allowedDrops(facts(still), [{ label: "Car 1", reason: "duplicate_of", of: "Car 1", why: "parked" }]), []);
+  assert.deepEqual(allowedDrops(facts(still), [{ label: "Car 1", reason: "duplicate_of", of: "Person 1", why: "parked" }]), []);
+});
+
+test("allowedDrops: a duplicate is a same-kind piece at the same place, and the longer one is kept", () => {
+  // Keeping the shortest piece instead of the longest is refused.
+  assert.deepEqual(allowedDrops(facts(), [{ label: "Car 1", reason: "duplicate_of", of: "Car 3", why: "same car" }]), []);
+  // Car 4 is on the other side of the frame: not a duplicate of Car 1, but a brief ghost.
+  assert.deepEqual(allowedDrops(facts(), [{ label: "Car 4", reason: "duplicate_of", of: "Car 1", why: "same car" }]), []);
+  assert.deepEqual(allowedDrops(facts(), [{ label: "Car 4", reason: "not_in_frames", why: "a blip" }]).map((d) => d.label), ["Car 4"]);
+  // A chain of pieces ends at the one kept; a piece of a dropped ghost is not left out.
+  assert.deepEqual(allowedDrops(facts(), [{ label: "Car 3", reason: "duplicate_of", of: "Car 2", why: "" }, { label: "Car 2", reason: "duplicate_of", of: "Car 1", why: "" }]).map((d) => d.label), ["Car 3", "Car 2"]);
 });
 
 test("allowedDrops: never leaves an unplayable cast where the full cast plays well", () => {
-  // The person is seen for a third of the stretch; the car carries the clip.
-  const cast = castSummary([track("Person 1", "person", 0, 10, { cx: 0.5, cy: 0.6, w: 0.3, h: 0.6 }), track("Car 1", "thing", 0, 28, car)]);
+  // The person is seen for a third of the stretch; the car carries the clip, and a second car piece sits on it.
+  const cast = castSummary([track("Person 1", "person", 0, 10, { cx: 0.5, cy: 0.6, w: 0.3, h: 0.6 }), track("Car 1", "thing", 0, 28, car), track("Car 2", "thing", 0, 6, car)]);
   assert.equal(cast[0]!.seenShare < 0.4, true);
-  assert.deepEqual(allowedDrops(facts(cast), [{ label: "Car 1", why: "parked" }]), []);
+  assert.deepEqual(allowedDrops(facts(cast), [{ label: "Car 2", reason: "duplicate_of", of: "Car 1", why: "" }]).map((d) => d.label), ["Car 2"]);
   // Dropping a blip that carries nothing is fine.
   const withBlip = castSummary([track("Person 1", "person", 0, 30, { cx: 0.5, cy: 0.6, w: 0.3, h: 0.6 }), track("Car 1", "thing", 24.4, 25.6, car)]);
-  assert.deepEqual(allowedDrops(facts(withBlip), [{ label: "Car 1", why: "blip" }]).map((d) => d.label), ["Car 1"]);
+  assert.deepEqual(allowedDrops(facts(withBlip), [{ label: "Car 1", reason: "not_in_frames", why: "blip" }]).map((d) => d.label), ["Car 1"]);
 });
 
 test("finalize: the cast check never changes the verdict, and only allowed drops come out", () => {
   const recorded = {
     verdict: "approve" as const, reason: "Fine.", nameCheck: "fits" as const, nameKind: "meme_or_joke" as const, nameNote: "", framesCheck: "A dancer by a red car.",
     contentCheck: "clean" as const, steering: false, precedent: "", castNote: "One red car, parked.",
-    castDrops: [{ label: "Car 2", why: "same car as Car 1" }, { label: "Car 3", why: "same car" }, { label: "Car 4", why: "not in the frames" }, { label: "Person 1", why: "no" }],
+    castDrops: [
+      { label: "Car 2", reason: "duplicate_of" as const, of: "Car 1", why: "same car as Car 1" }, { label: "Car 3", reason: "duplicate_of" as const, of: "Car 1", why: "same car" },
+      { label: "Car 4", reason: "not_in_frames" as const, why: "not in the frames" }, { label: "Person 1", reason: "duplicate_of" as const, of: "Car 1", why: "no" },
+    ],
   };
   const d = finalize({ title: "brainrot", facts: facts() }, recorded, { findings: [], steps: [] });
   assert.equal(d.verdict, "approve");

@@ -20,7 +20,7 @@ interface Decision {
   /** Sent back with a flag, so Aaron's decision on it can become a precedent (review-precedents.ts). */
   contentCheck?: string; steering?: boolean; playability?: string; nameKind?: string;
   /** Things the Chamberlain's cast check found to be pieces of another subject or not really there. */
-  castDrops?: { label: string; why: string }[]; castNote?: string;
+  castDrops?: { label: string; reason?: string; of?: string; why: string }[]; castNote?: string;
 }
 interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null; publish: { state: string; at: string | null; detail: string } }
 interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
@@ -256,8 +256,13 @@ function showDecision(d: Decision, outcome: string, title: string | null) {
   }));
   $("workFinding").textContent = d.findings.map((f) => `The ${f.from.replace(/-/g, " ")}: ${f.text}`).join(" ") || "The playability checker did not answer.";
   $("workName").textContent = title ? `The name "${title}" ${NAME_WORDS[d.nameCheck]}. ${d.nameNote}` : `No name was given. ${d.nameNote}`;
-  const cast = [d.castNote ? `The cast: ${d.castNote}` : "", d.castDrops?.length ? `Left out: ${d.castDrops.map((x) => `${x.label} (${x.why})`).join(", ")}.` : ""].filter(Boolean).join(" ");
-  $("workSaw").textContent = [d.framesCheck ? `In the frames: ${d.framesCheck}` : "", cast].filter(Boolean).join(" ");
+  // Each part on its own line, so it scans at a glance (the frontend agent's review of PR 160).
+  const lines = [
+    d.framesCheck ? `In the frames: ${d.framesCheck}` : "",
+    d.castNote ? `The cast: ${d.castNote}` : "",
+    d.castDrops?.length ? `Left out: ${d.castDrops.map((x) => `${x.label} (${x.why})`).join(", ")}.` : "",
+  ].filter(Boolean);
+  $("workSaw").replaceChildren(...lines.flatMap((line, i) => (i ? [document.createElement("br"), document.createTextNode(line)] : [document.createTextNode(line)])));
   $("workDecision").textContent = outcome;
 }
 
