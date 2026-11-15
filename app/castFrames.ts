@@ -23,15 +23,26 @@ export interface CastGuide {
 /** `n` times spread evenly over the range: the middle of each of `n` equal slices, so never the very first or last frame. */
 export function sampleTimes(range: { startMs: number; endMs: number }, n = 12): number[] {
   const span = Math.max(0, range.endMs - range.startMs);
-  if (span === 0 || n <= 0) return [];
+  if (!Number.isFinite(span) || !Number.isFinite(range.startMs) || range.startMs < 0 || span === 0 || n <= 0) return [];
   return Array.from({ length: n }, (_, i) => Math.round(range.startMs + ((i + 0.5) * span) / n));
+}
+
+/**
+ * A box as four plain numbers in range, or null. guides.json is read from disk, so a box goes into an ffmpeg
+ * filter only when each value is a finite number: nothing else from the file ever reaches ffmpeg.
+ */
+export function cleanBox(box: unknown): Box | null {
+  if (typeof box !== "object" || box === null) return null;
+  const { cx, cy, w, h } = box as Record<string, unknown>;
+  const ok = (n: unknown, lo: number, hi: number): n is number => typeof n === "number" && Number.isFinite(n) && n >= lo && n <= hi;
+  return ok(cx, -1, 2) && ok(cy, -1, 2) && ok(w, 0.001, 2) && ok(h, 0.001, 2) ? { cx, cy, w, h } : null;
 }
 
 /** The box at `tMs`: the box-track frame nearest to it, if one is within `maxGapMs`. Null where the subject is unseen. */
 export function boxAt(frames: readonly { tMs: number; box: Box | null }[], tMs: number, maxGapMs = 100): Box | null {
   let best: { tMs: number; box: Box | null } | undefined;
   for (const f of frames) if (!best || Math.abs(f.tMs - tMs) < Math.abs(best.tMs - tMs)) best = f;
-  return best && Math.abs(best.tMs - tMs) <= maxGapMs ? best.box : null;
+  return best && Math.abs(best.tMs - tMs) <= maxGapMs ? cleanBox(best.box) : null;
 }
 
 /**
@@ -119,6 +130,12 @@ export interface ClipFrames {
 const FFMPEG = process.env.JESTER_FFMPEG ?? "/opt/homebrew/bin/ffmpeg";
 const FFPROBE = process.env.JESTER_FFPROBE ?? "/opt/homebrew/bin/ffprobe";
 
+/**
+ * ffmpeg and ffprobe run with execFile and an argument list, never a shell. Every argument is a fixed flag, a
+ * number computed here, a colour from BOX_COLOURS, the video's absolute path (a bank folder plus clip.mp4, .webm
+ * or .mov, so it never starts with a dash) or a path under the output folder. No label, title or credit is ever
+ * an argument.
+ */
 function run(cmd: string, args: string[]): Promise<Buffer> {
   return new Promise((ok, fail) => {
     execFile(cmd, args, { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {

@@ -1,7 +1,7 @@
 // Run from app/: npm test. The cast checker's code rules: what it accepts from the model, and when a person looks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bedrockSettings, castTracingRefusal, finalizeCast, personIn, recountIn, subagentAnswers, thingIn, type RecordedCast } from "../cast-checker.ts";
+import { checkCast, finalizeCast, personIn, recountIn, subagentAnswers, thingIn, type RecordedCast } from "../cast-checker.ts";
 import type { CastGuide } from "../castFrames.ts";
 
 /** A guide seen from `from` to `to` seconds of a 10 s stretch at 15 Hz, at one place. */
@@ -91,15 +91,18 @@ test("subagentAnswers: matched by tool call, with the label the request named", 
   assert.deepEqual(answers.map((a) => [a.from, a.about]), [["thing-checker", "Car 11"], ["recounter", ""]], "Car 11 is not read as Car 1, and the general-purpose reply is not counted");
 });
 
-test("castTracingRefusal: a shell switch refuses; the env file traces only with inputs and outputs hidden", () => {
-  assert.equal(castTracingRefusal({ env: {}, fileTrace: false, hidden: false }), null);
-  assert.match(castTracingRefusal({ env: { LANGSMITH_TRACING: "true" }, fileTrace: false, hidden: true })!, /LANGSMITH_TRACING/);
-  assert.match(castTracingRefusal({ env: {}, fileTrace: true, hidden: false })!, /JESTER_CAST_TRACE_HIDE/);
-  assert.equal(castTracingRefusal({ env: {}, fileTrace: true, hidden: true }), null);
-});
-
-test("bedrockSettings: only with every setting present", () => {
-  assert.equal(bedrockSettings({ BEDROCK_AWS_REGION: "us-east-1" }), null);
-  const all = { BEDROCK_AWS_REGION: "us-east-1", BEDROCK_AWS_ACCESS_KEY_ID: "id", BEDROCK_AWS_SECRET_ACCESS_KEY: "secret", JESTER_CAST_BEDROCK_MODEL: "model" };
-  assert.deepEqual(bedrockSettings(all), { region: "us-east-1", model: "model", credentials: { accessKeyId: "id", secretAccessKey: "secret" } });
+test("checkCast: refused while LangChain tracing is on, before anything is loaded or sent", async () => {
+  const guides = [guide("Person 1", "person", 0, 10)];
+  const frames = { id: "x", video: "/nowhere/clip.mp4", width: 576, height: 1024, times: [], boxed: [], subjects: [], flags: [] };
+  for (const k of ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"]) {
+    const before = process.env[k];
+    process.env[k] = "true";
+    try {
+      await assert.rejects(checkCast(guides, frames, { apiKey: "unused" }), /Tracing to LangSmith is on/);
+    } finally {
+      if (before === undefined) delete process.env[k]; else process.env[k] = before;
+    }
+  }
+  const tracer = { name: "langchain_tracer" };
+  await assert.rejects(checkCast(guides, frames, { apiKey: "unused", callbacks: [tracer as never] }), /Tracing to LangSmith is on/);
 });

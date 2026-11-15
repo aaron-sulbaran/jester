@@ -7,11 +7,8 @@
 // of every clip to cast-checks/summary.md and summary.json. That folder must be outside every git checkout: the
 // frames show real people. It never changes the bank.
 //
-// Switches in the env file, both off by default:
-//   Amazon Bedrock for the subagents: BEDROCK_AWS_REGION, BEDROCK_AWS_ACCESS_KEY_ID, BEDROCK_AWS_SECRET_ACCESS_KEY,
-//     JESTER_CAST_BEDROCK_MODEL (a Bedrock model id or inference profile), optional BEDROCK_AWS_SESSION_TOKEN.
-//   LangSmith tracing with inputs and outputs hidden: LANGSMITH_API_KEY, JESTER_CAST_TRACE=1 and
-//     JESTER_CAST_TRACE_HIDE=1 (without it the run refuses), optional LANGSMITH_PROJECT (jester-cast-checker).
+// It calls Anthropic directly and never traces: with a LangChain tracing switch (LANGSMITH_TRACING and the like)
+// set in the shell, each clip is refused by the Chamberlain's tracingRefusal (see cast-checker.ts).
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -19,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { LLMResult } from "@langchain/core/outputs";
 import { castFrames, readGuides, videoIn } from "../castFrames.ts";
-import { bedrockSettings, castTracingRefusal, checkCast, DEFAULT_MODEL, readEnvFile, type CastResult } from "../cast-checker.ts";
+import { checkCast, DEFAULT_MODEL, readEnvFile, type CastResult } from "../cast-checker.ts";
 import { checkoutAround } from "../review-cases.ts";
 
 function arg(name: string): string | undefined {
@@ -41,22 +38,6 @@ const env = readEnvFile(envPath);
 const apiKey = env.ANTHROPIC_API_KEY;
 if (!apiKey) { console.log(`No ANTHROPIC_API_KEY in ${envPath} (set JESTER_REVIEW_ENV to the env file).`); process.exit(1); }
 
-const fileTrace = env.JESTER_CAST_TRACE === "1" && Boolean(env.LANGSMITH_API_KEY);
-const refusal = castTracingRefusal({ env: process.env, fileTrace, hidden: env.JESTER_CAST_TRACE_HIDE === "1" });
-if (refusal) { console.log(refusal); process.exit(1); }
-const bedrock = bedrockSettings(env);
-
-let tracer: unknown = null;
-let flush: (() => Promise<void>) | null = null;
-if (fileTrace) {
-  const [{ LangChainTracer }, { Client }, { awaitAllCallbacks }] = await Promise.all([
-    import("@langchain/core/tracers/tracer_langchain"), import("langsmith"), import("@langchain/core/callbacks/promises"),
-  ]);
-  // Hidden inputs and outputs: LangSmith gets the run tree, names, timings and token counts, never a frame or a word.
-  const client = new Client({ apiKey: env.LANGSMITH_API_KEY!, hideInputs: true, hideOutputs: true });
-  tracer = new LangChainTracer({ projectName: env.LANGSMITH_PROJECT || "jester-cast-checker", client });
-  flush = async () => { await awaitAllCallbacks(); await client.awaitPendingTraceBatches(); };
-}
 
 /** Claude Sonnet 5.5 on the Anthropic API, dollars per million tokens. */
 const PRICE = { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 };
@@ -99,12 +80,14 @@ class UsageMeter extends BaseCallbackHandler {
 const costOf = (u: Usage) => ((u.input - u.cacheRead - u.cacheWrite) * PRICE.input + u.cacheWrite * PRICE.cacheWrite + u.cacheRead * PRICE.cacheRead + u.output * PRICE.output) / 1e6;
 
 const wanted = arg("clip")?.split(",").map((s) => s.trim()).filter(Boolean);
-const clips = readdirSync(bank).filter((d) => existsSync(join(bank, d, "guides.json")) && videoIn(join(bank, d)) && (!wanted || wanted.includes(d))).sort();
+/** Bank clip ids, as the desk writes them: lower-case words joined by single dashes. */
+const BANK_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const clips = readdirSync(bank).filter((d) => BANK_ID.test(d) && existsSync(join(bank, d, "guides.json")) && videoIn(join(bank, d)) && (!wanted || wanted.includes(d))).sort();
 if (wanted) for (const w of wanted) if (!clips.includes(w)) console.log(`No clip ${w} in ${bank}.`);
 if (clips.length === 0) { console.log("No clips to check."); process.exit(1); }
 
 mkdirSync(out, { recursive: true });
-console.log(`Checking ${clips.length} clip${clips.length === 1 ? "" : "s"} from ${bank} with ${DEFAULT_MODEL}${bedrock ? `, subagents on Amazon Bedrock (${bedrock.model})` : ""}${fileTrace ? ", traced to LangSmith with inputs and outputs hidden" : ""}. Results go to ${out}.`);
+console.log(`Checking ${clips.length} clip${clips.length === 1 ? "" : "s"} from ${bank} with ${DEFAULT_MODEL} on Anthropic, untraced. Results go to ${out}.`);
 
 interface Row { id: string; result: CastResult | null; error: string | null; seconds: number; usage: Usage; byAgent: Record<Who, Usage>; cost: number }
 
@@ -116,12 +99,12 @@ async function one(id: string): Promise<Row> {
     const guides = readGuides(join(bank, id));
     const frames = await castFrames(join(bank, id), join(dir, "frames"), frameCount);
     const result = await checkCast(guides, frames, {
-      apiKey, bedrock,
-      callbacks: [meter, ...(tracer ? [tracer as BaseCallbackHandler] : [])],
+      apiKey,
+      callbacks: [meter],
       tags: ["cast-checker"], metadata: { clip: id }, runName: `cast-check ${id}`,
     });
     const row: Row = { id, result, error: null, seconds: (Date.now() - started) / 1000, usage: meter.total(), byAgent: meter.by, cost: costOf(meter.total()) };
-    writeFileSync(join(dir, "result.json"), JSON.stringify({ ...row, model: DEFAULT_MODEL, subagentsOn: bedrock ? "bedrock" : "anthropic", at: new Date().toISOString() }, null, 2));
+    writeFileSync(join(dir, "result.json"), JSON.stringify({ ...row, model: DEFAULT_MODEL, provider: "anthropic", at: new Date().toISOString() }, null, 2));
     console.log(`${id}: ${result.verdict === "clear" ? "clear for play" : "ask Aaron"} (cast ${result.peopleInCast}p ${result.thingsInCast}t, seen ${result.peopleSeen ?? "?"}p ${result.thingsSeen ?? "?"}t) in ${row.seconds.toFixed(0)} s, $${row.cost.toFixed(3)}`);
     return row;
   } catch (err) {
@@ -136,13 +119,12 @@ let next = 0;
 await Promise.all(Array.from({ length: Math.min(parallel, clips.length) }, async () => {
   while (next < clips.length) { const i = next++; rows[i] = await one(clips[i]!); }
 }));
-await flush?.();
 
 const cell = (s: string) => s.replace(/\|/g, "/").replace(/\n/g, " ");
 const lines = [
   `# Cast checks`,
   "",
-  `${new Date().toISOString()}, ${clips.length} clips from \`${bank}\`, model ${DEFAULT_MODEL}${bedrock ? ` (subagents on Amazon Bedrock, ${bedrock.model})` : ""}. Cost at Anthropic API prices.`,
+  `${new Date().toISOString()}, ${clips.length} clips from \`${bank}\`, model ${DEFAULT_MODEL} on Anthropic, untraced. Cost at Anthropic API prices.`,
   "",
   "| Clip | Cast (people, things) | Seen (people, things) | Verdict | Why | Model calls | Tokens in / out | Cost | Time |",
   "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",

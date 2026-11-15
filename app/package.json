@@ -13,7 +13,6 @@
   },
   "devDependencies": {
     "@langchain/anthropic": "^1.6.5",
-    "@langchain/aws": "^1.5.2",
     "@langchain/core": "^1.4.1",
     "@types/three": "0.187.0",
     "deepagents": "^1.16.5",

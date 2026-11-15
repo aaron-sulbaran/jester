@@ -3,7 +3,9 @@
 // game shows that cast on the play screen and gives each one a role. The checker compares it with frames taken
 // across the whole video (castFrames.ts) and ends with "clear for play" or "ask Aaron".
 //
-// It plans with write_todos and hands the looking to three subagents:
+// It writes a plan with write_todos (added here with LangChain's todoListMiddleware, since deepagents does not add
+// it for Claude; in the 10-clip bank run on Nov 15 the plan step ran in all 10, each a two-item plan in its own
+// model call) and hands the looking to three subagents:
 //   person-checker  one person's crops over time: one real person, the same one throughout?
 //   thing-checker   one thing's crops over time: a real, separate object, the same over time, did it change?
 //   recounter       the full frames with every box drawn: how many people and things are really there, and who
@@ -13,13 +15,17 @@
 // cast drops follow (allowedDrops in review-agent.ts), and any count that does not match the cast, a person the
 // computer vision missed, or a recount that disagrees, means a person looks.
 //
-// Runs on Aaron's laptop only (scripts/check-cast.ts). What leaves the laptop: the frames and crops, the cast
-// labels and the box-track numbers, sent to Anthropic (or, with the Bedrock switch, the subagents' share to
-// Amazon Bedrock). Never to LangSmith unless tracing is on with inputs and outputs hidden (castTracingRefusal).
+// Runs on Aaron's laptop only (scripts/check-cast.ts), and calls Anthropic directly, the only company the Submit
+// your own notice names. What leaves the laptop for each clip, to Anthropic only: up to 12 whole frames (JPEG,
+// longest side 768 px) with the boxes drawn, up to 12 crops per subject (JPEG, longest side 384 px), the cast's
+// labels (written by the computer vision, such as "the person on the left" or "Car 1"), the box-track numbers
+// (when each subject is seen, its centre and size), the box colours and the sample times. Never the clip's
+// title or credit: they are not read at all. Never LangSmith: every bank clip is a real submission, so the run
+// refuses while any LangChain tracing switch or tracer is on (the Chamberlain's tracingRefusal).
 
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { readFileSync } from "node:fs";
-import { allowedDrops, DEFAULT_MODEL, INHERITED_TRACING, type ClipFacts } from "./review-agent.ts";
+import { allowedDrops, DEFAULT_MODEL, stopInheritedTracing, tracingRefusal, type ClipFacts } from "./review-agent.ts";
 import { castSummary, castText, type CastLine } from "./src/castSummary.ts";
 import type { ChangeFlag, ClipFrames, CastGuide } from "./castFrames.ts";
 
@@ -208,19 +214,6 @@ export function finalizeCast(guides: readonly CastGuide[], recorded: RecordedCas
   };
 }
 
-/**
- * Why this check must not run, or null. Every bank clip is a real submission and its frames show real people;
- * the Submit your own notice names only Anthropic. So a LangChain tracing switch left in the shell refuses the
- * run (it would trace everything, inputs included), and tracing from the env file is allowed only with inputs and
- * outputs hidden: then LangSmith gets the run tree, names, timings and token counts, never a frame or a word.
- */
-export function castTracingRefusal(tracing: { env: Record<string, string | undefined>; fileTrace: boolean; hidden: boolean }): string | null {
-  const inherited = INHERITED_TRACING.filter((k) => tracing.env[k]?.trim().toLowerCase() === "true");
-  if (inherited.length) return `${inherited.join(", ")} is set in the shell, which would send the frames to LangSmith. Unset it; to trace, set JESTER_CAST_TRACE=1 and JESTER_CAST_TRACE_HIDE=1 in the env file instead.`;
-  if (tracing.fileTrace && !tracing.hidden) return "JESTER_CAST_TRACE=1 is set without JESTER_CAST_TRACE_HIDE=1: the frames show real people and must not go to LangSmith. Add JESTER_CAST_TRACE_HIDE=1 (inputs and outputs hidden) or turn tracing off.";
-  return null;
-}
-
 /** KEY=VALUE lines; quotes around a value are dropped. Missing file: nothing. */
 export function readEnvFile(path: string | undefined): Record<string, string> {
   if (!path) return {};
@@ -234,14 +227,6 @@ export function readEnvFile(path: string | undefined): Record<string, string> {
   } catch {
     return {};
   }
-}
-
-/** The Bedrock settings, when the env file has all of them; otherwise null and the subagents use Anthropic. */
-export function bedrockSettings(env: Record<string, string>): { region: string; model: string; credentials: { accessKeyId: string; secretAccessKey: string; sessionToken?: string } } | null {
-  const region = env.BEDROCK_AWS_REGION, model = env.JESTER_CAST_BEDROCK_MODEL;
-  const accessKeyId = env.BEDROCK_AWS_ACCESS_KEY_ID, secretAccessKey = env.BEDROCK_AWS_SECRET_ACCESS_KEY;
-  if (!region || !model || !accessKeyId || !secretAccessKey) return null;
-  return { region, model, credentials: { accessKeyId, secretAccessKey, ...(env.BEDROCK_AWS_SESSION_TOKEN ? { sessionToken: env.BEDROCK_AWS_SESSION_TOKEN } : {}) } };
 }
 
 const ROLE = `You check the cast of a clip in Jester, a party game. Players each copy one subject of a short clip on a webcam: a person, or a moving thing. A computer vision pass found the cast (the people and things listed below, each with a box tracked over time); the game shows that cast and gives each subject a role. Your job: check that cast against frames taken across the whole video, and say whether it is clear for play or whether Aaron should look.
@@ -289,8 +274,7 @@ const TIMEOUT_MS = 240000;
 export interface CastSettings {
   apiKey: string;
   model?: string;
-  /** Amazon Bedrock for the subagents, when the env file has it (bedrockSettings). */
-  bedrock?: ReturnType<typeof bedrockSettings>;
+  /** Never a LangSmith tracer: a run with one is refused. */
   callbacks?: Callbacks;
   tags?: string[];
   metadata?: Record<string, unknown>;
@@ -300,8 +284,14 @@ export interface CastSettings {
 const dataUrl = (path: string) => `data:image/jpeg;base64,${readFileSync(path).toString("base64")}`;
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
-/** One clip's cast check. Throws when the model cannot be reached; the caller says so. */
+/** One clip's cast check. Throws when tracing is on, or when the model cannot be reached; the caller says so. */
 export async function checkCast(guides: readonly CastGuide[], frames: ClipFrames, settings: CastSettings): Promise<CastResult> {
+  // Before anything is loaded or sent: every bank clip is a real submission, so the Chamberlain's own guard
+  // refuses the run while any LangChain tracing switch is set in the environment or a tracer is passed in. Only
+  // then are the inherited switches removed, so nothing traces on its own.
+  const refusal = tracingRefusal({ synthetic: false }, { env: process.env, callbacks: settings.callbacks });
+  if (refusal) throw new Error(refusal);
+  stopInheritedTracing();
   // Loaded only when a check runs, so tests and the build start without the agent packages.
   const [{ createDeepAgent }, { ChatAnthropic }, { tool }, { z }, { todoListMiddleware }] = await Promise.all([
     import("deepagents"), import("@langchain/anthropic"), import("@langchain/core/tools"), import("zod"), import("langchain"),
@@ -374,22 +364,18 @@ export async function checkCast(guides: readonly CastGuide[], frames: ClipFrames
     returnDirect: true,
   });
 
-  const main = new ChatAnthropic({ model: settings.model ?? DEFAULT_MODEL, apiKey: settings.apiKey, maxTokens: 4000, maxRetries: 2 });
-  let sub: InstanceType<typeof ChatAnthropic> | InstanceType<(typeof import("@langchain/aws"))["ChatBedrockConverse"]> = main;
-  if (settings.bedrock) {
-    const { ChatBedrockConverse } = await import("@langchain/aws");
-    sub = new ChatBedrockConverse({ model: settings.bedrock.model, region: settings.bedrock.region, credentials: settings.bedrock.credentials, maxTokens: 2000 });
-  }
+  // Anthropic directly, for the agent and its subagents alike.
+  const model = new ChatAnthropic({ model: settings.model ?? DEFAULT_MODEL, apiKey: settings.apiKey, maxTokens: 4000, maxRetries: 2 });
   const agent = createDeepAgent({
     name: "the-cast-checker",
-    model: main,
+    model,
     systemPrompt: ROLE,
     tools: [record],
     middleware: [todoListMiddleware()],
     subagents: [
-      { name: "person-checker", description: "Checks one person in the cast from crops of their box over time: one real person, the same throughout? Name the person's exact label.", systemPrompt: PERSON, tools: [viewSubject], model: sub },
-      { name: "thing-checker", description: "Checks one thing in the cast from crops of its box over time: a real, separate object, the same over time, did it change? Name the thing's exact label.", systemPrompt: THING, tools: [viewSubject], model: sub },
-      { name: "recounter", description: "Counts the people and things really in the clip from whole frames with every box drawn, and says who the boxes miss.", systemPrompt: RECOUNT, tools: [viewFrames], model: sub },
+      { name: "person-checker", description: "Checks one person in the cast from crops of their box over time: one real person, the same throughout? Name the person's exact label.", systemPrompt: PERSON, tools: [viewSubject], model },
+      { name: "thing-checker", description: "Checks one thing in the cast from crops of its box over time: a real, separate object, the same over time, did it change? Name the thing's exact label.", systemPrompt: THING, tools: [viewSubject], model },
+      { name: "recounter", description: "Counts the people and things really in the clip from whole frames with every box drawn, and says who the boxes miss.", systemPrompt: RECOUNT, tools: [viewFrames], model },
     ],
   });
 

@@ -1,7 +1,7 @@
 // Run from app/: npm test. The cast checker's frame sampling and its "same place, contents change" check.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { boxAt, changeFlags, cropRect, meanAbsDiff, samePlace, sampleTimes } from "../castFrames.ts";
+import { boxAt, changeFlags, cleanBox, cropRect, meanAbsDiff, samePlace, sampleTimes } from "../castFrames.ts";
 
 test("sampleTimes: the middle of each equal slice of the stretch", () => {
   assert.deepEqual(sampleTimes({ startMs: 0, endMs: 12000 }, 12), [500, 1500, 2500, 3500, 4500, 5500, 6500, 7500, 8500, 9500, 10500, 11500]);
@@ -12,10 +12,10 @@ test("sampleTimes: the middle of each equal slice of the stretch", () => {
 test("boxAt: the nearest box-track frame, null where unseen or too far away", () => {
   const a = { cx: 0.5, cy: 0.5, w: 0.2, h: 0.4 };
   const frames = [{ tMs: 0, box: null }, { tMs: 66.7, box: a }, { tMs: 133.3, box: null }, { tMs: 1000, box: a }];
-  assert.equal(boxAt(frames, 70), a);
+  assert.deepEqual(boxAt(frames, 70), a);
   assert.equal(boxAt(frames, 130), null);
   assert.equal(boxAt(frames, 600), null, "nothing within 100 ms");
-  assert.equal(boxAt(frames, 950), a);
+  assert.deepEqual(boxAt(frames, 950), a);
 });
 
 test("cropRect: padded, kept inside the frame, even sizes", () => {
@@ -50,4 +50,14 @@ test("changeFlags: a box that stays put while the picture inside it changes", ()
   ]);
   assert.deepEqual(flags, [{ label: "TV 1", fromS: 1.5, toS: 2.5, diff: 170 }], "the move across the frame is not a change in place");
   assert.deepEqual(changeFlags("Car 1", [{ tMs: 0, box: tv, thumb: dark }, { tMs: 1000, box: tv, thumb: nearDark }]), []);
+});
+
+test("cleanBox: only four finite numbers in range ever reach ffmpeg", () => {
+  assert.deepEqual(cleanBox({ cx: 0.5, cy: 0.5, w: 0.2, h: 0.4 }), { cx: 0.5, cy: 0.5, w: 0.2, h: 0.4 });
+  assert.equal(cleanBox({ cx: "0:drawtext=x", cy: 0.5, w: 0.2, h: 0.4 }), null);
+  assert.equal(cleanBox({ cx: 0.5, cy: 0.5, w: Number.NaN, h: 0.4 }), null);
+  assert.equal(cleanBox({ cx: 0.5, cy: 0.5, w: 0, h: 0.4 }), null);
+  assert.equal(cleanBox(null), null);
+  assert.equal(boxAt([{ tMs: 0, box: { cx: 1e9, cy: 0.5, w: 0.2, h: 0.4 } }], 0), null);
+  assert.deepEqual(sampleTimes({ startMs: Number.NaN, endMs: 1000 }, 4), []);
 });
