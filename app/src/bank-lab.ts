@@ -9,7 +9,7 @@ import { withoutClip, type BankEntry } from "./bankIndex.ts";
 import { listBank, loadBankGuides } from "./bank.ts";
 import { submitClip } from "./submit.ts";
 import {
-  addClip, analyseClip, describe, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, titleFrom,
+  addClip, analyseClip, bankLock, describe, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, titleFrom,
   videoType, whenReady, writeIndex, type Found, type Result, type VideoType,
 } from "./bankLabCore.ts";
 
@@ -335,11 +335,12 @@ async function showBank() {
       if (busy || !confirm(`Remove "${e.title}" from the bank? Its folder ${e.id} is deleted.`)) return;
       busy = true;
       syncButtons();
-      const latest = await readIndex(folder);
-      if (latest.error === null) {
+      await bankLock(async () => {
+        const latest = await readIndex(folder);
+        if (latest.error !== null) return;
         await writeIndex(folder, withoutClip(latest.data, e.id));
         await folder.removeEntry(e.id, { recursive: true }).catch(() => {});
-      }
+      });
       busy = false;
       await showBank();
       syncButtons();

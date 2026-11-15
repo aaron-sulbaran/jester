@@ -1,7 +1,8 @@
 // Arcade style face badges: a still of a player's face inside the jester's cap and collar, like the
 // photo badges on Mario Kart arcade results. The face is cropped from one camera frame using the pose
 // tracker's face points (nose, eyes, ears), levelled, and drawn under a frame rendered in Blender
-// (art/jester/jester.py --badge). Everything stays on this device: nothing is uploaded or saved.
+// (art/jester/jester.py --badge). Nothing here uploads or saves it; only an online room shares a face, live, with
+// the players in that room.
 
 /** A pose landmark in image coordinates from 0 to 1 (MediaPipe pose order: 0 nose, 2 left eye, 5 right eye, 7 left ear, 8 right ear). */
 export interface FacePoint { x: number; y: number; visibility?: number }

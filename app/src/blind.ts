@@ -27,7 +27,7 @@ import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
-import { playWithSound } from "./sound.ts";
+import { playWithSound, setAloud } from "./sound.ts";
 import { castRowShare } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
@@ -124,6 +124,11 @@ export interface GameOptions {
   colors?: readonly string[];
   /** How the recorded reveal looks (default: the dark card). Set by the look. */
   theme?: Partial<RevealTheme>;
+  /**
+   * Play the reveal's sound on this device's speakers (default true). Online, only the host's laptop does, so two
+   * laptops side by side do not play it twice; every device's recorded reveal still has the sound.
+   */
+  revealAloud?: boolean;
   /**
    * Record the reveal video at the end (default true). Online blind mode turns it off: each device plays
    * one role, so the group reveal is drawn from everyone's results once they are all in.
@@ -832,7 +837,8 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
 async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement }, onFrame: (f: { landmarks: LandmarkObject[] | null; aspect: number }) => void) {
   const host = stage.guideCanvas.parentElement!;
   const hint = document.createElement("div");
-  hint.style.cssText = "position:absolute;left:0;right:0;bottom:6%;text-align:center;font:800 clamp(18px,3vw,34px) system-ui,sans-serif;color:#fff;text-shadow:0 2px 8px #000,0 0 3px #000;padding:0 14px;z-index:6;pointer-events:none";
+  // Styled by the look (.framing-hint in style.css): a paper tag at the bottom of the stage.
+  hint.className = "framing-hint";
   hint.textContent = "Step into view so your whole body is in the picture.";
   host.appendChild(hint);
   stage.playerCanvas.style.opacity = "1"; // the camera is hidden until the countdown; bring it in so they can position themselves
@@ -840,11 +846,11 @@ async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasEl
   await new Promise<void>((resolve) => {
     let finished = false;
     const done = () => { if (!finished) { finished = true; resolve(); } };
-    const late = window.setTimeout(() => { hint.style.pointerEvents = "auto"; hint.style.cursor = "pointer"; hint.onclick = done; hint.dataset.late = "1"; }, 12000);
+    const late = window.setTimeout(() => { hint.classList.add("late"); hint.onclick = done; hint.dataset.late = "1"; }, 12000);
     player.start((f) => {
       onFrame({ landmarks: f.landmarks as LandmarkObject[] | null, aspect: f.aspect });
       const r = calibrator.update(f.landmarks as never, 30);
-      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " (Click here to start anyway.)" : "");
+      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " Can't fit? Click here to start anyway." : "");
       if (r.passed) { clearTimeout(late); done(); }
     }, () => -1);
   });
@@ -1151,14 +1157,14 @@ export const REVEAL_THEME: RevealTheme = { card: "#16161d", ink: "#f2f2f5", soft
 let theme: RevealTheme = { ...REVEAL_THEME };
 const font = (H: number, k: number, weight = 600) => `${weight} ${Math.round(H * k)}px ${theme.font}`;
 
-/** The opening card. */
+/** The opening card. Every line is held to the card's width (fillText's last argument): a tall clip makes a narrow card. */
 function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneName: string, players: number, ms: number) {
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = Math.min(1, ms / 400);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4);
-  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
-  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
+  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4, W * 0.9);
+  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
+  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66, W * 0.9);
   ctx.globalAlpha = 1;
 }
 
@@ -1166,7 +1172,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
 function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows: ResultRow[], faces: (HTMLCanvasElement | null)[], ms: number) {
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "middle";
-  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
+  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13, W * 0.9);
   const rowH = Math.min(H * 0.17, (H * 0.78) / Math.max(1, rows.length));
   rows.forEach((r, i) => {
     // Rows slide in one after another; the first is there at once, so the card never shows only its title.
@@ -1180,8 +1186,8 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
     if (img) ctx.drawImage(img, x0, y - face / 2, face, face);
     ctx.strokeStyle = r.color; ctx.lineWidth = 3; ctx.strokeRect(x0, y - face / 2, face, face);
     ctx.textAlign = "left";
-    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15);
-    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2);
+    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15, W * 0.92 - (x0 + face + W * 0.025) - W * 0.14);
+    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2, W * 0.92 - (x0 + face + W * 0.025) - W * 0.14);
     ctx.textAlign = "right";
     ctx.fillStyle = r.winner ? theme.accent : theme.ink; ctx.font = font(H, 0.07, 800);
     ctx.fillText(r.score == null ? "-" : String(r.score), W * 0.92, y - rowH * 0.08);
@@ -1214,7 +1220,7 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   }));
 }
 
-async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }): Promise<string | null> {
+async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }, aloud = true): Promise<string | null> {
   const scene = played;
   // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
   // about 7 times. Wide clips stay 960 wide.
@@ -1250,8 +1256,10 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     c.fillStyle = color; c.fillText(text, W / 2, H * 0.1);
     c.restore();
   };
-  // Each player's picture on the cast card: a cutout from the middle of their turn.
-  const faces = seats.map((s) => s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
+  // Each player's picture on the cast card: their face, the same picture the crowning jesters wear, so it always
+  // shows who they are; a cutout from the middle of their turn only when no face was caught (a crop there can
+  // miss the head).
+  const faces = seats.map((s) => s.face ?? s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
   const segments: Segment[] = [
     { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
     {
@@ -1266,7 +1274,11 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
-  return recordSegments(canvas, segments, onProgress, control, video);
+  if (!video || aloud) return recordSegments(canvas, segments, onProgress, control, video);
+  // Recorded with its sound, played without it here (setAloud), then the speakers come back for the next turn.
+  setAloud(video, false);
+  try { return await recordSegments(canvas, segments, onProgress, control, video); }
+  finally { setAloud(video, true); }
 }
 
 // ---- The game ----
@@ -1338,7 +1350,7 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
   ui.results(rows);
   if (options.reveal === false) return rows;
   if (ui.revealControl) ui.revealControl.speed = 1;
-  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl);
+  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl, options.revealAloud ?? true);
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
   return rows;
