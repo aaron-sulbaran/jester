@@ -18,7 +18,7 @@ test("legs out of view says step back for knees and ankles", () => {
 test("no body found asks the player to step in", () => {
   const r = checkFraming(null);
   assert.equal(r.ok, false);
-  assert.match(r.message, /frame/);
+  assert.match(r.message, /picture/);
 });
 
 test("joint off the bottom of the image counts as missing", () => {
