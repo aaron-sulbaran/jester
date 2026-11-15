@@ -4,3 +4,4 @@ import "./level.test.mjs";
 import "./webcam.test.mjs";
 import "./calibration.test.mjs";
 import "./recorder.test.mjs";
+import "./reveal.test.mjs";
