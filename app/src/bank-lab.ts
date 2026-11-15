@@ -4,25 +4,14 @@
 // write `<id>/clip.<type>`, `<id>/poster.jpg`, `<id>/guides.json` and the updated `index.json`.
 
 import type { Guide } from "../../clip/src/index.ts";
-import { prepareVideo, subjectGuides } from "./clip.ts";
 import { guideFrameAt, traceOutline } from "./clipside/blind.ts";
-import {
-  BANK_SCHEMA, bankEntry, emptyBankIndex, guidesJson, readBankIndex, slugFor, withClip, withoutClip,
-  type BankEntry, type BankIndex,
-} from "./bankIndex.ts";
+import { withoutClip, type BankEntry } from "./bankIndex.ts";
 import { listBank, loadBankGuides } from "./bank.ts";
 import { submitClip } from "./submit.ts";
-
-type Result<T> = { data: T; error: null } | { data: null; error: string };
-type VideoType = "mp4" | "webm";
-interface Found { guides: Guide[]; skipped: { number: number; label?: string; reason: string }[] }
-
-// The folder picker and its permission calls are Chrome and Edge only, so TypeScript's DOM types lack them.
-interface WritePermission {
-  queryPermission(d: { mode: "readwrite" }): Promise<PermissionState>;
-  requestPermission(d: { mode: "readwrite" }): Promise<PermissionState>;
-}
-type FolderPicker = (o: { id: string; mode: "readwrite" }) => Promise<FileSystemDirectoryHandle>;
+import {
+  addClip, analyseClip, describe, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, titleFrom,
+  videoType, whenReady, writeIndex, type Found, type Result, type VideoType,
+} from "./bankLabCore.ts";
 
 /** Free clips from Wikimedia Commons, credited as their pages ask. Titles hint without saying who is who. */
 const STARTERS: { file: string; title: string; credit: string }[] = [
@@ -41,7 +30,6 @@ const STARTERS: { file: string; title: string; credit: string }[] = [
 ];
 
 const COLORS = ["#f5c542", "#4f7bf0", "#f47fa6", "#3ccf91", "#ff7a3c", "#b07cff"];
-const POSTER_WIDTH = 640;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const video = $<HTMLVideoElement>("video");
@@ -66,44 +54,10 @@ function syncButtons() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("button.remove")) b.disabled = busy;
 }
 
-// ---- The folder, remembered in IndexedDB so it is picked only once ----
-
-function handleDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("jester-bank-lab", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("handles");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function rememberFolder(handle: FileSystemDirectoryHandle) {
-  try {
-    const db = await handleDb();
-    db.transaction("handles", "readwrite").objectStore("handles").put(handle, "bank");
-  } catch {
-    // Remembering is a convenience: without it the folder is picked again next time.
-  }
-}
-
-async function rememberedFolder(): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    const db = await handleDb();
-    return await new Promise((resolve) => {
-      const request = db.transaction("handles").objectStore("handles").get("bank");
-      request.onsuccess = () => resolve((request.result as FileSystemDirectoryHandle | undefined) ?? null);
-      request.onerror = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
-}
+// ---- The bank folder (remembered by bankLabCore.ts) ----
 
 async function useFolder(handle: FileSystemDirectoryHandle) {
-  const permission = handle as unknown as WritePermission;
-  const granted = (await permission.queryPermission({ mode: "readwrite" })) === "granted"
-    || (await permission.requestPermission({ mode: "readwrite" })) === "granted";
-  if (!granted) return say("folderStatus", "This page may not write to that folder. Pick it again and choose Allow.", "bad");
+  if (!(await mayWrite(handle))) return say("folderStatus", "This page may not write to that folder. Pick it again and choose Allow.", "bad");
   dir = handle;
   await rememberFolder(handle);
   $("reuseFolder").classList.add("hidden");
@@ -115,15 +69,9 @@ async function useFolder(handle: FileSystemDirectoryHandle) {
 }
 
 $("pickFolder").addEventListener("click", async () => {
-  const picker = (window as unknown as { showDirectoryPicker?: FolderPicker }).showDirectoryPicker;
-  if (!picker) return say("folderStatus", "This browser cannot pick a folder. Use Chrome or Edge on a computer.", "bad");
-  let handle: FileSystemDirectoryHandle;
-  try {
-    handle = await picker({ id: "jester-bank", mode: "readwrite" });
-  } catch {
-    return; // Cancelled.
-  }
-  await useFolder(handle);
+  const picked = await pickFolder();
+  if (picked.error !== null) return say("folderStatus", picked.error, "bad");
+  if (picked.data) await useFolder(picked.data);
 });
 
 void rememberedFolder().then((handle) => {
@@ -134,84 +82,18 @@ void rememberedFolder().then((handle) => {
   button.addEventListener("click", () => void useFolder(handle), { once: true });
 });
 
-// ---- Files in the folder ----
-
-async function writeFile(folder: FileSystemDirectoryHandle, name: string, data: Blob | string) {
-  const handle = await folder.getFileHandle(name, { create: true });
-  const writable = await handle.createWritable();
-  await writable.write(data);
-  await writable.close();
-}
-
-async function readIndex(folder: FileSystemDirectoryHandle): Promise<Result<BankIndex>> {
-  let text: string;
-  try {
-    text = await (await (await folder.getFileHandle("index.json")).getFile()).text();
-  } catch (err) {
-    if ((err as DOMException).name === "NotFoundError") return { data: emptyBankIndex(), error: null };
-    return { data: null, error: "index.json could not be read." };
-  }
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return { data: null, error: "index.json is not valid JSON. Fix it or remove it first." };
-  }
-  const read = readBankIndex(json);
-  if (read.error !== null) return { data: null, error: "index.json is not a bank/1 index. Fix it or remove it first." };
-  return { data: { schema: BANK_SCHEMA, clips: read.data }, error: null };
-}
-
-const writeIndex = (folder: FileSystemDirectoryHandle, index: BankIndex) => writeFile(folder, "index.json", JSON.stringify(index, null, 2) + "\n");
-
 // ---- Analysis and the cast preview ----
-
-/**
- * How the bank stores the file. A phone's MOV is the same container as MP4 (browsers read both with one
- * reader), so it goes in as clip.mp4; the lab reading it for moves shows that it decodes.
- */
-function videoType(file: File): VideoType | null {
-  if (file.type === "video/mp4" || /\.(mp4|m4v)$/i.test(file.name)) return "mp4";
-  if (file.type === "video/quicktime" || /\.mov$/i.test(file.name)) return "mp4";
-  if (file.type === "video/webm" || /\.webm$/i.test(file.name)) return "webm";
-  return null;
-}
-
-/** A title from a file name: no file type, dashes and underscores as spaces. */
-const titleFrom = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim().replace(/\s+/g, " ").slice(0, 80) || "Untitled clip";
 
 async function analyse(file: File, onProgress: (share: number) => void): Promise<Result<Found>> {
   // The reader may decode through the <video> element, so the cast preview lets go of it first.
   preview = null;
-  video.pause();
-  const prepared = await prepareVideo(file, video, onProgress, { things: true });
-  if (prepared.error !== null) return { data: null, error: prepared.error };
-  const found = subjectGuides(prepared.data);
-  if (found.guides.length === 0) return { data: null, error: found.skipped[0]?.reason ?? "No one to copy in this clip." };
-  return { data: found, error: null };
-}
-
-function whenReady(): Promise<void> {
-  if (video.readyState >= 2) return Promise.resolve();
-  return new Promise((resolve) => {
-    video.addEventListener("loadeddata", () => resolve(), { once: true });
-    setTimeout(resolve, 5000);
-  });
-}
-
-function seek(seconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => resolve();
-    video.addEventListener("seeked", done, { once: true });
-    setTimeout(done, 3000);
-    video.currentTime = seconds;
-  });
+  return analyseClip(file, video, onProgress);
 }
 
 /** Plays the clip's shared stretch on a loop with every subject's outline and label drawn on it. */
 async function showCast(guides: Guide[]) {
   preview = guides;
-  await whenReady();
+  await whenReady(video);
   const g = guides[0]!;
   overlay.height = Math.round(overlay.width * (g.source.height / g.source.width));
   video.currentTime = g.range.startMs / 1000;
@@ -274,46 +156,8 @@ function listCast(found: Found) {
 
 // ---- Adding to the bank ----
 
-async function posterOf(g: Guide): Promise<Blob> {
-  video.pause();
-  await whenReady();
-  await seek((g.range.startMs + g.range.endMs) / 2000);
-  const scale = Math.min(1, POSTER_WIDTH / (video.videoWidth || POSTER_WIDTH));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round((video.videoWidth || POSTER_WIDTH) * scale);
-  canvas.height = Math.round((video.videoHeight || POSTER_WIDTH * 9 / 16) * scale);
-  canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no poster"))), "image/jpeg", 0.82));
-}
-
-async function addToBank(folder: FileSystemDirectoryHandle, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
-  const index = await readIndex(folder);
-  if (index.error !== null) return index;
-  const g = guides[0]!;
-  const id = slugFor(title, index.data.clips.map((c) => c.id));
-  try {
-    const clipFolder = await folder.getDirectoryHandle(id, { create: true });
-    await writeFile(clipFolder, `clip.${type}`, file);
-    await writeFile(clipFolder, "poster.jpg", await posterOf(g));
-    const json = guidesJson(guides);
-    await writeFile(clipFolder, "guides.json", json);
-    const entry = bankEntry({
-      id, title, credit,
-      durationMs: Math.round(g.range.endMs - g.range.startMs),
-      people: guides.filter((x) => x.subject.kind === "person").length,
-      things: guides.filter((x) => x.subject.kind === "thing").length,
-    }, type);
-    // The index is written last, so a clip that failed halfway never shows up in the game.
-    const latest = await readIndex(folder);
-    if (latest.error !== null) return latest;
-    await writeIndex(folder, withClip(latest.data, entry));
-    return { data: { entry, guidesBytes: json.length }, error: null };
-  } catch (err) {
-    return { data: null, error: `Writing to the bank folder failed: ${(err as Error).message}` };
-  }
-}
-
-const describe = (e: BankEntry) => `${e.people} ${e.people === 1 ? "person" : "people"}, ${e.things} ${e.things === 1 ? "thing" : "things"}, ${(e.durationMs / 1000).toFixed(1)} s`;
+const addToBank = (folder: FileSystemDirectoryHandle, file: File, type: VideoType, guides: Guide[], title: string, credit: string) =>
+  addClip(folder, video, file, type, guides, title, credit);
 
 $("file").addEventListener("change", async (event) => {
   const input = event.target as HTMLInputElement;
@@ -362,9 +206,23 @@ $("add").addEventListener("click", async () => {
   }
   current = null;
   syncButtons();
-  say("addStatus", `Added "${title}" as ${added.data.entry.id}: ${describe(added.data.entry)}, moves ${(added.data.guidesBytes / 1e6).toFixed(1)} MB.`, "good");
+  say("addStatus", `Added "${title}" as ${added.data.entry.id}: ${describe(added.data.entry)}, moves ${(added.data.guidesBytes / 1e6).toFixed(1)} MB. ${await publishBank()}`, "good");
   await showBank();
 });
+
+/**
+ * Asks the dev server to publish the bank (jester-deploy/deploy-bank.sh, about 20 seconds), so added clips reach
+ * the site. Requests a few seconds apart share one run.
+ */
+async function publishBank(): Promise<string> {
+  try {
+    const response = await fetch("/__review/publish", { method: "POST", headers: { "x-jester-review": "1", "content-type": "application/json" }, body: "{}" });
+    const answer = (await response.json()) as Result<unknown>;
+    return answer.error ?? "Publishing the bank to the site in a few seconds (about 20 seconds in all).";
+  } catch {
+    return "The dev server could not publish the bank. Run jester-deploy/deploy-bank.sh by hand.";
+  }
+}
 
 // ---- Many at once: a batch of files, or the starter clips ----
 
@@ -407,7 +265,7 @@ async function addMany(items: Queued[], logId: string) {
     line.className = "good";
     await showBank();
   }
-  note(`Done: ${added} added.`);
+  note(`Done: ${added} added.${added > 0 ? ` ${await publishBank()}` : ""}`);
   busy = false;
   syncButtons();
 }
