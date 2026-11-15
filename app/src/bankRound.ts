@@ -18,6 +18,7 @@ type Result<T> = { data: T; error: null } | { data: null; error: string };
 
 const VIDEO_UNREACHABLE = "The video for this clip did not load. Check your connection, or pick another clip.";
 const NO_ONE = "No one to copy in this clip.";
+const NO_PEOPLE = "This clip has no people to copy, only things. Play it with its things included.";
 const NOT_A_PERSON = "Practice with a person needs one of the people in this clip.";
 const LOAD_TIMEOUT_MS = 20000;
 
@@ -65,11 +66,18 @@ function withThingOutlines(g: Guide): Guide {
   return { ...g, outlines: g.boxTrack.frames.map((f, i) => g.outlines[i] ?? (f.box ? ellipseOutline(f.box) : null)) };
 }
 
-/** The blind mode scene for a bank clip: the same thing `videoScene` builds from a file, without reading the file. */
-export async function bankScene(clip: BankClip, video: HTMLVideoElement): Promise<Result<Scene>> {
-  const guides = await loadBankGuides(clip);
-  if (guides.error !== null) return guides;
-  if (guides.data.length === 0) return { data: null, error: NO_ONE };
+/**
+ * The blind mode scene for a bank clip: the same thing `videoScene` builds from a file, without reading the file.
+ * `withThings: false` plays it people only (a clip of 2 people and a ball is then a 2 player round, not 3).
+ */
+export async function bankScene(clip: BankClip, video: HTMLVideoElement, options: { withThings?: boolean } = {}): Promise<Result<Scene>> {
+  const loadedGuides = await loadBankGuides(clip);
+  if (loadedGuides.error !== null) return loadedGuides;
+  if (loadedGuides.data.length === 0) return { data: null, error: NO_ONE };
+  const guides = options.withThings === false
+    ? { data: loadedGuides.data.filter((g) => g.subject.kind === "person"), error: null }
+    : loadedGuides;
+  if (guides.data.length === 0) return { data: null, error: NO_PEOPLE };
   const loaded = await loadBankVideo(video, clip.video);
   if (loaded.error !== null) return loaded;
   const g = guides.data[0]!;
