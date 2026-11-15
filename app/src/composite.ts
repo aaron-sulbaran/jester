@@ -30,13 +30,18 @@ export function characterPoseAt(guide: Guide, mediaMs: number): Obj[] | null {
 }
 
 /** Draws all roles at clip media time `mediaMs`. Returns the figures and the winner's index (-1 if no scores). */
-export function drawReveal(canvas: HTMLCanvasElement, roles: RevealRole[], mediaMs: number, { clipAspect, winner }: { clipAspect: number; winner?: number }) {
+export function drawReveal(canvas: HTMLCanvasElement, roles: RevealRole[], mediaMs: number, { clipAspect, winner, spreadX = 0 }: { clipAspect: number; winner?: number; spreadX?: number }) {
   const shown = roles.map((r) => ({ role: r, characterPose: characterPoseAt(r.guide, mediaMs) }));
   const figures = composeFrame(
     shown.filter((r) => r.characterPose).map((r) => ({ timeline: r.role.timeline, characterPose: r.characterPose!, name: r.role.name })),
     mediaMs,
     { playerAspect: 4 / 3, clipAspect },
   );
+  // Players who all play the same character would draw on top of each other; spreadX moves them apart (image width fraction).
+  if (spreadX) figures.forEach((fig: { pose: { x: number }[] | null }, i: number) => {
+    const dx = (i - (figures.length - 1) / 2) * spreadX;
+    if (fig.pose) for (const p of fig.pose) p.x += dx;
+  });
   const best = winner ?? winnerIndex(roles.map((r) => r.score ?? null));
   drawComposite(canvas.getContext("2d")!, canvas.width, canvas.height, figures, { highlight: best });
   return { figures, winner: best };
