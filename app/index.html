@@ -36,6 +36,14 @@
   </svg>
 
   <main id="game">
+    <!-- Your clip is in (submissionWatch.ts): on any screen, once a clip sent from this tab joins the bank. Plain markup; the look comes from the frontend agent. -->
+    <div class="note-wrap" id="clipReady" role="status" hidden>
+      <p class="note" id="clipReadyText"></p>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="clipReadyPlay">Play it now</button>
+        <button type="button" class="link" id="clipReadyLater">Later</button>
+      </div>
+    </div>
     <!-- Home: on every screen once you leave the start. Mid-game it asks first. -->
     <!-- Top right on every screen: How to play (start screen only) and Sound (game.ts). -->
     <nav class="side-nav" id="sideNav" aria-label="Help and sound">
