@@ -4,7 +4,7 @@
 
 Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainment**.
 
-**Play it:** https://jester-pi.vercel.app (a laptop with a webcam, in desktop Chrome or Edge [check])
+**Play it:** https://jester-pi.vercel.app (a laptop with a webcam, in desktop Chrome or Edge)
 
 ![Jester: act out any clip, get judged. 2 to 4 players and a laptop with a webcam.](https://aaronsulbaran.com/hack-princeton/brand/devpost/hero.png)
 
@@ -84,7 +84,7 @@ Then open http://localhost:5173. No settings file is needed: the dev server take
 ## Clips
 
 - No video files live in this repo. It holds motion data and code only.
-- The public bank holds only clips we may share: filmed by the team, public domain, or openly licensed and credited on the clip [check]. The files are copied in at deploy time and never committed.
+- Only clips we may share go in the public bank: filmed by the team, public domain, or openly licensed and credited on the clip. Its files are copied in at deploy time and never committed.
 - Links are never downloaded. Jester reads each captured frame once for people and drops it; no tool or service that fetches video from YouTube, TikTok or Instagram is used.
 - Submit your own: a clip goes to a private bucket and a person on the team reviews it before it can join the bank. The sender confirms they filmed it and everyone in it agrees.
 - The round log keeps pose points, the score, and the camera and engine details. No video, no images, no masks.
