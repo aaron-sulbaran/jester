@@ -55,6 +55,16 @@ test("allowedDrops: known things only, once each, never a person, never every su
   assert.deepEqual(allowedDrops(thingsOnly, [{ label: "Car 1", why }, { label: "Car 2", why }]), []);
 });
 
+test("allowedDrops: never leaves an unplayable cast where the full cast plays well", () => {
+  // The person is seen for a third of the stretch; the car carries the clip.
+  const cast = castSummary([track("Person 1", "person", 0, 10, { cx: 0.5, cy: 0.6, w: 0.3, h: 0.6 }), track("Car 1", "thing", 0, 28, car)]);
+  assert.equal(cast[0]!.seenShare < 0.4, true);
+  assert.deepEqual(allowedDrops(facts(cast), [{ label: "Car 1", why: "parked" }]), []);
+  // Dropping a blip that carries nothing is fine.
+  const withBlip = castSummary([track("Person 1", "person", 0, 30, { cx: 0.5, cy: 0.6, w: 0.3, h: 0.6 }), track("Car 1", "thing", 24.4, 25.6, car)]);
+  assert.deepEqual(allowedDrops(facts(withBlip), [{ label: "Car 1", why: "blip" }]).map((d) => d.label), ["Car 1"]);
+});
+
 test("finalize: the cast check never changes the verdict, and only allowed drops come out", () => {
   const recorded = {
     verdict: "approve" as const, reason: "Fine.", nameCheck: "fits" as const, nameKind: "meme_or_joke" as const, nameNote: "", framesCheck: "A dancer by a red car.",
