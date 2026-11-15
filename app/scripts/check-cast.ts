@@ -10,13 +10,11 @@
 // It calls Anthropic directly and never traces: with a LangChain tracing switch (LANGSMITH_TRACING and the like)
 // set in the shell, each clip is refused by the Chamberlain's tracingRefusal (see cast-checker.ts).
 
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
-import type { LLMResult } from "@langchain/core/outputs";
 import { castFrames, readGuides, videoIn } from "../castFrames.ts";
-import { checkCast, DEFAULT_MODEL, readEnvFile, type CastResult } from "../cast-checker.ts";
+import { CastUsageMeter, checkCast, DEFAULT_MODEL, readEnvFile, type CastResult, type Usage, type Who } from "../cast-checker.ts";
 import { checkoutAround } from "../review-cases.ts";
 
 function arg(name: string): string | undefined {
@@ -26,13 +24,17 @@ function arg(name: string): string | undefined {
 
 const bank = resolve(arg("bank") ?? process.env.JESTER_BANK_DIR ?? join(homedir(), "Personal Projects/hack-princeton/jester-deploy/bank"));
 const out = resolve(arg("out") ?? join(dirname(bank), "cast-checks"));
-const frameCount = Number(arg("frames") ?? "12");
+/** Frames per clip: 12 by default, kept between 4 and 24 so a typo cannot send hundreds of images. */
+const frameCount = Math.min(24, Math.max(4, Math.round(Number(arg("frames") ?? "12")) || 12));
 const parallel = Math.max(1, Number(arg("parallel") ?? "3"));
 const envPath = process.env.JESTER_REVIEW_ENV ?? join(dirname(bank), ".env.review");
 
 if (!existsSync(bank)) { console.log(`No bank folder at ${bank}.`); process.exit(1); }
 if (checkoutAround(out)) { console.log(`Refusing to write to ${out}: it is inside the git checkout ${checkoutAround(out)}, and the frames show real people.`); process.exit(1); }
-if (resolve(out).startsWith(resolve(bank) + "/")) { console.log("Refusing to write inside the bank folder."); process.exit(1); }
+// Never into the bank: not the bank folder itself, nothing inside it, and not a folder that holds it.
+const realOrSelf = (p: string) => { try { return realpathSync(p); } catch { return p; } };
+const realBank = realOrSelf(bank), realOut = realOrSelf(out);
+if (realOut === realBank || realOut.startsWith(realBank + "/") || realBank.startsWith(realOut + "/")) { console.log("Refusing to write into the bank folder, inside it, or into a folder that holds it."); process.exit(1); }
 
 const env = readEnvFile(envPath);
 const apiKey = env.ANTHROPIC_API_KEY;
@@ -41,40 +43,6 @@ if (!apiKey) { console.log(`No ANTHROPIC_API_KEY in ${envPath} (set JESTER_REVIE
 
 /** Claude Sonnet 5.5 on the Anthropic API, dollars per million tokens. */
 const PRICE = { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 };
-
-type Who = "cast-checker" | "person-checker" | "thing-checker" | "recounter";
-interface Usage { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number }
-const zero = (): Usage => ({ calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
-
-const textOf = (content: unknown): string => typeof content === "string" ? content
-  : Array.isArray(content) ? content.map((b) => (typeof b?.text === "string" ? b.text : "")).join("") : "";
-
-/** Counts model calls and tokens for one clip, by agent, told apart by each one's system prompt. */
-class UsageMeter extends BaseCallbackHandler {
-  name = "cast-usage-meter";
-  by: Record<Who, Usage> = { "cast-checker": zero(), "person-checker": zero(), "thing-checker": zero(), recounter: zero() };
-  private open = new Map<string, Who>();
-  override async handleChatModelStart(_llm: unknown, messages: { content: unknown; getType?: () => string; _getType?: () => string }[][], runId: string) {
-    const system = textOf(messages[0]?.find((m) => (m.getType?.() ?? m._getType?.()) === "system")?.content);
-    this.open.set(runId, system.startsWith("You check one person") ? "person-checker" : system.startsWith("You check one thing") ? "thing-checker" : system.startsWith("You recount") ? "recounter" : "cast-checker");
-  }
-  override async handleLLMEnd(output: LLMResult, runId: string) {
-    const who = this.open.get(runId);
-    if (!who) return;
-    this.open.delete(runId);
-    type U = { input_tokens?: number; output_tokens?: number; input_token_details?: { cache_read?: number; cache_creation?: number } };
-    const usage = (output.generations[0]?.[0] as { message?: { usage_metadata?: U } } | undefined)?.message?.usage_metadata;
-    const u = this.by[who];
-    u.calls += 1;
-    u.input += usage?.input_tokens ?? 0;
-    u.output += usage?.output_tokens ?? 0;
-    u.cacheRead += usage?.input_token_details?.cache_read ?? 0;
-    u.cacheWrite += usage?.input_token_details?.cache_creation ?? 0;
-  }
-  total(): Usage {
-    return Object.values(this.by).reduce((a, u) => ({ calls: a.calls + u.calls, input: a.input + u.input, output: a.output + u.output, cacheRead: a.cacheRead + u.cacheRead, cacheWrite: a.cacheWrite + u.cacheWrite }), zero());
-  }
-}
 
 /** Dollars, at Anthropic API prices. LangChain's input count includes cache reads and writes. */
 const costOf = (u: Usage) => ((u.input - u.cacheRead - u.cacheWrite) * PRICE.input + u.cacheWrite * PRICE.cacheWrite + u.cacheRead * PRICE.cacheRead + u.output * PRICE.output) / 1e6;
@@ -93,14 +61,17 @@ interface Row { id: string; result: CastResult | null; error: string | null; sec
 
 async function one(id: string): Promise<Row> {
   const started = Date.now();
-  const meter = new UsageMeter();
+  const meter = new CastUsageMeter();
   const dir = join(out, id);
   try {
+    mkdirSync(dir, { recursive: true });
+    const realDir = realOrSelf(dir);
+    if (realDir === realBank || realDir.startsWith(realBank + "/")) throw new Error("its output folder leads into the bank folder, so nothing was written");
     const guides = readGuides(join(bank, id));
     const frames = await castFrames(join(bank, id), join(dir, "frames"), frameCount);
     const result = await checkCast(guides, frames, {
       apiKey,
-      callbacks: [meter],
+      meter,
       tags: ["cast-checker"], metadata: { clip: id }, runName: `cast-check ${id}`,
     });
     const row: Row = { id, result, error: null, seconds: (Date.now() - started) / 1000, usage: meter.total(), byAgent: meter.by, cost: costOf(meter.total()) };
