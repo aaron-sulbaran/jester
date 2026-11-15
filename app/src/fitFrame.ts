@@ -6,6 +6,8 @@
 // The pure parts (where the picture lands, the frame, the player's box, the fit and its words) are exported for
 // app/test/fitFrame.test.ts. whereToStand() is the small controller blind.ts calls; it only positions one element.
 
+import { fitGood } from "./sfx.ts";
+
 /** A box in normalized picture coordinates (0 to 1 across and down), centre and size: a guide's boxTrack box. */
 export interface Box { cx: number; cy: number; w: number; h: number }
 /** A rectangle in pixels from the stage's top left corner. */
@@ -141,7 +143,7 @@ export function whereToStand(o: { stage: HTMLElement; canvas: HTMLCanvasElement;
   // The hint during the turn: the same paper tag as the framing step, made the first time the fit is badly off.
   let hint: HTMLElement | null = null;
   let shown = "";
-  let badSince = 0, goodSince = 0, goodHintUntil = 0;
+  let badSince = 0, goodSince = 0, goodHintUntil = 0, chimedAt = -Infinity;
   const set = (prop: "left" | "top" | "width" | "height", pct: number) => {
     const v = `${pct.toFixed(2)}%`;
     if (frame.style[prop] !== v) frame.style[prop] = v;
@@ -208,6 +210,8 @@ export function whereToStand(o: { stage: HTMLElement; canvas: HTMLCanvasElement;
     framing(points) {
       const fit = follow(-1, points);
       const now = performance.now();
+      // A soft chime the moment the player first fits, before the turn (never during it), at most every 2 s.
+      if (fit === "good" && !goodSince && now - chimedAt > 2000) { chimedAt = now; fitGood(); }
       if (fit === "good") goodSince ||= now; else goodSince = 0;
       return { passed: fit === "good" && now - goodSince >= FIT.holdMs, text: fitHint(fit) };
     },
