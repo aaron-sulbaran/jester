@@ -13,6 +13,7 @@
 
 import type { BodyPart, LandmarkObject } from "../../engine/src/index.ts";
 import { soundTrack } from "./sound.ts";
+import { withDuration } from "./webmDuration.ts";
 
 /** A binary person mask, as Lisa's tracker gives it: 0/1 per cell over the whole camera image. */
 export interface PersonMask { width: number; height: number; data: Uint8Array }
@@ -429,7 +430,8 @@ export async function recordSegments(canvas: HTMLCanvasElement, segments: readon
   const done = new Promise<string | null>((resolve) => {
     if (!recorder) return;
     recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    recorder.onstop = () => resolve(chunks.length ? URL.createObjectURL(new Blob(chunks, { type })) : null);
+    // The length goes into the file, so the results' seek bar works and a sent copy opens anywhere.
+    recorder.onstop = async () => resolve(chunks.length ? URL.createObjectURL(await withDuration(new Blob(chunks, { type }))) : null);
   });
   let before = 0;
   for (const [k, seg] of segments.entries()) {

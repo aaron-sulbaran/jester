@@ -203,38 +203,261 @@ function torsoAt(g: Guide, ms: number): Torso | null {
   return { shoulder: mid(11, 12), hip: mid(23, 24) };
 }
 
+/** How far the cover reaches past a subject's outline, and how soft its rim is, as shares of the frame height. */
+const COVER_GROW = 0.028, COVER_FEATHER = 0.009;
+
 /**
- * Hides the clip's own subjects at replay time `ms` so the players can stand in their place: an
- * ellipse round each subject's blended box is filled with a
- * heavily blurred copy of the frame underneath.
+ * The subject's outlines at the two samples around play time `ms` (both, so a moving subject is covered all the
+ * way between them), or its box as an ellipse where a sample has no outline.
  */
-function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number) {
-  if (ms < 0) return;
+function subjectOutlines(g: Guide, ms: number): Outline[] {
+  if (ms < 0) return [];
+  const frames = g.boxTrack.frames;
+  const pos = Math.min(frames.length - 1, Math.max(0, (ms * g.source.sampleHz) / 1000));
+  const i = Math.floor(pos), j = Math.min(frames.length - 1, i + 1);
+  const out: Outline[] = [];
+  for (const k of i === j ? [i] : [i, j]) {
+    const box = frames[k]?.box;
+    const o = g.outlines[k] ?? (box ? ellipseOutline(box) : null);
+    if (o && o.length >= 3) out.push(o);
+  }
+  return out;
+}
+
+/** Paints the subjects' outlines on `c` (w by h), each grown by `grow` px. False when there was nothing to paint. */
+function paintSubjects(c: CanvasRenderingContext2D, w: number, h: number, guides: readonly Guide[], ms: number, grow: number): boolean {
+  c.fillStyle = c.strokeStyle = "#000";
+  c.lineJoin = "round"; c.lineWidth = 2 * grow;
+  let any = false;
   for (const g of guides) {
-    // An ellipse round the blended box (the raw outline changed shape every frame, which made the cover
-    // flicker), with a soft rim: the blurred frame is drawn on a scratch canvas, kept by a radial fade.
-    const box = boxAt(g, ms);
-    if (!box) continue;
-    const s = coverCanvas(W, H), sc = s.getContext("2d")!;
-    sc.globalCompositeOperation = "source-over";
-    sc.clearRect(0, 0, W, H);
+    // One path per outline: two outlines in one path could cancel where they overlap.
+    for (const o of subjectOutlines(g, ms)) {
+      c.beginPath();
+      o.forEach(([x, y], n) => (n ? c.lineTo(x * w, y * h) : c.moveTo(x * w, y * h)));
+      c.closePath(); c.fill(); c.stroke();
+      any = true;
+    }
+  }
+  return any;
+}
+
+const scratchCanvases = new Map<string, HTMLCanvasElement>();
+function scratch(name: string, w: number, h: number): HTMLCanvasElement {
+  let s = scratchCanvases.get(name);
+  if (!s) { s = document.createElement("canvas"); scratchCanvases.set(name, s); }
+  if (s.width !== w || s.height !== h) { s.width = w; s.height = h; }
+  return s;
+}
+
+/**
+ * The cover's shape at play time `ms`: every subject's outline, grown and with a soft rim, drawn at a quarter
+ * of the frame's size (it is scaled up smoothly). Null when no subject is in view.
+ */
+function coverMask(W: number, H: number, guides: readonly Guide[], ms: number): HTMLCanvasElement | null {
+  const mw = Math.max(1, Math.round(W / 4)), mh = Math.max(1, Math.round(H / 4));
+  const a = scratch("maskShape", mw, mh), ac = a.getContext("2d")!;
+  ac.clearRect(0, 0, mw, mh);
+  if (!paintSubjects(ac, mw, mh, guides, ms, COVER_GROW * mh)) return null;
+  const b = scratch("maskSoft", mw, mh), bc = b.getContext("2d")!;
+  bc.clearRect(0, 0, mw, mh);
+  bc.filter = `blur(${(COVER_FEATHER * mh).toFixed(2)}px)`;
+  bc.drawImage(a, 0, 0);
+  bc.filter = "none";
+  return b;
+}
+
+/**
+ * Hides the clip's own subjects at replay time `ms` so the players can stand in their place: each subject's own
+ * outline, grown and feathered, is filled with the empty set (`plate`), or with a blurred copy of the frame
+ * when there is no plate (a moving camera).
+ */
+function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number, plate: HTMLCanvasElement | null = null) {
+  if (ms < 0) return;
+  const mask = coverMask(W, H, guides, ms);
+  if (!mask) return;
+  const s = coverCanvas(W, H), sc = s.getContext("2d")!;
+  sc.globalCompositeOperation = "source-over";
+  sc.clearRect(0, 0, W, H);
+  if (plate) {
+    sc.imageSmoothingQuality = "high";
+    sc.drawImage(plate, 0, 0, W, H);
+  } else {
     sc.filter = `blur(${Math.round(W / 25)}px)`;
     // Drawn larger than the canvas, so the blur pulls in colour from around the subject.
     sc.drawImage(video, -W * 0.05, -H * 0.05, W * 1.1, H * 1.1);
     sc.filter = "none";
     sc.fillStyle = "rgba(0,0,0,0.2)";
     sc.fillRect(0, 0, W, H);
-    sc.globalCompositeOperation = "destination-in";
-    sc.save();
-    // 1.55 and 1.4 reach past the box corners; the fade starts at 70% of the way out.
-    sc.translate(box.cx * W, box.cy * H);
-    sc.scale((box.w * W) / 2 * 1.55, (box.h * H) / 2 * 1.4);
-    const fade = sc.createRadialGradient(0, 0, 0, 0, 0, 1);
-    fade.addColorStop(0.7, "rgba(0,0,0,1)"); fade.addColorStop(1, "rgba(0,0,0,0)");
-    sc.fillStyle = fade;
-    sc.fillRect(-1, -1, 2, 2);
-    sc.restore();
-    c.drawImage(s, 0, 0);
+  }
+  sc.globalCompositeOperation = "destination-in";
+  sc.imageSmoothingQuality = "high";
+  sc.drawImage(mask, 0, 0, W, H);
+  sc.globalCompositeOperation = "source-over";
+  c.drawImage(s, 0, 0);
+}
+
+function seeked(v: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => { v.removeEventListener("seeked", done); clearTimeout(t); resolve(); };
+    const t = setTimeout(done, 1500);
+    v.addEventListener("seeked", done);
+  });
+}
+
+/**
+ * The clip's set with nobody in it: about 40 frames across the stretch, and for each pixel the median of the
+ * frames where no subject was over it (each subject's outline, grown). Pixels no frame saw are filled from the
+ * set beside them (see fillFromSides). `scene` is as played; play time ms is media time ms * speed.
+ * Null when the camera moves (the frames disagree away from the subjects) or the frames cannot be read.
+ */
+async function backgroundPlate(video: HTMLVideoElement, scene: Scene, speed: number, W: number, H: number): Promise<HTMLCanvasElement | null> {
+  const w = 400, h = Math.max(1, Math.round((w * H) / W)), N = 40;
+  const work = document.createElement("canvas");
+  work.width = w; work.height = h;
+  const wc = work.getContext("2d", { willReadFrequently: true })!;
+  const shape = document.createElement("canvas");
+  shape.width = w; shape.height = h;
+  const shc = shape.getContext("2d", { willReadFrequently: true })!;
+  const samples: Uint8ClampedArray[] = [], covered: Uint8Array[] = [];
+  const wasPaused = video.paused;
+  video.pause();
+  try {
+    for (let k = 0; k < N; k++) {
+      const ms = ((k + 0.5) / N) * scene.durationMs;
+      video.currentTime = (scene.startMs + ms * speed) / 1000;
+      await seeked(video);
+      wc.drawImage(video, 0, 0, w, h);
+      samples.push(wc.getImageData(0, 0, w, h).data);
+      // A wider margin than the cover's, so the subject's soft edge and shadow stay out of the plate.
+      shc.clearRect(0, 0, w, h);
+      paintSubjects(shc, w, h, scene.guides, ms, 0.04 * h);
+      const a = shc.getImageData(0, 0, w, h).data, cov = new Uint8Array(w * h);
+      for (let p = 0; p < w * h; p++) cov[p] = a[p * 4 + 3]! > 0 ? 1 : 0;
+      covered.push(cov);
+    }
+  } catch {
+    return null; // a clip from another site without CORS cannot be read back
+  } finally {
+    if (!wasPaused) void video.play().catch(() => {});
+  }
+  // A moving camera: frames next to each other differ a lot where nobody is.
+  let diff = 0, n = 0;
+  for (let k = 1; k < N; k++) {
+    const a = samples[k - 1]!, b = samples[k]!;
+    for (let p = 0; p < w * h; p += 7) {
+      if (covered[k]![p] || covered[k - 1]![p]) continue;
+      diff += Math.abs(a[p * 4]! - b[p * 4]!) + Math.abs(a[p * 4 + 1]! - b[p * 4 + 1]!) + Math.abs(a[p * 4 + 2]! - b[p * 4 + 2]!);
+      n++;
+    }
+  }
+  if (n === 0 || diff / n / 3 > 14) return null;
+  const out = wc.createImageData(w, h);
+  const known = new Uint8Array(w * h);
+  const r: number[] = [], gr: number[] = [], bl: number[] = [];
+  const med = (v: number[]) => { v.sort((x, y) => x - y); return v[v.length >> 1]!; };
+  for (let p = 0; p < w * h; p++) {
+    r.length = gr.length = bl.length = 0;
+    for (let k = 0; k < N; k++) {
+      if (covered[k]![p]) continue;
+      const d = samples[k]!;
+      r.push(d[p * 4]!); gr.push(d[p * 4 + 1]!); bl.push(d[p * 4 + 2]!);
+    }
+    if (r.length < 3) continue;
+    out.data[p * 4] = med(r); out.data[p * 4 + 1] = med(gr); out.data[p * 4 + 2] = med(bl); out.data[p * 4 + 3] = 255;
+    known[p] = 1;
+  }
+  fillFromSides(out.data, known, w, h);
+  wc.putImageData(out, 0, 0);
+  return work;
+}
+
+/**
+ * Fills the pixels of an RGBA image that no frame saw. Each gap in a row is filled with the seen stretch of set on
+ * either side of it mirrored in (and back again if the gap is wider than that stretch), the nearer side counting
+ * more, so the floor, the fence or the horizon carry on through it with their own texture and no seam at either
+ * edge. A gap with no seen pixels on either side gets a smooth guess from all around (fillHoles).
+ */
+function fillFromSides(px: Uint8ClampedArray, known: Uint8Array, w: number, h: number) {
+  const smooth = px.slice();
+  fillHoles(smooth, w, h);
+  /** Distance d into the gap folded back and forth inside a seen stretch n pixels long. */
+  const fold = (d: number, n: number) => { const m = d % (2 * n); return m < n ? m : 2 * n - 1 - m; };
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x0 = 0; x0 < w; x0++) {
+      if (known[row + x0]) continue;
+      let x1 = x0;
+      while (x1 < w && !known[row + x1]) x1++;
+      // The seen stretches either side: [a, x0) and [x1, b).
+      let a = x0, b = x1;
+      while (a > 0 && known[row + a - 1]) a--;
+      while (b < w && known[row + b]) b++;
+      const nl = x0 - a, nr = b - x1, L = x1 - x0;
+      for (let x = x0; x < x1; x++) {
+        const t = (x - x0 + 0.5) / L;
+        const wl = nl > 0 ? 1 - t : 0, wr = nr > 0 ? t : 0;
+        const l = x0 - 1 - fold(x - x0, Math.max(1, nl)), r = x1 + fold(x1 - 1 - x, Math.max(1, nr));
+        const p = row + x;
+        for (let k = 0; k < 3; k++) {
+          px[p * 4 + k] = wl + wr > 0 ? (wl * px[(row + Math.max(0, l)) * 4 + k]! + wr * px[(row + Math.min(w - 1, r)) * 4 + k]!) / (wl + wr) : smooth[p * 4 + k]!;
+        }
+        px[p * 4 + 3] = 255;
+      }
+      x0 = x1;
+    }
+  }
+}
+
+/**
+ * Fills the transparent pixels of an RGBA image smoothly from the pixels around them (pull-push: halve the
+ * image until the holes close, then bring the colour back up), so a spot nobody ever uncovered gets a soft
+ * guess at the set behind it instead of a hard-edged patch.
+ */
+function fillHoles(px: Uint8ClampedArray, w: number, h: number) {
+  type Level = { w: number; h: number; c: Float32Array; a: Float32Array };
+  const base: Level = { w, h, c: new Float32Array(w * h * 3), a: new Float32Array(w * h) };
+  for (let p = 0; p < w * h; p++) {
+    const a = px[p * 4 + 3]! / 255;
+    base.a[p] = a;
+    for (let k = 0; k < 3; k++) base.c[p * 3 + k] = px[p * 4 + k]! * a;
+  }
+  const levels = [base];
+  while (levels.length < 12) {
+    const f = levels[levels.length - 1]!;
+    if (f.w <= 1 && f.h <= 1) break;
+    const nw = Math.max(1, Math.ceil(f.w / 2)), nh = Math.max(1, Math.ceil(f.h / 2));
+    const n: Level = { w: nw, h: nh, c: new Float32Array(nw * nh * 3), a: new Float32Array(nw * nh) };
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      const q = (y >> 1) * nw + (x >> 1), p = y * f.w + x;
+      n.a[q]! += f.a[p]!;
+      for (let k = 0; k < 3; k++) n.c[q * 3 + k]! += f.c[p * 3 + k]!;
+    }
+    // Keep colour premultiplied, alpha capped at 1, so a coarse pixel with any known pixel under it counts fully.
+    for (let q = 0; q < nw * nh; q++) {
+      const a = n.a[q]!;
+      if (a > 0) { const s = Math.min(1, a) / a; n.a[q] = Math.min(1, a); for (let k = 0; k < 3; k++) n.c[q * 3 + k]! *= s; }
+    }
+    levels.push(n);
+  }
+  for (let li = levels.length - 2; li >= 0; li--) {
+    const f = levels[li]!, up = levels[li + 1]!;
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      const p = y * f.w + x, a = f.a[p]!;
+      if (a >= 1) continue;
+      // Bilinear from the coarser level, mixed in where this level is not fully known.
+      const fx = Math.min(up.w - 1, Math.max(0, (x - 0.5) / 2)), fy = Math.min(up.h - 1, Math.max(0, (y - 0.5) / 2));
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(up.w - 1, x0 + 1), y1 = Math.min(up.h - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+      const at = (xx: number, yy: number, k: number) => { const q = yy * up.w + xx, ua = up.a[q]!; return ua > 0 ? up.c[q * 3 + k]! / ua : 0; };
+      for (let k = 0; k < 3; k++) {
+        const v = (at(x0, y0, k) * (1 - tx) + at(x1, y0, k) * tx) * (1 - ty) + (at(x0, y1, k) * (1 - tx) + at(x1, y1, k) * tx) * ty;
+        f.c[p * 3 + k] = f.c[p * 3 + k]! + v * (1 - a);
+      }
+      f.a[p] = 1;
+    }
+  }
+  for (let p = 0; p < w * h; p++) {
+    for (let k = 0; k < 3; k++) px[p * 4 + k] = base.c[p * 3 + k]!;
+    px[p * 4 + 3] = 255;
   }
 }
 
@@ -786,6 +1009,9 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   const toPlay = (ms: number) => ms / speed;
   const layers = revealLayers(seats, speed);
   const video = scene.video;
+  // A picture of the empty set, so the played subjects can be painted out cleanly (null for a moving camera).
+  const plate = video ? await backgroundPlate(video, scene, speed, W, H) : null;
+  if (video) { video.currentTime = scene.startMs / 1000; await seeked(video); }
   const realMs = scene.durationMs * speed;
   /** The clip with no players at reveal time ms (`from` ms into the stretch, for a video that was seeked there). */
   const background = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
@@ -796,7 +1022,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   const roles = [...new Set(seats.map((s) => s.guide))];
   const withoutSubjects = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
     background(from)(c, ms);
-    if (video) eraseSubjects(c, W, H, video, roles, toPlay(from + ms));
+    if (video) eraseSubjects(c, W, H, video, roles, toPlay(from + ms), plate);
   };
   // A label at the top centre, clear of the stage's valance, readable on any clip.
   const caption = (c: CanvasRenderingContext2D, text: string, color: string) => {
