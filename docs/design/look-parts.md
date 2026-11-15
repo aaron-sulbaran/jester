@@ -1,40 +1,56 @@
 # Jester look: the parts to reuse
 
-The scrapbook theatre look, as listed by Aaron's frontend agent. Everything is on main in `app/index.html`, `app/src/style.css` and `app/src/ui/`. How to use it: the "Design changes: one look" section of `AGENTS.md`.
+The scrapbook theatre look, as listed by Aaron's frontend agent and checked against `app/src/style.css` and `app/index.html` on main on Saturday night. Every part below exists today. How to use it: the "Design changes: one look" section of `AGENTS.md`.
 
-## Screens and text
+## Layout and words
 
-- **Screen:** `<section class="screen" id="screen-x" hidden>`, shown through `show("x")` in `app/src/ui/game.ts`. One main action per screen. A row of buttons: `.row-actions`.
-- **Headings:** `<div class="masking"><h2 class="tape">` (masking tape). Big moments: `.wins`, filled by `letters(el, text)` from `game.ts` (alphabet stickers).
+- **Screen:** `<section class="screen" id="screen-<name>" hidden>`, shown through `show("<name>")` in `app/src/ui/game.ts`, which sets `body[data-screen]`. One main action per screen. A row of buttons: `.row-actions`.
+- **Headings:** `<div class="masking"><h2 class="tape">` (masking tape).
 - **The Jester's lines:** `<div class="note-wrap"><p class="note">` (blue ballpoint on a torn scrap).
-- **Plain text:** `<p class="typed">`. Small print: `<p class="aside">`. Errors: `<p class="problem" role="alert">`.
+- **Small print:** `.typed` (typewriter). A quiet line under a block: `.aside`.
+- **Errors:** `<p class="problem" role="alert" hidden>`.
+- **Big moments:** `.wins`, filled by `letters(el, text, color?)` in `ui/game.ts` (cut-out letters).
 
 ## Buttons and choices
 
-- **Main action:** `<button class="btn btn-main"><span class="ticket"><span class="ticket-text">` (a ticket stub).
-- **Secondary:** `.btn.btn-quiet` (a punched paper tag).
-- **Choices:** `.chip` with `aria-pressed`. A two-way choice as paper cards: `.mode` with `role=radio` and `aria-checked`.
-- **Quiet text link:** `.link`. Top-left nav: `.tab-btn` (the circus tent Home).
+- **Main action:** `.btn.btn-main > .ticket > .ticket-text` (the yellow ticket). One per screen.
+- **Secondary:** `.btn-quiet` (the paper tag). A text button: `.link`.
+- **Small label:** `.chip`.
+- **A choice card:** `.mode` with `role=radio`, inside `.modes-pick`.
+- **Top bar:** `.tab-btn` inside `#gameNav`. Home is the tent.
 
-## Cards, forms and the stage
+## Pictures and cards
 
-- **Cards:** `.print` (white photo, hard shadow). A pickable taped photo: `.clip` with `.washi`, `.clip-pic`, `.clip-name`, `.clip-hint`. A numbered card: `.step`. Tape: `.washi.w-pink`, `.w-mint` or `.w-dots`.
-- **Forms:** `.field` (label, input, small helper), `.consent` (a checkbox line), `.who` (a name row with a colour dot).
-- **Stage:** the shoebox `.box`. Copy the block from `screen-turn` or `screen-crown`: `.board-wrap`, `.inside`, `.walls`, `.stage`, `.valance`, and the `.curtain.l` and `.curtain.r` pair.
-- **Loading:** any `<progress>`; `jesterBars()` turns it into the running jester bar by itself.
-- **Modals:** `<dialog class="leave">` holding `.note-wrap` and `.row-actions`.
+- **A photo print:** `.print` (white border, hard shadow).
+- **A clip card:** `.clip` with `.clip-pic`, `.clip-name`, `.clip-credit`, `.clip-hint`, `.clip-star`, `.clip-q`.
+- **An illustrated step:** `.step` with `.step-pic`, as on How to play.
+- **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
+- **The stage:** `.box`, the shoebox around any canvas or video. Copy the block from `screen-turn` or `screen-crown`.
 
-## Jesters
+## Forms
 
-- A player's face on the 3D jester: `new FaceJester(face, variantFor(i))` from `app/src/ui/faceJester.ts`.
-- The host as a sticker puppet: `.puppet > .stick + .jester.jester-dance` (or `jester-win`). The drum: `.drum`.
+- `label.field > span + input`, with an optional `small`.
+- `label.consent > input[type=checkbox] + span`.
+- `.who`: a player name tag.
 
-## Tokens
+## Motion and characters
 
-- **Colours:** `--kraft`, `--photo`, `--ink`, `--pen` (the Jester's voice), `--stamp` (accent and errors), `--ticket` (main action), `--p1` to `--p4` (players).
-- **Fonts:** `--hand` (Gaegu: headings and the Jester), `--type` (Special Elite: body and labels), `--sticker` (Titan One: big numbers and stickers).
-- **Shadows:** `--shade` and `--lift`, hard offset only.
+- **Loading:** any `<progress>` becomes the running jester bar through `jesterBars()`; `.jbar` is the result. Never style either by hand.
+- **Are you sure:** `<dialog class="leave">`, the paper dialog.
+- **A player's face on the 3D jester:** `new FaceJester(face, variantFor(i))` from `ui/faceJester.ts`. Animations: idle, dance, win, lose.
+- **The host puppet:** `.puppet > .stick + .jester.jester-dance` (or `.jester-win`). The drum roll: `.drum`.
+
+## Tokens (`:root` in `style.css`)
+
+- **Colours:** `--kraft` (the desk), `--photo`, `--card`, `--wood`, `--ink`, `--pen` (the Jester's voice), `--stamp` (accent and errors), `--ticket` (main action), `--gold`, and `--p1` to `--p4` (player colours, matched to `variantFor`).
+- **Type:** `--hand` (Gaegu, handwriting), `--type` (Special Elite, typewriter), `--sticker` (Titan One, big words).
+- **Depth and motion:** `--shade`, `--lift`, `--ease`, `--grain`, `--gutter`.
 
 ## Never
 
-New colours, fonts or icons. Em dashes. Emoji. All caps. Soft blurred shadows. Plain rounded cards. A cartoon placeholder face (use a grey head and shoulders silhouette).
+- Colours, fonts, icons, gradients or shadows outside the tokens.
+- Em dashes or emoji on screen. All caps.
+- Hotlinked fonts or images: everything is bundled in `app/public`.
+- A glossy app look: rounded cards, glass or blur. Things are paper, tape, stamps and tickets.
+- A cartoon placeholder face; use a grey head and shoulders silhouette.
+- Face photos never leave the device.
