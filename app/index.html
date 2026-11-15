@@ -439,40 +439,98 @@
     </section>
 
     <section class="screen" id="screen-room" hidden>
-      <div class="masking"><h2 class="tape">Play with friends, anywhere</h2></div>
+      <div class="masking" id="roomHead"><h2 class="tape" id="roomHeadText">Play with friends online</h2></div>
       <div class="room-box">
+        <!-- Before a room: your name, then make a room, or join one with a friend's code. Opened from a join link
+             (?room=CODE), the code is filled in and Join is the main action. -->
         <div id="roomJoin">
-          <label class="field"><span>Your name</span><input id="roomName" type="text" maxlength="14" autocomplete="off" /></label>
-          <div class="row-actions">
+          <div class="room-invite" id="roomInvite" hidden>
+            <p class="room-code-label">Room code</p>
+            <p class="room-code" id="roomInviteCode"></p>
+          </div>
+          <label class="field room-name"><span>Your name</span><input id="roomName" type="text" maxlength="14" autocomplete="off" autocapitalize="words" /></label>
+          <div class="row-actions" id="roomCreateRow">
             <button type="button" class="btn btn-main" id="roomCreate"><span class="ticket"><span class="ticket-text">Make a room</span></span></button>
           </div>
-          <label class="field"><span>Or join a friend's room with their code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" placeholder="ABCD" /></label>
-          <button type="button" class="btn btn-quiet" id="roomEnter">Join</button>
+          <div class="room-have-code" id="roomHaveCode">
+            <label class="field"><span>Or join with a friend's code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></label>
+            <button type="button" class="btn btn-quiet" id="roomEnter"><span class="ticket"><span class="ticket-text">Join</span></span></button>
+          </div>
         </div>
+        <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
+             ticket, and a chat that lives only on each device until you leave. -->
         <div id="roomLobby" hidden>
-          <p class="note">Room code <b id="roomCodeText"></b> <span id="roomWhere"></span>. Tell your friends.</p>
-          <ul id="roomRoster" class="how"></ul>
-          <p class="aside">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
-          <div id="roomHostRow" hidden>
-            <div class="field"><span>Pick what you will play (the host chooses for everyone)</span>
-              <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick what you will play">
-                <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
-                <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
-              </div>
-              <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
-              <div class="field" id="roomUploadRow" hidden>
-                <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
-                <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
+          <div class="room-side" id="roomSideWho">
+          <div class="room-door">
+            <div class="room-code-card">
+              <div class="masking room-code-tape"><p class="tape">Room code</p></div>
+              <h2 class="room-code" id="roomCodeText"></h2>
+              <div class="room-link-row">
+                <p class="room-link" id="roomLinkLine" hidden><span id="roomLinkText" hidden></span> <span id="roomWhere"></span></p>
+                <button type="button" class="btn btn-quiet" id="roomCopy">Copy link</button>
               </div>
             </div>
-            <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
-            <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
+            <figure class="print room-qr" id="roomQr">
+              <span class="washi w-dots" aria-hidden="true"></span>
+              <span class="room-qr-code" id="roomQrCode" role="img" aria-label="QR code with the link to this room"></span>
+              <figcaption>Scan to join</figcaption>
+            </figure>
           </div>
-          <p id="roomGuestRow" class="note" hidden>Waiting for the host to deal the parts...</p>
+          <div class="room-cast-wrap">
+            <ul id="roomRoster" class="room-cast" aria-label="Players in the room"></ul>
+          </div>
+          </div>
+          <div class="room-side" id="roomSidePlay">
+          <div class="room-table">
+            <div id="roomHostRow" hidden>
+              <div class="field room-pick"><span class="room-step">Pick the clip</span>
+                <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick the clip">
+                  <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
+                  <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+                </div>
+                <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
+                <div class="field" id="roomUploadRow" hidden>
+                  <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
+                  <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
+                </div>
+              </div>
+              <div class="room-switch">
+                <div class="modes-pick" id="roomPlayMode" role="radiogroup" aria-label="How everyone plays">
+                  <button type="button" class="mode" role="radio" data-play="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
+                  <button type="button" class="mode" role="radio" data-play="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+                </div>
+                <p class="room-play-says" id="roomPlaySays" aria-hidden="true"></p>
+              </div>
+              <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
+              <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
+              <p class="aside" id="roomReadyLine" aria-live="polite" hidden></p>
+            </div>
+            <div id="roomGuestRow" hidden>
+              <div class="note-wrap"><p class="note" id="roomGuestNote">The host picks the clip and deals the parts.</p></div>
+              <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
+              <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
+            </div>
+            <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
+          </div>
+          </div>
+          <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->
+          <section class="room-chat" id="roomChat" aria-labelledby="roomChatHead">
+            <div class="room-chat-page">
+              <h3 class="room-chat-head" id="roomChatHead">Chat</h3>
+              <div class="room-chat-lines" id="roomChatLines">
+                <p class="room-chat-empty" id="roomChatEmpty">No messages yet. Say hi to the room.</p>
+                <ol class="room-chat-log" id="roomChatLog" aria-live="polite"></ol>
+              </div>
+              <form class="room-chat-form" id="roomChatForm">
+                <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
+                <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
+              </form>
+            </div>
+          </section>
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
         <button type="button" class="link" id="roomBack">Back</button>
