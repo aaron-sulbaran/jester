@@ -4,6 +4,11 @@ const DIRECTIONS = [
   { id: "a", name: "Parlor Cards", line: "A card game at the kitchen table. The Jester deals each of you a secret part, face down." },
   { id: "b", name: "Cut Paper", line: "Scrappy and handmade. Your body becomes a paper cutout glued into the clip." },
   { id: "c", name: "Hot Seat", line: "Everything cut away but you, your outline and one number. The whole screen turns your colour on your turn." },
+  { id: "d", name: "Glue Stick", line: "A scrapbook of your game night, made as it happens: photos, tape, stickers and notes in the margins." },
+  { id: "e", name: "Sketch Pad", line: "Everything drawn by hand in a sketchbook. Each player owns a highlighter, and the Jester doodles in the margins." },
+  { id: "f", name: "Royal Court", line: "A castle's great hall. You are the jester performing for the throne, and the winner takes the seat." },
+  { id: "g", name: "Velvet Stage", line: "Red curtains, footlights and a drum roll. The spotlight finds the best performance." },
+  { id: "h", name: "Toy Theater", line: "A paper toy theatre on the table. Your cutouts slide on stage like puppets on sticks." },
 ];
 const SCREENS = [
   { s: "start", title: "Start", note: "Pick a starter clip, upload one or record one. Seated switch." },
@@ -39,7 +44,7 @@ function fit() {
 function buildGallery(id) {
   const d = DIRECTIONS.find((x) => x.id === id);
   document.title = `Jester look: ${d.name}`;
-  const nav = el("nav", {}, el("a", { href: "./" }, "All three"), ...DIRECTIONS.map((x) => el("a", { href: `${x.id}.html`, ...(x.id === id ? { "aria-current": "page" } : {}) }, x.name)), el("a", { href: "research.html" }, "Research"));
+  const nav = el("nav", {}, el("a", { href: "index.html" }, "All looks"), ...DIRECTIONS.map((x) => el("a", { href: `${x.id}.html`, ...(x.id === id ? { "aria-current": "page" } : {}) }, x.name)), el("a", { href: "research.html" }, "Research"));
   const head = el("header", {}, nav, el("h1", {}, d.name), el("p", {}, d.line),
     el("p", { class: "open" }, "Open the screens on their own: ", ...SCREENS.flatMap((sc, i) => [el("a", { href: `${id}-screens.html?s=${sc.s}`, target: "_blank" }, sc.title), i < SCREENS.length - 1 ? ", " : ""])));
   const main = el("main");
@@ -61,7 +66,7 @@ function buildIndex() {
     thumb.dataset.w = "1440"; thumb.dataset.h = "900";
     main.append(el("a", { class: "pick", href: `${d.id}.html` }, el("figure", {}, thumb), el("h2", {}, `${d.id.toUpperCase()}. ${d.name}`), el("p", {}, d.line)));
   }
-  document.body.append(el("header", {}, el("h1", {}, "Jester: three looks"), el("p", {}, "Each one shows the same three screens at laptop and phone width. Pick one, or tell me which parts to mix."), el("p", {}, el("a", { href: "research.html" }, "What the research says"), ": the references behind them, and what to steal.")), main);
+  document.body.append(el("header", {}, el("h1", {}, "Jester: the looks"), el("p", {}, "Each one shows the same three screens at laptop and phone width. Pick one, or tell me which parts to mix."), el("p", {}, el("a", { href: "research.html" }, "What the research says"), ": the references behind them, and what to steal.")), main);
   fit();
   addEventListener("resize", fit);
 }

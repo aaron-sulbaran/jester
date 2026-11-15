@@ -16,7 +16,7 @@ figcaption { font-size: 13px; color: #666; margin-top: 8px; }
 .device { position: relative; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px #0002, 0 12px 30px -12px #0005; background: #fff; }
 .device.phone { border-radius: 28px; }
 .device iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; }
-.index { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.index { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 36px 28px; }
 .pick { color: inherit; text-decoration: none; display: block; }
 .pick .device { pointer-events: none; }
 .pick:hover h2, .pick:focus-visible h2 { text-decoration: underline; }
