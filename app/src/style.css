@@ -245,7 +245,10 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 .cast { display: grid; gap: 14px; width: min(480px, 100%); }
 .who { display: grid; grid-template-columns: 30px auto minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; }
 .who-dot { width: 30px; height: 30px; border-radius: 50%; background: var(--who); filter: url(#sticker); }
-button.who-dot { border: 0; padding: 0; cursor: pointer; }
+.who { grid-template-columns: 44px auto minmax(0, 1fr); }
+button.who-dot { width: 44px; height: 44px; border: 0; padding: 0; cursor: pointer; transition: transform .15s var(--ease); }
+button.who-dot:hover { transform: rotate(-10deg) scale(1.08); }
+button.who-dot:focus-visible { outline: 3px solid var(--pen); outline-offset: 3px; }
 .who-label { font-size: 15px; white-space: nowrap; }
 .who input { min-width: 0; width: 100%; min-height: 52px; padding: 8px 14px; background: var(--photo); border: 0; box-shadow: 3px 4px 0 var(--shade); font: 700 26px var(--hand); letter-spacing: -.03em; color: var(--pen); }
 .who input::placeholder { color: #9A8B7A; }

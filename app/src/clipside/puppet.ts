@@ -90,7 +90,9 @@ export const JESTER_COLOURS: readonly { name: string; main: string; second: stri
   { name: "Yellow", main: "#FFC93C", second: "#D4243A" },
   { name: "Green", main: "#3FBF8F", second: "#4F7BF0" },
   { name: "Red", main: "#D93A2B", second: "#F4BE1A" },
+  // #EC8234 is the even mix of --stamp (#D93A2B) and --ticket (#FFC93C); #2848C8 is --pen.
   { name: "Orange", main: "#EC8234", second: "#2848C8" },
+  // #6B2FB3 is player 1's crowning purple in the jester art (art/jester/jester.py).
   { name: "Purple", main: "#6B2FB3", second: "#F4BE1A" },
 ];
 
