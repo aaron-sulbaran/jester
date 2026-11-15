@@ -1008,8 +1008,9 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   // speed, so slow motion neither lowers the effort the engine sees nor changes what counts as on time.
   const o = s.original;
   const playerTimeline = fromWebcamFrames(frames.map((f) => ({ ...f, clipTimeMs: (f.clipTimeMs ?? -1) < 0 ? -1 : f.clipTimeMs! * speed })));
+  // A person's box may be copied either way round (mirror or same side); a thing stepping the wrong way stays low.
   const r = followsBox(s) || !o.timeline
-    ? scoreTrajectoryRound(o.boxTrack, playerTimeline, { bodyPart: s.part })
+    ? scoreTrajectoryRound(o.boxTrack, playerTimeline, { bodyPart: s.part, eitherSide: !isThing(s.guide) })
     : scorePoseRound(o.timeline, playerTimeline);
   s.result = { score: r.score, tier: r.tier, lagMs: r.lagMs };
 }
