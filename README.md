@@ -76,7 +76,7 @@ Then open http://localhost:5173. No settings file is needed: the dev server take
 - Video frames: [Mediabunny](https://mediabunny.dev). Rooms, clip submissions and the shared round log: [Supabase](https://supabase.com). Build: [Vite](https://vite.dev) and TypeScript.
 - Links: the [YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference) and the browser's own tab capture.
 - Smoothing: the One Euro Filter (Casiez, Roussel and Vogel, CHI 2012).
-- Fonts: Gaegu, Shantell Sans, Special Elite and Titan One, from Google Fonts under open licenses.
+- Fonts: Gaegu, Special Elite and Titan One, from Google Fonts under open licenses.
 - The jester: drawn procedurally in Blender by [`art/jester/jester.py`](art/jester/jester.py).
 
 ## Clips
