@@ -8,7 +8,7 @@
 //   Production: only when the build has JESTER_RECORD_ROUNDS=1; otherwise none of it ships. Rounds go straight to
 //               the Supabase table `rounds` with the page's public key, stamped with the build's commit.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { IncomingMessage } from "node:http";
 import type { Plugin } from "vite";
@@ -38,6 +38,26 @@ function readBody(req: IncomingMessage): Promise<string> {
 function codeFacts(repo: string): NonNullable<RoundRecord["app"]> {
   const status = git(repo, "status", "--porcelain", "--", "engine/src");
   return { commit: git(repo, "rev-parse", "HEAD"), dirty: status === null ? false : status.length > 0, engineHash: engineHash(repo) };
+}
+
+/**
+ * Ghosts on a dev server (app/src/ghostSource.ts) read this laptop's round log with GET: without `ids`, a light row
+ * per untagged round with a score and a bank clip; with `ids=a,b`, those rounds' poses, reference, options and results.
+ */
+function localGhostRows(roundsDir: string, ids: string | null): unknown[] {
+  if (!existsSync(roundsDir)) return [];
+  const wanted = ids ? new Set(ids.split(",")) : null;
+  const out: unknown[] = [];
+  for (const file of readdirSync(roundsDir)) {
+    if (!file.endsWith(".json") || (wanted && !wanted.has(file.slice(0, -5)))) continue;
+    let r: unknown;
+    try { r = JSON.parse(readFileSync(join(roundsDir, file), "utf8")); } catch { continue; }
+    if (!looksLikeRecord(r) || r.tag !== null || r.result.score === null || !r.clip.bankId) continue;
+    out.push(wanted
+      ? { id: r.id, score: r.result.score, player: r.player, result: r.result, reference: r.reference, options: r.options }
+      : { id: r.id, score: r.result.score, tag: r.tag, bankId: r.clip.bankId, channel: r.channel });
+  }
+  return out;
 }
 
 export function roundLog(): Plugin {
@@ -93,6 +113,7 @@ export function roundLog(): Plugin {
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify(body));
         };
+        if (req.method === "GET") return reply(200, localGhostRows(roundsDir, new URL(req.url ?? "/", "http://dev").searchParams.get("ids")));
         if (req.method !== "POST") return reply(405, { data: null, error: "POST a round record." });
         readBody(req).then((text) => {
           let record: unknown;
