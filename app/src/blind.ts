@@ -15,11 +15,11 @@
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
-import { boxFromLandmarks, hideUnsureJoints, type Guide, type Outline } from "../../clip/src/index.ts";
+import { boxFromLandmarks, hideUnsureJoints, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, busierHand, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
 import { addHands } from "./clipside/hands.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
@@ -582,6 +582,14 @@ export function slowScene(scene: Scene, speed: number): Scene {
   return speed === 1 ? scene : { ...scene, durationMs: scene.durationMs / speed, guides: scene.guides.map((g) => slowGuide(g, speed)) };
 }
 
+/** Both hands blended between two samples; a hand found in only one of them is used as it is. */
+function blendHands(a: GuideHands | null, b: GuideHands | null, u: number): GuideHands | null {
+  const one = (p: HandPoints | null, q: HandPoints | null): HandPoints | null =>
+    p && q ? p.map(([x, y], k) => [x + (q[k]![0] - x) * u, y + (q[k]![1] - y) * u] as [number, number]) : u < 0.5 ? p ?? q : q ?? p;
+  const left = one(a?.left ?? null, b?.left ?? null), right = one(a?.right ?? null, b?.right ?? null);
+  return left || right ? { left, right } : null;
+}
+
 /**
  * A one-frame guide blended between the two samples around play time `ms`, so the role moves smoothly even
  * when slowed (guides are sampled about 15 times a second). Draw it with index 0.
@@ -603,8 +611,8 @@ function guideAt(g: Guide, ms: number): Guide {
     boxTrack: { ...g.boxTrack, frames: [{ tMs: ms, box }] },
     outlines: [outline],
     timeline: g.timeline && { ...g.timeline, frames: [{ tMs: ms, landmarks }] },
-    // Fingers do not blend: the nearer of the two samples, and the busier-hand pick still looks at the whole clip.
-    ...(g.hands ? { handFocus: busierHand(g), hands: [(u < 0.5 ? g.hands[i] : g.hands[j]) ?? g.hands[i] ?? g.hands[j] ?? null] } : {}),
+    // Fingers blend between the two samples like the body, so they move smoothly even when the clip is slowed.
+    ...(g.hands ? { hands: [blendHands(g.hands[i] ?? null, g.hands[j] ?? null, u)] } : {}),
   };
 }
 
