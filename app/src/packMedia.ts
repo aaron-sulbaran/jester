@@ -23,11 +23,13 @@ function toDataUrl(src: HTMLCanvasElement, size: number, quality: number): strin
   return webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/png"); // a browser without WebP falls back to PNG
 }
 
-function loadCanvas(url: string): Promise<HTMLCanvasElement | null> {
+function loadCanvas(url: string, maxSide = Infinity): Promise<HTMLCanvasElement | null> {
   if (!SAFE_PREFIX.test(url)) return Promise.resolve(null); // only plain pictures from other players, never anything else
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
+      // A small file can still be a huge picture: past maxSide on a side it is never drawn into a canvas.
+      if (img.naturalWidth > maxSide || img.naturalHeight > maxSide) { resolve(null); return; }
       const c = document.createElement("canvas");
       c.width = img.naturalWidth || 1; c.height = img.naturalHeight || 1;
       c.getContext("2d")!.drawImage(img, 0, 0);
@@ -42,8 +44,8 @@ export function packFace(face: HTMLCanvasElement | null): string | null {
   return face ? toDataUrl(face, 160, 0.8) : null;
 }
 
-export async function unpackFace(text: string | undefined): Promise<HTMLCanvasElement | null> {
-  return text ? loadCanvas(text) : null;
+export async function unpackFace(text: string | undefined, maxSide?: number): Promise<HTMLCanvasElement | null> {
+  return text ? loadCanvas(text, maxSide) : null;
 }
 
 /**

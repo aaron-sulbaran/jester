@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Room, MemoryBus, makeRoomCode, normalizeCode, CHAT_BURST, CHAT_EVERY_MS } from "./rooms.mjs";
+import { Room, MemoryBus, makeRoomCode, normalizeCode, CHAT_BURST, CHAT_EVERY_MS, MEDIA_MAX_CHARS, SMALL_PIECES, MAX_STRANGERS, MAX_KINDS } from "./rooms.mjs";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 function makeRooms(names, clocks = {}) {
@@ -344,4 +344,48 @@ test("made-up senders leave nothing in lastSeen; real players still drop out whe
   a.prune();
   assert.deepEqual(a.roster().map((p) => p.id), ["ana"]);
   assert.equal(a.lastSeen.size, 0);
+});
+
+test("a lobby photo over its cap is dropped on receipt, by piece count or by assembled length", async () => {
+  const t = 1000;
+  const { rooms: [a, b], send } = roomsWithStranger(["ana", "ben"], () => t);
+  a.join(); b.join(); await tick();
+  const cap = MEDIA_MAX_CHARS.lobbyface;
+  // Too many pieces for the cap: dropped as soon as the first piece says so.
+  for (let i = 0; i < 6; i++) send({ type: "media", from: "ben", kind: "lobbyface", mid: "m1", i, n: 6, data: "x".repeat(10) });
+  await tick();
+  assert.equal(a.media.get("ben")?.lobbyface, undefined);
+  // Few enough pieces, but longer than the cap once put together: dropped.
+  const big = "y".repeat(Math.ceil(cap / 4) + 10);
+  for (let i = 0; i < 4; i++) send({ type: "media", from: "ben", kind: "lobbyface", mid: "m2", i, n: 4, data: big });
+  await tick();
+  assert.equal(a.media.get("ben")?.lobbyface, undefined);
+  // A real one goes through, and other kinds keep their old limits.
+  await b.sendMedia("lobbyface", "data:image/webp;base64,AAAA", { delayMs: 0 });
+  await b.sendMedia("cuts", "z".repeat(cap + 1), { chunkChars: 60000, delayMs: 0 });
+  await tick();
+  assert.equal(a.media.get("ben")?.lobbyface, "data:image/webp;base64,AAAA");
+  assert.equal(a.media.get("ben")?.cuts.length, cap + 1);
+});
+
+test("strangers and unknown kinds get small bounds; the game's own media from players does not", async () => {
+  const t = 1000;
+  const { rooms: [a, b], send } = roomsWithStranger(["ana", "ben"], () => t);
+  a.join(); b.join(); await tick();
+  const piece = (from, kind, mid, n) => { for (let i = 0; i < n; i++) send({ type: "media", from, kind, mid, i, n, data: "x" }); };
+  piece("ghost", "face", "g1", SMALL_PIECES + 1); // a stranger with too many pieces
+  piece("ben", "junk", "j1", SMALL_PIECES + 1);   // a player, but a kind the game does not send
+  piece("ben", "cuts", "c1", SMALL_PIECES + 1);   // a player and a kind the game sends: full bounds
+  await tick();
+  assert.equal(a.media.has("ghost"), false);
+  assert.deepEqual(Object.keys(a.media.get("ben")), ["cuts"]);
+  // At most MAX_STRANGERS strangers are held, the oldest dropped first.
+  for (let k = 0; k <= MAX_STRANGERS; k++) piece(`s${k}`, "face", `m${k}`, 1);
+  await tick();
+  assert.equal(a.media.has("s0"), false);
+  assert.equal(a.media.has(`s${MAX_STRANGERS}`), true);
+  // At most MAX_KINDS kinds per sender.
+  for (let k = 0; k < MAX_KINDS + 2; k++) piece("ben", `k${k}`, `kk${k}`, 1);
+  await tick();
+  assert.equal(Object.keys(a.media.get("ben")).length, MAX_KINDS);
 });

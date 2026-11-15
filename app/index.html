@@ -360,7 +360,7 @@
           <ul class="how">
             <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's size and frame rate, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
             <li>A clip you send in is kept private until it's reviewed. To check it, a few frames, what the game measured, its name and your name go to Anthropic, the company that makes the AI.</li>
-            <li>In an online room, your face picture and a short cut-out of you go to the others in the room for the recap and the crowning. They aren't stored.</li>
+            <li>In an online room, your photo goes to everyone in the room, including people who join after you, until you leave. A short cut-out of you goes to the others in your round for the recap and the crowning. Neither is stored.</li>
             <li>Your settings and how many of you play stay in this browser.</li>
           </ul>
         </section>
@@ -578,6 +578,25 @@
         <!-- Before a room: your name, then make a room, or join one with a friend's code. Opened from a join link
              (?room=CODE), the code is filled in and Join is the main action. -->
         <div id="roomJoin">
+          <!-- The photo booth: a taped print. The camera starts only from Take my photo; Snap counts down and takes the
+               face circle; Retake and Skip the photo are there before joining. Without a photo you join with the grey face. -->
+          <div class="room-booth-col" id="roomBoothCol" data-state="off">
+            <figure class="print room-booth">
+              <span class="washi w-pink" aria-hidden="true"></span>
+              <span class="room-booth-pic">
+                <canvas id="roomBoothView" width="360" height="360" aria-hidden="true"></canvas>
+                <span class="room-booth-ring" aria-hidden="true"></span>
+                <span class="room-booth-count" id="roomBoothCount" aria-hidden="true"></span>
+                <span class="room-booth-flash" id="roomBoothFlash" aria-hidden="true"></span>
+              </span>
+              <figcaption id="roomBoothSays">No photo yet. You can join without one.</figcaption>
+            </figure>
+            <div class="room-booth-actions">
+              <button type="button" class="btn btn-quiet" id="roomBoothGo">Take my photo</button>
+              <button type="button" class="link" id="roomNoPhoto">Skip the photo</button>
+            </div>
+            <p class="aside room-booth-note">Your jester wears your photo. It goes to everyone in this room, including people who join after you, until you leave. It isn't stored anywhere.</p>
+          </div>
           <div class="room-invite" id="roomInvite" hidden>
             <p class="room-code-label">Room code</p>
             <p class="room-code" id="roomInviteCode"></p>
@@ -612,21 +631,36 @@
           </div>
           <div class="room-cast-wrap">
             <ul id="roomRoster" class="room-cast" aria-label="Players in the room"></ul>
+            <button type="button" class="link" id="roomPhotoOff" hidden>Take my photo off</button>
           </div>
           </div>
           <div class="room-side" id="roomSidePlay">
           <div class="room-table">
             <div id="roomHostRow" hidden>
-              <div class="field room-pick"><span class="room-step">Pick the clip</span>
-                <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick the clip">
-                  <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              <div class="field room-pick"><span class="room-step" id="roomPickHead">Pick the clip</span>
+                <!-- Taped clip cards, like the start screen's library: Surprise me, one card per bank clip (room.ts adds
+                     them), then Upload your own. The three built-in scenes are for the team only (?dev=1). -->
+                <div class="room-pick-row" id="roomModes" role="radiogroup" aria-labelledby="roomPickHead">
+                  <button type="button" class="clip surprise" role="radio" data-scene="surprise" aria-checked="true">
+                    <span class="washi w-pink" aria-hidden="true"></span>
+                    <span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span>
+                    <span class="clip-name">Surprise me</span>
+                    <span class="clip-hint" id="roomSurpriseHint">Any clip from the bank. Nobody sees it until the end.</span>
+                    <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+                  </button>
+                  <button type="button" class="clip room-upload-card" role="radio" data-scene="upload" aria-checked="false">
+                    <span class="washi w-dots" aria-hidden="true"></span>
+                    <span class="clip-pic" aria-hidden="true"><span class="clip-q">+</span></span>
+                    <span class="clip-name">Upload your own</span>
+                    <span class="clip-hint">A video from your laptop. Your friends never get the file.</span>
+                    <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+                  </button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="duo" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Dance duo</span><span class="clip-hint">Built-in test scene: two dancers.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="demo" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Dance break</span><span class="clip-hint">Built-in test scene: a dancer and a ball.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="dribble" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Pickup game</span><span class="clip-hint">Built-in test scene: dribbling.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
                 </div>
-                <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
+                <!-- Kept for scripts: always in step with the picked bank card. -->
+                <div id="roomBankRow" hidden><select id="roomBankSelect" aria-hidden="true" tabindex="-1"></select></div>
                 <div class="field" id="roomUploadRow" hidden>
                   <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
                   <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
@@ -634,8 +668,8 @@
               </div>
               <div class="room-switch">
                 <div class="modes-pick" id="roomPlayMode" role="radiogroup" aria-label="How everyone plays">
-                  <button type="button" class="mode" role="radio" data-play="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
-                  <button type="button" class="mode" role="radio" data-play="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+                  <button type="button" class="mode" role="radio" data-play="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end.</span></button>
+                  <button type="button" class="mode" role="radio" data-play="normal" aria-checked="false"><b>Normal</b><span>Everyone sees the clip and dances along with it.</span></button>
                 </div>
                 <p class="room-play-says" id="roomPlaySays" aria-hidden="true"></p>
               </div>
@@ -648,7 +682,7 @@
               <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
               <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
             </div>
-            <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
+            <p class="aside room-privacy">Your photo goes to everyone in this room, including people who join after you, until you leave. A short cut-out clip of you goes to the others in your round for the recap and the crowning. Neither is stored anywhere.</p>
           </div>
           </div>
           <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->
