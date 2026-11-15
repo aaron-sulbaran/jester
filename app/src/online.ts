@@ -29,6 +29,7 @@ let playing = false;
 let revealTimer = 0;
 let revealedRound = -1;
 
+const simulated = () => $<HTMLInputElement>("sim").checked;
 const status = (t: string) => { $("status").textContent = t; };
 const clipPoseAt = (ms: number) => (sampleAt(clip.samples, Math.max(0, ms) / 1000)?.landmarks ?? null) as never;
 
@@ -56,6 +57,12 @@ async function enter(rawCode: string) {
   fitCanvas(clipCanvas, clipAspect); fitCanvas(playerCanvas, clipAspect);
   drawFrame(clipCanvas, null, clipPoseAt(0));
   render();
+  // Live preview of yourself while you wait, so you can check you are in frame.
+  const preview = () => {
+    if (!playing && !simulated()) drawFrame(playerCanvas, $<HTMLVideoElement>("cam"), null, { mirror: true });
+    requestAnimationFrame(preview);
+  };
+  preview();
 }
 
 function render() {
@@ -82,7 +89,7 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
   const rec = recordingPlayer(player!);
   const result = await playRound(clip, null, rec, (f) => {
     drawFrame(clipCanvas, null, clipPoseAt(f.clipMs));
-    drawFrame(playerCanvas, null, f.player as never, { mirror: true, color: "#4cc9f0" });
+    drawFrame(playerCanvas, simulated() ? null : $<HTMLVideoElement>("cam"), f.player as never, { mirror: true, color: "#4cc9f0" });
   });
   playing = false;
   room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs) });
