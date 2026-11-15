@@ -12,6 +12,7 @@ import { listBank, type BankClip } from "../bank.ts";
 import { videoScene, type Scene } from "../blind.ts";
 import { bankSceneId, packScene, sceneFromBank, setHostUpload, UPLOAD_ID } from "../onlineClip.ts";
 import { packFace, unpackFace } from "../packMedia.ts";
+import { LOBBY_FACE_MAX_SIDE, LobbyFaceGate } from "../lobbyFace.ts";
 import { addressWithRoom, joinLink, linkShown, roomCodeFromSearch } from "../roomLink.ts";
 import { FaceJester, variantFor, type JesterAnim } from "./faceJester.ts";
 import { playersFor } from "../castWords.ts";
@@ -212,22 +213,24 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
 
   const problem = (text: string) => { const el = $("roomProblem"); el.textContent = text; el.hidden = !text; };
 
-  // ---- The photo booth: your camera in a taped print. Joining counts down 3, 2, 1 and snaps the face circle; your
-  // jester wears it in the lobby, on every device in the room, until a round brings a newer face. Never stored. ----
+  // ---- The photo booth: a taped print on the join form. The camera starts only when you press Take my photo; Snap
+  // counts down 3, 2, 1 and takes the face circle; Retake starts again; Skip the photo drops it. You can join with or
+  // without one. Your jester wears the photo on every device in the room, including people who join after you, until
+  // you leave or take it off; a round can bring a newer face. Nothing is stored. ----
 
   const boothView = $<HTMLCanvasElement>("roomBoothView");
+  const boothGo = $<HTMLButtonElement>("roomBoothGo");
   /** The face circle's width as a share of the print (style.css: .room-booth-ring is inset 15%). */
   const RING = 0.7;
   let boothStream: MediaStream | null = null;
   let boothVideo: HTMLVideoElement | null = null;
   let boothRaf = 0;
-  let boothTurn = 0; // bumps on every start and stop, so a camera that answers after leaving is let go
-  let joinTurn = 0;  // bumps on leave, so a countdown under way does not join
-  let myFace: HTMLCanvasElement | null = null;
+  let boothTurn = 0; // bumps on every start and stop, so a camera that answers late is let go
+  let snapping = false;
   let myFaceText: string | null = null;
   const faces = new Map<string, HTMLCanvasElement>();
-  const faceText = new Map<string, string>(); // the picture text each jester wears now
-  const MAX_FACE_CHARS = 200_000;
+  const gate = new LobbyFaceGate();
+  const photoOff = new Set<string>(); // players who took their photo off: their jester wears the grey face
   let knownIds = new Set<string>();
   let resendTimer = 0;
   const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -244,12 +247,43 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     g.drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, boothView.width, boothView.height);
     g.restore();
   }
+  /** The grey head and shoulders, the stand-in before a photo (the same greys as the jester's stand-in face). */
+  function drawStandIn() {
+    const g = boothView.getContext("2d")!, w = boothView.width;
+    g.fillStyle = "#DEDDD8";
+    g.fillRect(0, 0, w, w);
+    g.fillStyle = "#A8A7A1";
+    g.beginPath(); g.ellipse(w / 2, w * 0.42, w * 0.16, w * 0.2, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(w / 2, w * 1.02, w * 0.34, w * 0.32, 0, Math.PI, 0); g.fill();
+  }
+  type BoothState = "off" | "starting" | "live" | "taken";
+  function boothState(state: BoothState, says: string) {
+    $("roomBoothCol").dataset.state = state;
+    $("roomBoothSays").textContent = says;
+    boothGo.textContent = state === "live" || state === "starting" ? "Snap" : state === "taken" ? "Retake" : "Take my photo";
+    boothGo.disabled = state === "starting";
+  }
+  function stopBooth() {
+    boothTurn++;
+    cancelAnimationFrame(boothRaf);
+    boothRaf = 0;
+    boothStream?.getTracks().forEach((t) => t.stop());
+    boothStream = null;
+    boothVideo = null;
+  }
+  /** No photo: the camera off and the grey stand-in on the print. */
+  function noPhoto(says: string) {
+    stopBooth();
+    myFaceText = null;
+    drawStandIn();
+    boothState("off", says);
+  }
   async function startBooth() {
     stopBooth();
     const turn = ++boothTurn;
-    $("roomBoothSays").textContent = "Face in the circle";
-    if (!navigator.mediaDevices?.getUserMedia) return;
+    boothState("starting", "Starting the camera...");
     try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("No camera");
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
       if (turn !== boothTurn) { stream.getTracks().forEach((t) => t.stop()); return; }
       boothStream = stream;
@@ -260,76 +294,80 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       await v.play();
       if (turn !== boothTurn) return; // stopBooth has already let the camera go
       boothVideo = v;
-      $("roomBoothCol").hidden = false;
+      boothState("live", "Face in the circle, then Snap");
       const loop = () => { drawBooth(); boothRaf = requestAnimationFrame(loop); };
       loop();
-    } catch { /* no camera, or it was refused: you join with the plain grey face */ }
-  }
-  function stopBooth() {
-    boothTurn++;
-    cancelAnimationFrame(boothRaf);
-    boothRaf = 0;
-    boothStream?.getTracks().forEach((t) => t.stop());
-    boothStream = null;
-    boothVideo = null;
+    } catch {
+      // No camera, it was refused, or it would not play: let it go either way, so it never stays on.
+      if (turn === boothTurn) noPhoto("No camera here, so your jester keeps a grey face.");
+    }
   }
   const restart = (el: HTMLElement, cls: string) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
-  /** Counts down on the print, snaps the face circle and lets the camera go. Null without a camera. */
-  async function snapFace(): Promise<HTMLCanvasElement | null> {
-    if (!boothVideo) { stopBooth(); return null; }
-    const count = $("roomBoothCount");
-    for (const n of ["3", "2", "1"]) {
-      count.textContent = n;
-      restart(count, "tick");
-      await wait(650);
-      if (!boothVideo) { count.textContent = ""; return null; } // left meanwhile
-    }
-    count.textContent = "";
-    drawBooth();
-    cancelAnimationFrame(boothRaf); // the print keeps the snapped frame
-    boothRaf = 0;
-    restart($("roomBoothFlash"), "go");
-    const face = document.createElement("canvas");
-    face.width = face.height = 256;
-    const g = face.getContext("2d")!;
-    g.beginPath();
-    g.arc(128, 128, 128, 0, Math.PI * 2);
-    g.clip();
-    const side = boothView.width * RING, from = (boothView.width - side) / 2;
-    g.drawImage(boothView, from, from, side, side, 0, 0, 256, 256);
-    $("roomBoothSays").textContent = "Got you";
-    await wait(550);
-    stopBooth();
-    return face;
-  }
-  async function joinWithPhoto(rawCode: string) {
-    if (normalizeCode(rawCode).length !== 4) return problem("A room code is 4 letters.");
-    const turn = ++joinTurn;
-    const buttons = [$<HTMLButtonElement>("roomCreate"), $<HTMLButtonElement>("roomEnter")];
-    for (const b of buttons) b.disabled = true;
+  /** Counts down on the print, takes the face circle and lets the camera go. */
+  async function snap() {
+    if (!boothVideo || snapping) return;
+    snapping = true;
+    boothGo.disabled = true;
     try {
-      const face = await snapFace();
-      if (turn !== joinTurn) return; // they left during the countdown
-      myFace = face;
-      myFaceText = face ? packFace(face) : null;
+      const count = $("roomBoothCount");
+      for (const n of ["3", "2", "1"]) {
+        count.textContent = n;
+        restart(count, "tick");
+        await wait(650);
+        if (!boothVideo) { count.textContent = ""; return; } // skipped or left meanwhile
+      }
+      count.textContent = "";
+      drawBooth();
+      cancelAnimationFrame(boothRaf); // the print keeps the snapped frame
+      boothRaf = 0;
+      restart($("roomBoothFlash"), "go");
+      const face = document.createElement("canvas");
+      face.width = face.height = 256;
+      const g = face.getContext("2d")!;
+      g.beginPath();
+      g.arc(128, 128, 128, 0, Math.PI * 2);
+      g.clip();
+      const side = boothView.width * RING, from = (boothView.width - side) / 2;
+      g.drawImage(boothView, from, from, side, side, 0, 0, 256, 256);
+      myFaceText = packFace(face);
+      stopBooth();
+      boothState("taken", "Got you");
     } finally {
-      for (const b of buttons) b.disabled = false;
+      snapping = false;
+      boothGo.disabled = false;
     }
+  }
+  /** Joins with the photo if there is one, else with the grey face. The camera is off by then either way. */
+  function join(rawCode: string) {
+    if (normalizeCode(rawCode).length !== 4) return problem("A room code is 4 letters.");
+    if (snapping) return;
+    stopBooth();
     enter(rawCode);
   }
   function shareMyFace() {
     if (room && myFaceText) void room.sendMedia("lobbyface", myFaceText, { chunkChars: 60000, delayMs: 0 }).catch(() => {});
+  }
+  /** Takes my photo off every jester in the room: an empty lobby photo means "grey face", and newcomers get nothing. */
+  function takePhotoOff() {
+    myFaceText = null;
+    $("roomPhotoOff").hidden = true;
+    if (room) void room.sendMedia("lobbyface", "", { delayMs: 0 }).catch(() => {});
   }
   /** Puts each player's newest face on their jester: the face from their last round, else their lobby photo. */
   function syncFaces(roster: Member[]) {
     if (!room) return;
     for (const p of roster) {
       const media = (room.media.get(p.id) ?? {}) as Record<string, string>;
+      if (media.lobbyface === "" && !media.face) {
+        if (!photoOff.has(p.id)) { photoOff.add(p.id); faces.delete(p.id); gate.forget(p.id); seats.get(p.id)?.jester.setFace(null); }
+        continue;
+      }
       const text = media.face ?? media.lobbyface;
-      if (!text || text.length > MAX_FACE_CHARS || text === faceText.get(p.id)) continue;
-      faceText.set(p.id, text);
-      void unpackFace(text).then((c) => {
-        if (!c || faceText.get(p.id) !== text) return;
+      if (!gate.take(p.id, text, true)) continue; // too long, too soon after the last, unchanged, or still decoding
+      photoOff.delete(p.id);
+      void unpackFace(text, LOBBY_FACE_MAX_SIDE).then((c) => {
+        gate.done(p.id);
+        if (!c || gate.current(p.id) !== text || !seats.has(p.id)) return;
         faces.set(p.id, c);
         seats.get(p.id)?.jester.setFace(c);
       });
@@ -354,7 +392,8 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   }
   function dropSeat(id: string) {
     faces.delete(id);
-    faceText.delete(id);
+    gate.forget(id);
+    photoOff.delete(id);
     const s = seats.get(id);
     if (!s) return;
     s.jester.stop();
@@ -493,6 +532,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     });
     r.join();
     shareMyFace();
+    $("roomPhotoOff").hidden = !myFaceText;
     setPlay((hooks.mode?.() === "normal" ? "normal" : "blind"));
     $("roomJoin").hidden = true;
     $("roomLobby").hidden = false;
@@ -512,10 +552,11 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   }
 
   function leave() {
-    joinTurn++; // a countdown under way no longer joins
-    stopBooth();
-    $("roomBoothCol").hidden = true;
-    myFace = null; myFaceText = null;
+    noPhoto("No photo yet. You can join without one.");
+    faces.clear();
+    gate.clear();
+    photoOff.clear();
+    $("roomPhotoOff").hidden = true;
     knownIds = new Set();
     clearTimeout(resendTimer);
     room?.leave();
@@ -531,10 +572,14 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     problem("");
   }
 
-  $("playOnline").addEventListener("click", () => { leave(); hooks.show(); void startBooth(); });
-  $("roomCreate").addEventListener("click", () => void joinWithPhoto(makeRoomCode()));
-  $("roomEnter").addEventListener("click", () => void joinWithPhoto($<HTMLInputElement>("roomCode").value));
-  if (invited) void startBooth();
+  $("playOnline").addEventListener("click", () => { leave(); hooks.show(); });
+  $("roomCreate").addEventListener("click", () => join(makeRoomCode()));
+  $("roomEnter").addEventListener("click", () => join($<HTMLInputElement>("roomCode").value));
+  // The camera starts only from this button: Take my photo, then Snap, then Retake.
+  boothGo.addEventListener("click", () => { if (boothVideo) void snap(); else void startBooth(); });
+  $("roomNoPhoto").addEventListener("click", () => noPhoto("No photo. Your jester keeps a grey face."));
+  $("roomPhotoOff").addEventListener("click", takePhotoOff);
+  noPhoto("No photo yet. You can join without one.");
   // Enter in a field does what its main button does.
   $("roomName").addEventListener("keydown", (e) => { if (e.key === "Enter") (joinBox.hasAttribute("data-invite") ? $("roomEnter") : $("roomCreate")).click(); });
   $("roomCode").addEventListener("keydown", (e) => { if (e.key === "Enter") $("roomEnter").click(); });

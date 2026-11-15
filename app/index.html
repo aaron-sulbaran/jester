@@ -342,7 +342,7 @@
           <ul class="how">
             <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's name and size, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
             <li>A clip you send in is kept private until it's reviewed. To check it, a few frames, what the game measured, its name and your name go to Anthropic, the company that makes the AI.</li>
-            <li>In an online room, your photo and a short cut-out of you go to the others in the room for the lobby, the recap and the crowning. They aren't stored.</li>
+            <li>In an online room, your photo goes to everyone in the room, including people who join after you, until you leave. A short cut-out of you goes to the others in your round for the recap and the crowning. Neither is stored.</li>
             <li>Your settings and how many of you play stay in this browser.</li>
           </ul>
         </section>
@@ -539,9 +539,9 @@
         <!-- Before a room: your name, then make a room, or join one with a friend's code. Opened from a join link
              (?room=CODE), the code is filled in and Join is the main action. -->
         <div id="roomJoin">
-          <!-- The photo booth: your camera in a taped print. Joining counts down and snaps it, and your jester wears
-               that face in the lobby. Without a camera you join with the plain grey face. -->
-          <div class="room-booth-col" id="roomBoothCol" hidden>
+          <!-- The photo booth: a taped print. The camera starts only from Take my photo; Snap counts down and takes the
+               face circle; Retake and Skip the photo are there before joining. Without a photo you join with the grey face. -->
+          <div class="room-booth-col" id="roomBoothCol" data-state="off">
             <figure class="print room-booth">
               <span class="washi w-pink" aria-hidden="true"></span>
               <span class="room-booth-pic">
@@ -550,9 +550,13 @@
                 <span class="room-booth-count" id="roomBoothCount" aria-hidden="true"></span>
                 <span class="room-booth-flash" id="roomBoothFlash" aria-hidden="true"></span>
               </span>
-              <figcaption id="roomBoothSays">Face in the circle</figcaption>
+              <figcaption id="roomBoothSays">No photo yet. You can join without one.</figcaption>
             </figure>
-            <p class="aside room-booth-note">When you join, this photo goes to the others in the room so your jester wears your face. It is not stored anywhere.</p>
+            <div class="room-booth-actions">
+              <button type="button" class="btn btn-quiet" id="roomBoothGo">Take my photo</button>
+              <button type="button" class="link" id="roomNoPhoto">Skip the photo</button>
+            </div>
+            <p class="aside room-booth-note">Your jester wears your photo. It goes to everyone in this room, including people who join after you, until you leave. It isn't stored anywhere.</p>
           </div>
           <div class="room-invite" id="roomInvite" hidden>
             <p class="room-code-label">Room code</p>
@@ -588,6 +592,7 @@
           </div>
           <div class="room-cast-wrap">
             <ul id="roomRoster" class="room-cast" aria-label="Players in the room"></ul>
+            <button type="button" class="link" id="roomPhotoOff" hidden>Take my photo off</button>
           </div>
           </div>
           <div class="room-side" id="roomSidePlay">
@@ -638,7 +643,7 @@
               <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
               <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
             </div>
-            <p class="aside room-privacy">Your photo and a short cut-out clip of you go to the others in this room for the lobby, the recap and the crowning. They aren't stored anywhere.</p>
+            <p class="aside room-privacy">Your photo goes to everyone in this room, including people who join after you, until you leave. A short cut-out clip of you goes to the others in your round for the recap and the crowning. Neither is stored anywhere.</p>
           </div>
           </div>
           <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->

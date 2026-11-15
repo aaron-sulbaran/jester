@@ -485,6 +485,14 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 .room-booth-count:empty { display: none; }
 .room-booth-flash { position: absolute; inset: 0; background: var(--photo); opacity: 0; pointer-events: none; }
 .room-booth figcaption { font: 700 24px/1.2 var(--hand); letter-spacing: -.03em; text-align: center; }
+.room-booth-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 16px; }
+#roomBoothGo { min-height: 44px; padding: 8px 18px 8px 36px; font-size: 16px; }
+#roomBoothGo::before { left: 13px; width: 10px; height: 10px; }
+#roomNoPhoto, #roomPhotoOff { min-height: 44px; }
+#roomPhotoOff { justify-self: start; }
+/* The circle shows only while the camera is on; Skip shows once there is a camera or a photo to skip. */
+#roomBoothCol:not([data-state="live"]) .room-booth-ring { display: none; }
+#roomBoothCol[data-state="off"] #roomNoPhoto { display: none; }
 #roomBoothCol .room-booth-note { display: block; max-width: 32ch; font-size: 13px; line-height: 1.45; color: #6B5A48; text-align: center; }
 @media (prefers-reduced-motion: no-preference) {
   .room-booth-count.tick { animation: room-count .65s var(--ease) both; }
