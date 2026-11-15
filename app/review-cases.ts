@@ -4,11 +4,13 @@
 // changed prompt or model then shows whether the Chamberlain still agrees with what people decided.
 //
 // The files hold real frames and real titles, so they live OUTSIDE every repo: in `chamberlain-cases/` beside
-// the env file JESTER_REVIEW_ENV points at (jester-deploy/), readable by this user only. Never commit them.
+// the env file JESTER_REVIEW_ENV points at (jester-deploy/), readable by this user only. Nothing is saved when
+// that folder is inside a git checkout (an env file placed in a repo, or in app/public/), so a case can never
+// be committed or served. Never copy them into a repo.
 
-import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type { Decision, ReviewInput, Verdict } from "./review-agent.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
@@ -58,6 +60,25 @@ export function inputId(input: ReviewInput): string {
 
 const pathOf = (dir: string, id: string) => join(dir, `${id}.json`);
 
+/** The git checkout `dir` would sit in (after resolving symlinks), or null when it is outside every checkout. */
+export function checkoutAround(dir: string): string | null {
+  let at = resolve(dir);
+  while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+  try { at = realpathSync(at); } catch { /* keep the resolved path */ }
+  for (;;) {
+    if (existsSync(join(at, ".git"))) return at;
+    const up = dirname(at);
+    if (up === at) return null;
+    at = up;
+  }
+}
+
+/** Why `dir` may not hold cases, or null when it may. */
+function refusal(dir: string): string | null {
+  const repo = checkoutAround(dir);
+  return repo ? `The cases folder ${dir} is inside the git checkout ${repo}, so no case was saved. Keep JESTER_REVIEW_ENV outside every repo.` : null;
+}
+
 function readCase(path: string): ChamberlainCase | null {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as ChamberlainCase;
@@ -66,14 +87,22 @@ function readCase(path: string): ChamberlainCase | null {
   }
 }
 
-/** Writes through a temporary file, so a crash never leaves half a case. Owner read and write only. */
-function writeCase(dir: string, c: ChamberlainCase) {
+/**
+ * Writes through a fresh temporary file (created exclusively, never an existing file or link), so a crash never
+ * leaves half a case and two writers never share one. Owner read and write only.
+ */
+function writeCase(dir: string, id: string, c: ChamberlainCase) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
-  const path = pathOf(dir, c.id);
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, JSON.stringify(c, null, 2) + "\n", { mode: 0o600 });
-  renameSync(tmp, path);
+  const path = pathOf(dir, id);
+  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, JSON.stringify({ ...c, id }, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
 }
 
 /**
@@ -86,9 +115,11 @@ export function saveJudged(dir: string | undefined, j: {
   if (!dir) return { data: null, error: "No cases folder: the dev server was started without JESTER_REVIEW_ENV." };
   const id = j.id ?? inputId(j.input);
   if (!SAFE_ID.test(id)) return { data: null, error: "That is not a submission id." };
+  const refused = refusal(dir);
+  if (refused) return { data: null, error: refused };
   try {
     const before = readCase(pathOf(dir, id));
-    writeCase(dir, {
+    writeCase(dir, id, {
       schema: 1, id, source: "desk", capturedAt: new Date().toISOString(), videoPath: j.videoPath,
       model: j.model, prompt: j.prompt, input: j.input, decision: j.decision,
       ...(j.error ? { error: j.error } : {}),
@@ -104,12 +135,15 @@ export function saveJudged(dir: string | undefined, j: {
 /** Adds the final outcome to a judged clip's case. `data` is false when the clip was never judged (no case). */
 export function saveOutcome(dir: string | undefined, id: string, outcome: Omit<CaseOutcome, "at">): Result<boolean> {
   if (!dir || !SAFE_ID.test(id)) return { data: false, error: null };
+  const refused = refusal(dir);
+  if (refused) return { data: null, error: refused };
   const path = pathOf(dir, id);
   if (!existsSync(path)) return { data: false, error: null };
   const c = readCase(path);
-  if (!c) return { data: null, error: "The case file is not readable JSON, so its outcome was not saved." };
+  // The file is trusted for its contents only: it must be a case for this id, and it is written back under this id.
+  if (!c || c.schema !== 1 || c.id !== id || typeof c.input !== "object") return { data: null, error: "The case file is not a case for this submission, so its outcome was not saved." };
   try {
-    writeCase(dir, { ...c, outcome: { ...outcome, at: new Date().toISOString() } });
+    writeCase(dir, id, { ...c, outcome: { ...outcome, at: new Date().toISOString() } });
     return { data: true, error: null };
   } catch (err) {
     return { data: null, error: `The outcome did not save: ${(err as Error).message}` };

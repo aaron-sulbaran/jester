@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
-import { classify, deskCase, nameCheckHolds, renderReport, summarize, truthOfDesk, type CaseFile, type CaseResult, type Decision, type Truth } from "../src/chamberlainCases.ts";
+import { classify, costUsd, deskCase, nameCheckHolds, outcomeFromLog, renderReport, summarize, truthOfDesk, type CaseFile, type CaseResult, type Decision, type Truth } from "../src/chamberlainCases.ts";
 import { FRAME_SIZE, figureFrames } from "../src/frames.ts";
 
 const decided = (verdict: Decision["verdict"], nameCheck: Decision["nameCheck"] = "fits"): Decision =>
@@ -117,4 +117,26 @@ test("every synthetic case is well formed", () => {
   // Every group the eval promises is covered.
   for (const group of ["control-", "steer-", "name-", "facts-"]) assert.ok(SYNTHETIC.some((s) => s.id.startsWith(group)), group);
   assert.ok(SYNTHETIC.some((s) => s.title === null), "a case with no name");
+});
+
+test("a case with no outcome in its file takes it from the review log", () => {
+  const id = deskFile().id;
+  const log = [
+    { id, title: "the floss", verdict: "ask_a_person", by: "agent", reason: "unsure", at: "2026-11-15T06:31:00.000Z" },
+    { id, title: "The Floss", verdict: "approved", by: "aaron", reason: "Let in by hand.", bankId: "the-floss", at: "2026-11-15T06:40:00.000Z" },
+    { id: "other", title: "x", verdict: "rejected", by: "aaron", reason: "", at: "2026-11-15T06:41:00.000Z" },
+  ];
+  assert.deepEqual(outcomeFromLog(log, id), { status: "approved", by: "aaron", title: "The Floss", reason: "Let in by hand.", bankId: "the-floss", at: "2026-11-15T06:40:00.000Z" });
+  assert.equal(outcomeFromLog(log, "missing"), null);
+  assert.equal(deskCase(deskFile(), log).truth?.want, "approve");
+  // The case file's own outcome wins over the log.
+  assert.equal(deskCase(deskFile({ outcome: outcome("rejected", "aaron", "the floss") }), log).truth?.want, "reject");
+});
+
+test("cached tokens are priced at their own rates", () => {
+  const plain = costUsd("claude-sonnet-5-5", { calls: 1, input: 1_000_000, output: 0 });
+  const cached = costUsd("claude-sonnet-5-5", { calls: 1, input: 1_000_000, output: 0, cacheRead: 800_000, cacheWrite: 100_000 });
+  assert.equal(plain, 2);
+  assert.equal(cached, (100_000 * 2 + 800_000 * 0.1 + 100_000 * 2.5) / 1e6);
+  assert.equal(costUsd("some-other-model", { calls: 1, input: 1, output: 1 }), null);
 });

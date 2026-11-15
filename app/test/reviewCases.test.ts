@@ -1,10 +1,10 @@
 // Run from app/: npm test. The Chamberlain's case files, written by the dev server for the eval.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { casesDirFor, inputId, saveJudged, saveOutcome, type ChamberlainCase } from "../review-cases.ts";
+import { casesDirFor, checkoutAround, inputId, saveJudged, saveOutcome, type ChamberlainCase } from "../review-cases.ts";
 import type { Decision, ReviewInput } from "../review-agent.ts";
 
 const ROW = "0b5f3c2e-1d4a-4c8e-9f00-123456789abc";
@@ -67,4 +67,31 @@ test("no submission id: a stable id from the input, and no path tricks", () => {
   assert.equal(read(dir, inputId(input)).id, inputId(input));
   assert.notEqual(saveJudged(dir, { id: "../escape", videoPath: null, model: "m", prompt: "p", input, decision }).error, null);
   assert.notEqual(saveJudged(undefined, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision }).error, null);
+});
+
+test("nothing is saved inside a git checkout, however deep", () => {
+  const repo = mkdtempSync(join(tmpdir(), "chamberlain-repo-"));
+  mkdirSync(join(repo, ".git"));
+  const dir = join(repo, "app", "public", "chamberlain-cases");
+  assert.ok(checkoutAround(dir));
+  const saved = saveJudged(dir, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision });
+  assert.match(saved.error ?? "", /inside the git checkout/);
+  assert.equal(existsSync(dir), false);
+  assert.equal(checkoutAround(fresh()), null);
+});
+
+test("an outcome never trusts the id written inside the file", () => {
+  const dir = fresh();
+  saveJudged(dir, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision });
+  writeFileSync(join(dir, `${ROW}.json`), JSON.stringify({ ...read(dir, ROW), id: "../escaped" }));
+  const added = saveOutcome(dir, ROW, { status: "rejected", by: "aaron", title: null, reason: "" });
+  assert.equal(added.data, null);
+  assert.equal(existsSync(join(dir, "..", "escaped.json")), false);
+});
+
+test("writes leave no temporary files behind", () => {
+  const dir = fresh();
+  saveJudged(dir, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision });
+  saveOutcome(dir, ROW, { status: "approved", by: "aaron", title: "jumping jacks", reason: "" });
+  assert.deepEqual(readdirSync(dir), [`${ROW}.json`]);
 });

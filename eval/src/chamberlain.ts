@@ -16,15 +16,15 @@
 // With LANGSMITH_API_KEY in the env file, synthetic runs are traced to the LangSmith project
 // jester-chamberlain-eval. Desk runs are not, unless --trace-desk, since their frames show real people.
 
-import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes, randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
 import {
   addUsage, classify, costUsd, deskCase, nameCheckHolds, renderReport, summarize,
-  type CaseFile, type CaseResult, type Decision, type EvalCase, type ReviewInput, type Run, type Usage,
+  type CaseFile, type CaseResult, type Decision, type EvalCase, type LogEntry, type ReviewInput, type Run, type Usage,
 } from "./chamberlainCases.ts";
 
 const PROJECT = "jester-chamberlain-eval";
@@ -77,12 +77,46 @@ function readEnvFile(path: string | null): Record<string, string> {
   }
 }
 
-function deskCases(dir: string | null): EvalCase[] {
+/** The git checkout `dir` would sit in, or null (the same check as app/review-cases.ts, copied for the eval's typecheck). */
+function checkoutAround(dir: string): string | null {
+  let at = resolve(dir);
+  while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+  try { at = realpathSync(at); } catch { /* keep the resolved path */ }
+  for (;;) {
+    if (existsSync(join(at, ".git"))) return at;
+    if (dirname(at) === at) return null;
+    at = dirname(at);
+  }
+}
+
+/** Writes through a fresh temporary file, owner-only, so an interrupted write never looks like a report. */
+function writeQuietly(path: string, text: string) {
+  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, text, { mode: 0o600, flag: "wx" });
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+function readLog(envFile: string | null): LogEntry[] {
+  if (!envFile) return [];
+  try {
+    const log = JSON.parse(readFileSync(join(dirname(envFile), "jester-review-log.json"), "utf8")) as unknown;
+    return Array.isArray(log) ? (log as LogEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function deskCases(dir: string | null, log: LogEntry[]): EvalCase[] {
   if (!dir || !existsSync(dir)) return [];
   const out: EvalCase[] = [];
   for (const name of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
     try {
-      out.push(deskCase(JSON.parse(readFileSync(join(dir, name), "utf8")) as CaseFile));
+      out.push(deskCase(JSON.parse(readFileSync(join(dir, name), "utf8")) as CaseFile, log));
     } catch {
       console.warn(`Skipped ${name}: not a readable case file.`);
     }
@@ -90,15 +124,16 @@ function deskCases(dir: string | null): EvalCase[] {
   return out;
 }
 
+/** The newest run report that reads back whole. */
 function lastRun(runsDir: string | null): Run | null {
   if (!runsDir || !existsSync(runsDir)) return null;
-  const latest = readdirSync(runsDir).filter((f) => f.endsWith(".json")).sort().pop();
-  if (!latest) return null;
-  try {
-    return JSON.parse(readFileSync(join(runsDir, latest), "utf8")) as Run;
-  } catch {
-    return null;
+  for (const name of readdirSync(runsDir).filter((f) => f.endsWith(".json")).sort().reverse()) {
+    try {
+      const run = JSON.parse(readFileSync(join(runsDir, name), "utf8")) as Run;
+      if (Array.isArray(run.results)) return run;
+    } catch { /* an unreadable report: try the one before */ }
   }
+  return null;
 }
 
 /** Runs `work` over `items`, at most `limit` at a time, keeping the order of `items`. */
@@ -116,16 +151,30 @@ async function pool<T, R>(items: T[], limit: number, work: (item: T, index: numb
 }
 
 async function main(): Promise<number> {
+  if (!["all", "synthetic", "desk"].includes(args.source ?? "")) {
+    console.error("--source is all, synthetic or desk.");
+    return 2;
+  }
+  const concurrency = Number(args.concurrency);
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
+    console.error("--concurrency is a whole number from 1 to 16.");
+    return 2;
+  }
   const envFile = findEnvFile();
   const env = readEnvFile(envFile);
   const casesDir = envFile ? join(dirname(envFile), "chamberlain-cases") : null;
+  const repo = casesDir ? checkoutAround(casesDir) : null;
+  if (repo) {
+    console.error(`The cases folder ${casesDir} is inside the git checkout ${repo}. Keep JESTER_REVIEW_ENV outside every repo.`);
+    return 2;
+  }
   const runsDir = casesDir ? join(casesDir, "runs") : null;
   const agent = (await import(new URL("../../app/review-agent.ts", import.meta.url).href)) as AgentModule;
   const model = args.model ?? env.JESTER_REVIEW_MODEL ?? agent.DEFAULT_MODEL;
   const prompt = agent.promptVersion();
 
   const only = args.only ? new Set(args.only.split(",").map((s) => s.trim())) : null;
-  const all = [...(args.source === "desk" ? [] : SYNTHETIC.map(syntheticCase)), ...(args.source === "synthetic" ? [] : deskCases(casesDir))];
+  const all = [...(args.source === "desk" ? [] : SYNTHETIC.map(syntheticCase)), ...(args.source === "synthetic" ? [] : deskCases(casesDir, readLog(envFile)))];
   const cases = all.filter((c) => !only || only.has(c.id));
   if (!cases.length) {
     console.error(only ? `No case is named ${[...only].join(", ")}.` : "No cases to run.");
@@ -134,7 +183,7 @@ async function main(): Promise<number> {
 
   const desk = cases.filter((c) => c.source === "desk");
   const previous = lastRun(runsDir);
-  const perReview = previous?.results.length ? (costUsd(previous.model, previous.results.reduce((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 })) ?? 0) / previous.results.length : null;
+  const perReview = previous?.results.length ? (costUsd(previous.model, previous.results.reduce<Usage>((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 })) ?? 0) / previous.results.length : null;
   console.log(`${cases.length} cases: ${cases.length - desk.length} synthetic, ${desk.length} from the desk (${desk.filter((c) => c.truth).length} with a person's outcome or a hand label).`);
   console.log(`Each case is one Chamberlain review on ${model} (prompt ${prompt}): the Chamberlain and its playability checker, several model calls.${perReview ? ` Last run: about $${perReview.toFixed(3)} a review, so about $${(perReview * cases.length).toFixed(2)} for this one.` : ""}`);
   if (desk.length && !casesDir) console.log("No env file found, so no desk cases.");
@@ -161,14 +210,17 @@ async function main(): Promise<number> {
 
   const runIds = new Map<string, string>();
   const started = new Date().toISOString();
-  const results = await pool(cases, Number(args.concurrency) || 4, async (c, i): Promise<CaseResult> => {
-    const usage: Usage = { calls: 0, input: 0, output: 0 };
+  const results = await pool(cases, concurrency, async (c, i): Promise<CaseResult> => {
+    const usage: Usage = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    type Meta = { input_tokens?: number; output_tokens?: number; input_token_details?: { cache_read?: number; cache_creation?: number } };
     const meter = {
-      handleLLMEnd(output: { generations?: { message?: { usage_metadata?: { input_tokens?: number; output_tokens?: number } } }[][] }) {
-        const m = output.generations?.[0]?.[0]?.message;
+      handleLLMEnd(output: { generations?: { message?: { usage_metadata?: Meta } }[][] }) {
+        const m = output.generations?.[0]?.[0]?.message?.usage_metadata;
         usage.calls++;
-        usage.input += m?.usage_metadata?.input_tokens ?? 0;
-        usage.output += m?.usage_metadata?.output_tokens ?? 0;
+        usage.input += m?.input_tokens ?? 0;
+        usage.output += m?.output_tokens ?? 0;
+        usage.cacheRead! += m?.input_token_details?.cache_read ?? 0;
+        usage.cacheWrite! += m?.input_token_details?.cache_creation ?? 0;
       },
     };
     const trace = tracing && (c.source === "synthetic" || args["trace-desk"]);
@@ -212,16 +264,19 @@ async function main(): Promise<number> {
     mkdirSync(runsDir, { recursive: true, mode: 0o700 });
     chmodSync(runsDir, 0o700);
     const stamp = started.replace(/[:.]/g, "-");
-    writeFileSync(join(runsDir, `${stamp}.json`), JSON.stringify(run, null, 2) + "\n", { mode: 0o600 });
-    writeFileSync(join(runsDir, `${stamp}.md`), report, { mode: 0o600 });
+    writeQuietly(join(runsDir, `${stamp}.md`), report);
+    writeQuietly(join(runsDir, `${stamp}.json`), JSON.stringify(run, null, 2) + "\n");
     console.log(`Saved to ${join(runsDir, `${stamp}.md`)}.`);
   }
   if (tracing) console.log(`Traces: LangSmith project ${env.LANGSMITH_PROJECT || PROJECT}${args["trace-desk"] ? "" : " (synthetic cases only)"}.`);
   else console.log("No LANGSMITH_API_KEY in the env file, so nothing was traced.");
 
+  // A false approval or a review that did not run fails the run. False rejections, escalations and name checks
+  // that are off are reported for a person to read; they do not fail it.
   const s = summarize(results);
   if (s.falseApprovals) console.error(`${s.falseApprovals} false approval${s.falseApprovals === 1 ? "" : "s"}: the Chamberlain let in a clip it should not have.`);
-  return s.falseApprovals ? 1 : 0;
+  if (s.failed) console.error(`${s.failed} review${s.failed === 1 ? "" : "s"} did not run, so this run proves nothing about ${s.failed === 1 ? "that case" : "those cases"}.`);
+  return s.falseApprovals || s.failed ? 1 : 0;
 }
 
 process.exitCode = await main();

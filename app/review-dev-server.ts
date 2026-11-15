@@ -267,8 +267,8 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             };
             if (!input.facts || !Array.isArray(input.frames) || input.frames.length > 8) return fail(400, "The review needs the clip's facts and up to 8 frames.");
             // Every judged clip becomes an eval case, whatever the outcome; a failed save never blocks the review.
-            // `keep` saves the very object passed to reviewSubmission, so a replay reads exactly what this review
-            // read (anything added to the input later, such as precedents, is captured with it).
+            // `keep` must get the very object passed to reviewSubmission, so a replay reads exactly what this
+            // review read. A field added to the review's input (such as precedents) belongs on that same object.
             const keep = (judged: ReviewInput, decision: Decision | null, error?: string) => {
               const saved = saveJudged(casesDir, {
                 id: ROW_ID.test(String(body.id ?? "")) ? String(body.id) : null,

@@ -105,6 +105,20 @@ export interface RunOptions {
   traceTo?: string;
 }
 
+/** Every variable LangChain reads to trace on its own (@langchain/core utils/callbacks). */
+export const INHERITED_TRACING = ["LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING_V2", "LANGSMITH_TRACING", "LANGCHAIN_TRACING"];
+
+/**
+ * Tracing happens only through an explicit tracer for one run (`traceTo`). A tracing variable left in the shell
+ * that started the dev server or a script would otherwise send every review, real frames and names included,
+ * to LangSmith, so it is removed from this process before any review runs.
+ */
+export function stopInheritedTracing(): string[] {
+  const removed = INHERITED_TRACING.filter((k) => process.env[k] !== undefined);
+  for (const k of removed) delete process.env[k];
+  return removed;
+}
+
 interface TraceClient { awaitPendingTraceBatches?: () => Promise<void>; getRunUrl?: (o: { runId: string; projectOpts?: { projectName?: string } }) => Promise<string> }
 const tracers: { client: TraceClient; projectName: string }[] = [];
 
@@ -135,6 +149,8 @@ function textOf(content: unknown): string {
 
 /** One review. Throws when the model cannot be reached (a wrong key, no network); the caller says so. */
 export async function reviewSubmission(input: ReviewInput, settings: { apiKey: string; model: string; run?: RunOptions }): Promise<Decision> {
+  const removed = stopInheritedTracing();
+  if (removed.length) console.warn(`[review] Ignored ${removed.join(", ")} from the environment: the Chamberlain is traced only per run.`);
   // Loaded only when a review runs, so the dev server and `vite build` start without the agent packages.
   const [{ createDeepAgent }, { ChatAnthropic }, { tool }, { z }] = await Promise.all([
     import("deepagents"),

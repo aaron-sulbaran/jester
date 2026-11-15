@@ -97,7 +97,22 @@ export function truthOfDesk(c: CaseFile): { truth: Truth | null; from: string } 
   return { truth: { want: "approve", alsoOk: [] }, from: "let in by Aaron under the name it was sent with" };
 }
 
-export function deskCase(c: CaseFile): EvalCase {
+/** One entry of jester-review-log.json, the desk's own record of every decision (app/review-dev-server.ts). */
+export interface LogEntry { id: string; title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
+
+/**
+ * A case's final outcome from the review log, for a case whose file has none: the decide route logs every
+ * decision even when the case file missed it (decided while the Chamberlain was still judging, or a failed write).
+ */
+export function outcomeFromLog(log: LogEntry[], id: string): CaseFile["outcome"] {
+  const e = [...log].reverse().find((x) => x.id === id && (x.verdict === "approved" || x.verdict === "rejected"));
+  if (!e) return null;
+  const by = e.by === "aaron" || e.by === "check" ? e.by : "agent";
+  return { status: e.verdict as "approved" | "rejected", by, title: e.title, reason: e.reason, ...(e.bankId ? { bankId: e.bankId } : {}), at: e.at };
+}
+
+export function deskCase(file: CaseFile, log: LogEntry[] = []): EvalCase {
+  const c: CaseFile = file.outcome ? file : { ...file, outcome: outcomeFromLog(log, file.id) };
   const { truth, from } = truthOfDesk(c);
   const when = c.capturedAt.slice(0, 16).replace("T", " ");
   return {
@@ -128,7 +143,8 @@ export function classify(truth: Truth | null, decision: Decision | null): Outcom
 export const nameCheckHolds = (truth: Truth | null, decision: Decision | null) =>
   !truth?.nameCheck || !decision || truth.nameCheck.includes(decision.nameCheck);
 
-export interface Usage { calls: number; input: number; output: number }
+/** Tokens across a review's model calls. `input` includes the cached ones, as LangChain reports it. */
+export interface Usage { calls: number; input: number; output: number; cacheRead?: number; cacheWrite?: number }
 
 export interface CaseResult {
   id: string;
@@ -186,19 +202,27 @@ export function summarize(results: CaseResult[]): Summary {
 
 // ---- Cost ----
 
-/** List prices per million tokens (input, output), checked 2026-11-15. Unknown models show no cost. */
-export const PRICES: Record<string, { input: number; output: number }> = {
-  "claude-sonnet-5-5": { input: 2, output: 10 },
-  "claude-opus-5-5": { input: 4, output: 20 },
-  "claude-haiku-5-5": { input: 0.1, output: 0.5 },
+/**
+ * List prices per million tokens, checked 2026-11-15: input, output, cache reads, and cache writes at 1.25 times
+ * input (the 5 minute cache). Unknown models show no cost.
+ */
+export const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 };
 
 export function costUsd(model: string, u: Usage): number | null {
   const p = PRICES[model];
-  return p ? (u.input * p.input + u.output * p.output) / 1e6 : null;
+  if (!p) return null;
+  const read = u.cacheRead ?? 0, write = u.cacheWrite ?? 0;
+  return (Math.max(0, u.input - read - write) * p.input + read * p.cacheRead + write * p.cacheWrite + u.output * p.output) / 1e6;
 }
 
-export const addUsage = (a: Usage, b: Usage): Usage => ({ calls: a.calls + b.calls, input: a.input + b.input, output: a.output + b.output });
+export const addUsage = (a: Usage, b: Usage): Usage => ({
+  calls: a.calls + b.calls, input: a.input + b.input, output: a.output + b.output,
+  cacheRead: (a.cacheRead ?? 0) + (b.cacheRead ?? 0), cacheWrite: (a.cacheWrite ?? 0) + (b.cacheWrite ?? 0),
+});
 
 // ---- The report ----
 
@@ -225,20 +249,20 @@ function summaryRows(results: CaseResult[]): string[] {
     `| | ${groups.map(([g]) => g).join(" | ")} |`,
     "|---|---|---|---|",
     row("cases", (x) => String(x.cases)),
-    row("agreement with the truth", (x) => `${pct(x.agreement)} (${x.agree} of ${x.withTruth})`),
+    row("agreement with the truth", (x) => `${pct(x.agreement)} (${x.agree} of ${x.withTruth} scored)`),
     row("false approvals", (x) => String(x.falseApprovals)),
     row("false rejections", (x) => String(x.falseRejections)),
     row("asked a person when it was clear", (x) => String(x.escalatedWhenClear)),
     row("escalation rate (ask a person)", (x) => pct(x.escalationRate)),
     row("name check off", (x) => String(x.nameMisses)),
     row("verdict changed since captured", (x) => String(x.changedSinceCapture)),
-    row("failed to run", (x) => String(x.failed)),
+    row("failed to run (not scored; the run fails)", (x) => String(x.failed)),
   ];
 }
 
 /** Markdown report of one run, compared with the previous run's verdicts when there is one. */
 export function renderReport(run: Run, previous: Run | null): string {
-  const total = run.results.reduce((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 });
+  const total = run.results.reduce<Usage>((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 });
   const cost = costUsd(run.model, total);
   const prev = new Map((previous?.results ?? []).map((r) => [r.id, r.decision?.verdict ?? null]));
   const changed = previous ? run.results.filter((r) => prev.has(r.id) && prev.get(r.id) !== (r.decision?.verdict ?? null)) : [];
@@ -246,7 +270,7 @@ export function renderReport(run: Run, previous: Run | null): string {
   const lines = [
     `# Chamberlain eval, ${run.at.slice(0, 16).replace("T", " ")}`,
     "",
-    `Model ${run.model}, prompt ${run.prompt}. ${run.results.length} reviews (one per case), ${total.calls} model calls, ${total.input} input and ${total.output} output tokens${cost === null ? "" : `, about $${cost.toFixed(2)}`}, ${secs} s of review time.`,
+    `Model ${run.model}, prompt ${run.prompt}. ${run.results.length} reviews (one per case), ${total.calls} model calls, ${total.input} input tokens (${total.cacheRead ?? 0} read from the cache, ${total.cacheWrite ?? 0} written to it) and ${total.output} output tokens${cost === null ? "" : `, about $${cost.toFixed(2)}`}, ${secs} s of review time.`,
     "",
     ...summaryRows(run.results),
     "",
