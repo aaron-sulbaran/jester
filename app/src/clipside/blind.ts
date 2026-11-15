@@ -3,7 +3,7 @@
 // Placement comes from `placeSubject` in ../../../clip.
 
 import { bodyTurns, NO_TURN, placeSubject, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
-import { drawPuppet, newSwing, stageImage, suitFor, type Construction, type StageLook, type Swing } from "./puppet.ts";
+import { drawPuppet, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
 
 export type Look = "outline" | "stick" | "puppet";
 
@@ -84,9 +84,44 @@ export function guideFrameAt(guide: Guide, mediaMs: number): number {
   return Math.min(last, Math.max(0, Math.round((mediaMs - guide.range.startMs) / frameMs)));
 }
 
-/** Works out the placement once per guide and canvas size; reuse it for every frame so the subject does not drift. */
-export function blindView(guide: Guide, canvas: HTMLCanvasElement, placement: Placement): View {
-  return placeSubject(guide, canvas, placement);
+/**
+ * Works out the placement once per guide and canvas size; reuse it for every frame so the subject does not drift.
+ * For the puppet, the fit counts its hat, bells, shoes and white edge as well as the body.
+ */
+export function blindView(guide: Guide, canvas: HTMLCanvasElement, placement: Placement, look?: Look): View {
+  return placeSubject(look === "puppet" && placement === "fit" ? puppetRoom(guide) : guide, canvas, placement);
+}
+
+/**
+ * The room the puppet takes at each frame: the subject's outline or box, grown to hold the hat and its bells
+ * round the head, the shoes and shadow below, and the white edge all round. Sizes are shares of the torso,
+ * as the puppet's are (puppet.ts: the head is 0.36 torso across, the bells reach 0.7 out and the hat 0.7 up).
+ */
+function puppetRoom(guide: Guide): Pick<Guide, "source" | "boxTrack" | "outlines"> {
+  const { width, height } = guide.source;
+  const clip = puppetClip(guide);
+  const frames = guide.boxTrack.frames.map((f, i) => {
+    const outline = guide.outlines[i];
+    let left: number, right: number, top: number, bottom: number;
+    if (outline && outline.length >= 3) {
+      left = Math.min(...outline.map((p) => p[0])); right = Math.max(...outline.map((p) => p[0]));
+      top = Math.min(...outline.map((p) => p[1])); bottom = Math.max(...outline.map((p) => p[1]));
+    } else if (f.box) {
+      left = f.box.cx - f.box.w / 2; right = f.box.cx + f.box.w / 2; top = f.box.cy - f.box.h / 2; bottom = f.box.cy + f.box.h / 2;
+    } else return f;
+    const torsoPx = clip.torso ?? (bottom - top) * height * 0.3;
+    const tx = torsoPx / width, ty = torsoPx / height;
+    const l = guide.timeline?.frames[i]?.landmarks;
+    const seen = (k: number) => !!l && (l[k]?.[2] ?? 0) >= MIN_VISIBILITY;
+    const head = l && seen(7) && seen(8) ? [(l[7]![0] + l[8]![0]) / 2, (l[7]![1] + l[8]![1]) / 2]
+      : l && seen(0) ? [l[0]![0], l[0]![1]] : [(left + right) / 2, top];
+    left = Math.min(left, head[0]! - 0.75 * tx) - 0.08 * tx;
+    right = Math.max(right, head[0]! + 0.75 * tx) + 0.08 * tx;
+    top = Math.min(top, head[1]! - 0.75 * ty) - 0.08 * ty;
+    bottom += 0.2 * ty;
+    return { ...f, box: { cx: (left + right) / 2, cy: (top + bottom) / 2, w: right - left, h: bottom - top } };
+  });
+  return { source: guide.source, boxTrack: { ...guide.boxTrack, frames }, outlines: frames.map(() => null) };
 }
 
 function toCanvas(view: View, guide: Guide, x: number, y: number): [number, number] {
@@ -116,14 +151,22 @@ export function drawBlindBackground(canvas: HTMLCanvasElement, guide: Guide, vie
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     return;
   }
+  ctx.drawImage(stageImage(canvas.width, canvas.height, stageSpot(canvas, guide, view, pose), style.stage), 0, 0);
+}
+
+/**
+ * Where the stage's floor and spotlight go on `canvas`: the floor's back edge a little behind where the
+ * subject usually stands, the light on their usual spot. Give it the role's base view, not one resized to
+ * the player, so the stage stays put (and its cached picture is reused).
+ */
+export function stageSpot(canvas: { width: number; height: number }, guide: Guide, view: View, pose?: GuidePose): StageSpot {
   const clip = pose?.clip ?? puppetClip(guide);
   const { width: w, height: h } = canvas;
   const torsoPx = clip.torso !== null ? clip.torso * view.scale : null;
-  // The floor's back edge a little behind where the subject usually stands; the light on their usual spot.
   const footPx = clip.footY !== null ? clip.footY * guide.source.height * view.scale + view.offsetY : null;
   const floorY = footPx !== null ? Math.min(h * 0.88, Math.max(h * 0.5, footPx - (torsoPx ?? h * 0.15) * 0.35)) : h * 0.76;
   const spotX = clip.centerX !== null ? Math.min(w * 0.8, Math.max(w * 0.2, clip.centerX * guide.source.width * view.scale + view.offsetX)) : w / 2;
-  ctx.drawImage(stageImage(w, h, { floorY, spotX }, style.stage), 0, 0);
+  return { floorY, spotX };
 }
 
 /**

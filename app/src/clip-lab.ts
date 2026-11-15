@@ -66,7 +66,7 @@ function radioGroup<T extends string>(name: string, values: readonly T[], fallba
 let view: View | null = null;
 const resetView = () => { view = null; };
 const overlayMode = radioGroup<Overlay>("overlay", ["skeleton", "outline", "both"], "both", () => {});
-const look = radioGroup<Look>("look", ["puppet", "outline", "stick"], "puppet", () => {});
+const look = radioGroup<Look>("look", ["puppet", "outline", "stick"], "puppet", resetView);
 const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
 const askedGuide = params.get("guide");
 const labPuppet: Construction = askedGuide === "b" || askedGuide === "c" ? askedGuide : "a";
@@ -230,7 +230,7 @@ function tick() {
   const box = guide.boxTrack.frames[index]?.box;
   if (box && mode === "skeleton") strokeBox(overlay, box, "", "#f5c542");
 
-  view ??= blindView(guide, blindCanvas, place());
+  view ??= blindView(guide, blindCanvas, place(), look());
   // The puppet and the outline stand on the stage; the stick figure keeps the old plain look.
   drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view, { background: "#16161d", color: "#F47FA6", ...(look() === "stick" ? {} : { stage: labStage, puppet: labPuppet }) });
 }

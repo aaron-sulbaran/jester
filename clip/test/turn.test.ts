@@ -85,6 +85,19 @@ test("frameTurn: when the nose and ears are not clearly seen the turn fades to 0
   assert.ok(half.yaw > 0 && half.yaw < 50 * DEG);
 });
 
+test("frameTurn: a back with the nose and ears marked seen still reads as a back, from depth or from shoulder order", () => {
+  // As on the test squat clip: the tracker gives the face full visibility on a turned back, without swapping sides.
+  const { landmarks, depth } = body(180);
+  for (const d of [depth, null]) {
+    const turn = frameTurn(landmarks, d, ASPECT, frontWidest)!;
+    assert.equal(turn.face, 0);
+    near(turn.yaw, 0);
+  }
+  // Side on, nothing says back.
+  assert.equal(frameTurn(body(80).landmarks, body(80).depth, ASPECT, frontWidest)!.face, 1);
+  assert.equal(frameTurn(body(-80).landmarks, null, ASPECT, frontWidest)!.face, 1);
+});
+
 test("frameTurn: no landmarks, or no shoulders and hips, is unknown", () => {
   assert.equal(frameTurn(null, null, ASPECT, frontWidest), null);
   const { landmarks } = body(0);

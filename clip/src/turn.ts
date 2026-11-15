@@ -10,6 +10,9 @@
 // hips look against the clip's widest, and the side from how far the nose sits off the midpoint of
 // the ears. Trackers often swap left and right on a turned back, so the turn fades toward 0 when the
 // nose and ears are not clearly seen, and `face` says how sure we are that the face is toward us.
+// The tracker can mark the nose and ears fully visible on a turned back (seen on the test squat clip), so
+// `face` also drops when the nose sits behind the shoulders in depth, or when the left shoulder is on the
+// image's left (the order of a back seen without a swap).
 
 import type { Landmark, Landmarks } from "../../engine/src/index.ts";
 import type { Depth, Guide } from "./types.ts";
@@ -35,6 +38,10 @@ const FACE_UNSEEN = 0.3, FACE_SEEN = 0.7;
 const FRONT_RATIO_FLOOR = 0.9;
 /** The nose sits about this far (in torso lengths) off the ears' midpoint when the head is turned well aside. */
 const NOSE_SIDE_REACH = 0.1;
+/** Left shoulder this far (in torso lengths) to the left of the right one reads as a back; half as far starts to. */
+const BACK_ORDER = -0.3;
+/** Nose this far (in torso lengths) behind the shoulders reads as a back. */
+const NOSE_BEHIND = 0.2;
 /** Shoulders count twice as much as hips: the tracker's hip depth is weak. */
 const SHOULDER_WEIGHT = 2;
 
@@ -71,10 +78,24 @@ export function widestSpread(frames: readonly Landmarks[], aspect: number): numb
 }
 
 /** How sure we are the face is toward the camera, from the nose and the better seen ear. */
-function faceSeen(landmarks: readonly Landmark[]): number {
+function faceSeen(landmarks: readonly Landmark[], depth: Depth | null, aspect: number): number {
   const nose = landmarks[NOSE]?.[2] ?? 0;
   const ear = Math.max(landmarks[LEFT_EAR]?.[2] ?? 0, landmarks[RIGHT_EAR]?.[2] ?? 0);
-  return smoothstep(FACE_UNSEEN, FACE_SEEN, Math.min(nose, ear));
+  let face = smoothstep(FACE_UNSEEN, FACE_SEEN, Math.min(nose, ear));
+  const ls = point(landmarks[LEFT_SHOULDER], aspect), rs = point(landmarks[RIGHT_SHOULDER], aspect);
+  const lh = point(landmarks[LEFT_HIP], aspect), rh = point(landmarks[RIGHT_HIP], aspect);
+  if (!ls || !rs || !lh || !rh) return face;
+  const torso = dist(mid(ls, rs), mid(lh, rh));
+  if (torso <= 1e-6) return face;
+  // Facing us, the left shoulder sits on the image's right; well over to the left means the back is to us.
+  face = Math.min(face, smoothstep(BACK_ORDER, 0.5 * BACK_ORDER, (ls[0] - rs[0]) / torso));
+  const zNose = depth?.[NOSE], zl = depth?.[LEFT_SHOULDER], zr = depth?.[RIGHT_SHOULDER];
+  if (zNose !== undefined && zl !== undefined && zr !== undefined) {
+    // Depth is in image widths; the torso, in image heights, over the aspect is in image widths too.
+    const behind = (zNose - (zl + zr) / 2) / (torso / aspect);
+    face = Math.min(face, smoothstep(NOSE_BEHIND, 0, behind));
+  }
+  return face;
 }
 
 /** The turn from depth: how far the left shoulder and hip sit behind the right ones. Null without the shoulders. */
@@ -122,7 +143,7 @@ export function frameTurn(landmarks: Landmarks, depth: Depth | null | undefined,
   const usable = depth && depth.length === landmarks.length ? depth : null;
   const yaw = (usable ? yawFromDepth(landmarks, usable, aspect) : null) ?? yawFromWidth(landmarks, aspect, widest);
   if (yaw === null) return null;
-  const face = faceSeen(landmarks);
+  const face = faceSeen(landmarks, usable, aspect);
   return { yaw: yaw * face, face };
 }
 

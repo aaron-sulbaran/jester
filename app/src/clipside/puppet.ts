@@ -32,7 +32,9 @@ const PHOTO = "#FFFFFF";
 const GOLD = "#F4BE1A";
 const STAMP = "#D93A2B";
 const NAVY = "#2E4593";
+/** The shoebox's own browns: --floor-c and --side-c planks with --ceil-c seams. */
 const FLOOR = "#93613A";
+const SIDE = "#774C2B";
 const CEIL = "#5C3A20";
 /** --shade: ink at 34 percent, the look's only shadow colour. */
 const SHADE = "rgba(30,27,24,0.34)";
@@ -576,15 +578,25 @@ export function stageImage(width: number, height: number, spot: StageSpot, look:
 function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, floorY: number, spotX: number, look: StageLook) {
   ctx.fillStyle = NAVY;
   ctx.fillRect(0, 0, w, floorY);
-  // Floor: planks running back to a vanishing point high above, seams in the shoebox's ceiling brown.
+  // Floor: planks running back to a vanishing point high above, in the shoebox's floor and side browns,
+  // seams in its ceiling brown.
   const floorH = h - floorY;
   ctx.fillStyle = FLOOR;
   ctx.fillRect(0, floorY, w, floorH);
   const k = (h * 1.4) / (h - floorY + h * 1.4);
   const plank = Math.max(18, w * 0.08);
+  const first = spotX - Math.ceil((spotX + w) / plank) * plank;
+  let n = 0;
+  for (let x = first; x < w * 2; x += plank, n++) {
+    if (n % 2 === 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(spotX + (x - spotX) * k, floorY); ctx.lineTo(spotX + (x + plank - spotX) * k, floorY);
+    ctx.lineTo(x + plank, h); ctx.lineTo(x, h); ctx.closePath();
+    ctx.fillStyle = SIDE; ctx.fill();
+  }
   ctx.strokeStyle = CEIL;
   ctx.lineWidth = Math.max(2, w * 0.004);
-  for (let x = spotX - Math.ceil((spotX + w) / plank) * plank; x < w * 2; x += plank) {
+  for (let x = first; x < w * 2; x += plank) {
     ctx.beginPath(); ctx.moveTo(spotX + (x - spotX) * k, floorY); ctx.lineTo(x, h); ctx.stroke();
   }
   // Where the backdrop meets the floor, a hard shadow band.

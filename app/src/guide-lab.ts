@@ -136,8 +136,14 @@ const panels: Panel[] = (["a", "b", "c"] as const).map((id) => {
   picks.append(puppetLabel, stageLabel);
   puppetLabel.querySelector("select")!.addEventListener("change", () => { p.textContent = CONSTRUCTIONS[puppet()]; });
   const canvas = document.createElement("canvas");
-  // The shape the guide has while playing: half of a 16:9 stage.
-  canvas.width = 480; canvas.height = 540;
+  // The shape the guide has while playing: half of a 16:9 stage. ?phone=1 shows it the way a 390 px wide
+  // phone does: drawn on the game's 640 px wide canvas and shown about 118 by 133 px.
+  if (params.get("phone") === "1") {
+    canvas.width = 640; canvas.height = 721;
+    canvas.style.width = "118px"; canvas.style.height = "133px";
+  } else {
+    canvas.width = 480; canvas.height = 540;
+  }
   box.append(h, p, picks, canvas);
   $("options").append(box);
   return { canvas, puppet, stage };
@@ -163,7 +169,7 @@ function tick(now: number) {
   for (const [i, panel] of panels.entries()) {
     const key = `${guide.fingerprint}:${i}`;
     let view = views.get(key);
-    if (!view) { view = blindView(guide, panel.canvas, "fit"); views.set(key, view); }
+    if (!view) { view = blindView(guide, panel.canvas, "fit", "puppet"); views.set(key, view); }
     const style: BlindStyle = { background: "#16161d", color: colorPick.value, stage: panel.stage(), puppet: panel.puppet() };
     drawBlindBackground(panel.canvas, guide, view, style, pose);
     drawBlindSubject(panel.canvas, slice, 0, "puppet", view, style, pose);

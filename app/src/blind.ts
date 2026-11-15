@@ -19,8 +19,8 @@ import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, type GuidePose, type Look } from "./clipside/blind.ts";
-import type { Construction, StageLook } from "./clipside/puppet.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, stageSpot, type GuidePose, type Look } from "./clipside/blind.ts";
+import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
@@ -727,7 +727,9 @@ function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
   // the clip's shape, so where it travels stays true.
   const shown = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 0;
   fitCanvas(canvas, !isThing(s.guide) && shown ? shown : scene.width / scene.height);
-  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color, ...(GUIDE.puppet ? { stage: GUIDE.stage, puppet: GUIDE.puppet } : {}) } };
+  const view = blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit", s.look);
+  // `stageView` stays the base view when `view` is resized to the player, so the stage does not move.
+  return { view, stageView: view, style: { background: "#16161d", color: s.color, ...(GUIDE.puppet ? { stage: GUIDE.stage, puppet: GUIDE.puppet } : {}) } };
 }
 
 /** The role's first frame, the only thing the player sees of it before the turn. */
@@ -748,7 +750,7 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
 function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof roleView>, ms: number, leadMs: number, scratch: HTMLCanvasElement) {
   if (view.style.stage) {
     const now = poseAt(s.guide, ms);
-    drawBlindBackground(canvas, s.guide, view.view, view.style, now);
+    drawBlindBackground(canvas, s.guide, view.stageView, view.style, now);
     if (leadMs > 0) {
       scratch.width = canvas.width; scratch.height = canvas.height;
       drawBlindSubject(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style, poseAt(s.guide, ms + leadMs));
@@ -836,6 +838,12 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
     const r = c.getBoundingClientRect();
     return displayedHeight(r.width, r.height, c.width, c.height, getComputedStyle(c).objectFit === "cover" ? "cover" : "contain");
   };
+  // With no camera picture, the player's half stands on the same stage as the role, its floor at the same height.
+  const playerStage = (pc: HTMLCanvasElement, gc: HTMLCanvasElement) => {
+    if (!view.style.stage) return null;
+    const spot = stageSpot(gc, g, view.stageView);
+    return stageImage(pc.width, pc.height, { floorY: (spot.floorY / gc.height) * pc.height, spotX: pc.width / 2 }, view.style.stage);
+  };
   const sizedView = (): typeof view => {
     if (!sizeToPlayer || clipMs < 0 || !pose) return view;
     const mine = stance(pose, aspect, 1); // torso in image heights
@@ -852,7 +860,8 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
   const paint = () => {
     paintRole(stage.guideCanvas, s, sizedView(), Math.max(0, clipMs), clipMs >= 0 ? leadMs : 0, scratch);
     fitCanvas(stage.playerCanvas, aspect);
-    drawFrame(stage.playerCanvas, deps.simMode() ? null : stage.cam, pose, { mirror: true, color: s.color });
+    const cam = deps.simMode() ? null : stage.cam;
+    drawFrame(stage.playerCanvas, cam, pose, { mirror: true, color: s.color, backdrop: cam ? null : playerStage(stage.playerCanvas, stage.guideCanvas) });
   };
   // A timer, not requestAnimationFrame, so it keeps drawing in a background tab.
   const painter = window.setInterval(paint, 1000 / 30);
