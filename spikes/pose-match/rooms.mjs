@@ -22,8 +22,16 @@ export const normalizeCode = (code) => String(code || "").trim().toUpperCase();
 //  - start in step: non-hosts measure how far the host's clock is from theirs (ping and reply, lowest delay wins),
 //    so "start at T" means the same moment on every device
 //  - late joiners sit out the round in progress and play the next one
+//  - results close at the round's length plus RESULT_GRACE_MS; whoever sent a result by then is ranked, even if
+//    they dropped afterwards (start(..., lengthMs) sets it; without a length a round waits as before)
+//  - the clock offset is measured against the current host, and starts again from scratch when the host changes;
+//    a start time that has not come yet moves when a better measurement arrives
+//  - a room made from a match (members: [{ id, name }]) knows its players up front, ignores everyone else, and
+//    drops a member who never shows up after silentMs; adoptRound() starts it from the match's start time
+export const RESULT_GRACE_MS = 15_000;
+
 export class Room {
-  constructor({ transport, code, playerId, name, now = () => Date.now(), heartbeatMs = 2000, silentMs = 10000 }) {
+  constructor({ transport, code, playerId, name, now = () => Date.now(), heartbeatMs = 2000, silentMs = 10000, graceMs = RESULT_GRACE_MS, members = null }) {
     this.transport = transport; this.code = normalizeCode(code); this.me = playerId; this.name = name || playerId; this.now = now;
     this.players = new Map();   // playerId -> { id, name, joinedAt }
     this.results = new Map();   // playerId -> { score, timeline, at }
@@ -34,8 +42,19 @@ export class Room {
     this.bestRtt = Infinity;
     this.lastSeen = new Map();  // playerId -> my clock when I last heard from them
     this.heartbeatMs = heartbeatMs; this.silentMs = silentMs; this.timer = null;
-    this.joinedAt = this.now();
+    this.graceMs = graceMs; this.closeTimer = null;
+    this.offsetFrom = null;     // whose clock `offset` measures (the host it was measured against)
+    this.gone = new Map();      // playerId -> player, for those who dropped or left (their results still rank)
+    // A match fixes who plays: the order of `members` is the host order, the first member hosts.
+    this.members = members ? new Set(members.map((p) => p.id)) : null;
+    const seat = members ? members.findIndex((p) => p.id === this.me) : -1;
+    this.joinedAt = seat >= 0 ? seat : this.now();
     this.ready = false;
+    for (const [i, p] of (members ?? []).entries()) {
+      if (p.id === this.me) continue;
+      this.players.set(p.id, { id: p.id, name: p.name || p.id, joinedAt: i, ready: false });
+      this.lastSeen.set(p.id, this.now()); // a member who never shows up is dropped like one who went silent
+    }
     this.players.set(this.me, { id: this.me, name: this.name, joinedAt: this.joinedAt, ready: false });
     this.unsubscribe = transport.onMessage((m) => this.#receive(m));
   }
@@ -46,6 +65,7 @@ export class Room {
 
   join() {
     this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready });
+    if (!this.isHost) this.#send({ type: "sync", t0: this.now() }); // measure the host's clock straight away
     if (this.heartbeatMs > 0 && !this.timer) {
       this.timer = setInterval(() => this.tick(), this.heartbeatMs);
       this.timer.unref?.(); // never keep a Node process alive
@@ -57,6 +77,7 @@ export class Room {
     this.#send({ type: "ping" });
     if (!this.isHost) this.#send({ type: "sync", t0: this.now() });
     this.prune();
+    this.#checkClosed();
   }
 
   /** Removes players not heard from for `silentMs`. The host role passes on by itself (earliest joiner present). */
@@ -66,7 +87,7 @@ export class Room {
     for (const id of [...this.players.keys()]) {
       if (id === this.me) continue;
       const seen = this.lastSeen.get(id);
-      if (seen !== undefined && t - seen > this.silentMs) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); removed = true; }
+      if (seen !== undefined && t - seen > this.silentMs) { this.#drop(id); removed = true; }
     }
     if (removed) this.#emit("update");
     return removed;
@@ -81,7 +102,57 @@ export class Room {
     this.#emit("update");
   }
   get allReady() { return this.roster().every((p) => p.ready); }
-  leave() { this.#send({ type: "leave" }); clearInterval(this.timer); this.timer = null; this.unsubscribe?.(); this.transport.close?.(); }
+  leave() { this.#send({ type: "leave" }); clearInterval(this.timer); this.timer = null; clearTimeout(this.closeTimer); this.unsubscribe?.(); this.transport.close?.(); }
+
+  // A player who left or went silent. Their result for this round stays, so it is still ranked.
+  #drop(id) {
+    const p = this.players.get(id);
+    if (p) this.gone.set(id, p);
+    this.players.delete(id); this.lastSeen.delete(id);
+  }
+
+  /** True once this round's results have closed (its length plus the grace period, on my clock). */
+  get closed() { return this.round?.closeAt != null && this.now() >= this.round.closeAt; }
+  #checkClosed() {
+    if (!this.round || !this.closed || this.round.closedSeen) return;
+    this.round.closedSeen = true;
+    this.#emit("update");
+  }
+  // A round starts here on my clock; `clock` says whose clock its start time came in, to correct it as the offset improves.
+  #setRound(round, clock) {
+    const closeAt = round.lengthMs != null ? round.startAt + round.lengthMs + this.graceMs : null;
+    this.round = { ...round, closeAt, clock };
+    this.results = new Map();
+    clearTimeout(this.closeTimer);
+    if (closeAt !== null && this.heartbeatMs > 0) {
+      this.closeTimer = setTimeout(() => this.#checkClosed(), Math.max(0, closeAt - this.now()) + 5);
+      this.closeTimer.unref?.();
+    }
+  }
+  // My clock for `t` on `from`'s clock: the measured offset when it was measured against them, else `fallback`.
+  #toMine(from, t, fallback) {
+    if (from === this.me) return t;
+    return this.offset !== null && this.offsetFrom === from ? t - this.offset : fallback;
+  }
+  // A better offset arrived: move a start time that has not come yet.
+  #retime() {
+    const r = this.round;
+    if (!r?.clock || r.clock.from !== this.offsetFrom || this.now() >= r.startAt) return;
+    const startAt = this.#toMine(r.clock.from, r.clock.at, r.startAt);
+    this.round = { ...r, startAt, closeAt: r.closeAt == null ? null : startAt + r.lengthMs + this.graceMs };
+  }
+
+  /**
+   * Starts a round decided outside the room (a match from the lobby): `startAt` is on `from`'s clock and
+   * `estimate` is my best guess for it on mine until the room has measured `from`'s clock. Emits "start".
+   */
+  adoptRound({ clipId, roundNo = 1, extra = {}, lengthMs = null, players = null, from, startAt, estimate }) {
+    const mine = this.#toMine(from, startAt, estimate ?? startAt);
+    this.#setRound({ clipId, startAt: mine, roundNo, extra, players: players ?? this.roster().map((p) => p.id), lengthMs }, { from, at: startAt });
+    this.#emit("start", this.round);
+    this.#emit("update");
+    return this.round;
+  }
 
   // The host is the player who joined first (ties broken by id), so everyone agrees without a server.
   get hostId() { return [...this.players.values()].sort((a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1))[0].id; }
@@ -89,14 +160,14 @@ export class Room {
   roster() { return [...this.players.values()].sort((a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1)); }
 
   // Host only. Everyone starts at the same moment: delayMs from now on the host's clock.
-  start(clipId, delayMs = 3000, extra = {}) {
+  // lengthMs: how long the round runs from its start; results close that long plus the grace period after it.
+  start(clipId, delayMs = 3000, extra = {}, lengthMs = null) {
     if (!this.isHost) throw new Error("Only the host can start the round");
     const roundNo = (this.round?.roundNo ?? 0) + 1;
     const startAt = this.now() + delayMs;
-    this.results = new Map();
     const players = this.roster().map((p) => p.id); // who is in this round; later joiners sit it out
-    this.round = { clipId, startAt, roundNo, extra, players };
-    this.#send({ type: "start", clipId, startAt, roundNo, extra, players });
+    this.#setRound({ clipId, startAt, roundNo, extra, players, lengthMs }, { from: this.me, at: startAt });
+    this.#send({ type: "start", clipId, startAt, roundNo, extra, players, lengthMs });
     this.#emit("start", this.round);
     this.#emit("update");
     return this.round;
@@ -111,23 +182,31 @@ export class Room {
   }
 
   // Players with a result, best first; players still playing are listed after, with score null.
+  // Players who left or dropped after sending a result this round are still listed, with `gone: true`.
   standings() {
-    const rows = this.roster().map((p) => ({ id: p.id, name: p.name, sittingOut: !!this.round?.players && !this.round.players.includes(p.id), score: this.results.get(p.id)?.score ?? null, timeline: this.results.get(p.id)?.timeline ?? null, extra: this.results.get(p.id)?.extra ?? null }));
+    const left = [...this.gone.values()].filter((p) => this.results.has(p.id) && !this.players.has(p.id)).map((p) => ({ ...p, gone: true }));
+    const rows = [...this.roster(), ...left].map((p) => ({ gone: !!p.gone, id: p.id, name: p.name, sittingOut: !!this.round?.players && !this.round.players.includes(p.id), score: this.results.get(p.id)?.score ?? null, timeline: this.results.get(p.id)?.timeline ?? null, extra: this.results.get(p.id)?.extra ?? null }));
     return rows.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
   }
   // Everyone in this round who is still here has sent a result (players who dropped or joined late do not count).
   get allDone() {
+    if (this.closed) return true;
     const ids = (this.round?.players ?? this.roster().map((p) => p.id)).filter((id) => this.players.has(id));
     return ids.length > 0 && ids.every((id) => this.results.has(id));
   }
 
   #receive(m) {
     if (!m || m.room !== this.code || m.from === this.me) return;
+    if (this.members && !this.members.has(m.from)) return; // a room made from a match ignores everyone else
     this.skew = this.now() - m.sentAt;
     this.lastSeen.set(m.from, this.now());
+    if (!this.players.has(m.from) && this.gone.has(m.from) && m.type !== "leave" && m.type !== "join") {
+      this.players.set(m.from, this.gone.get(m.from)); this.gone.delete(m.from); // went silent, came back
+    }
     switch (m.type) {
       case "join": {
         const isNew = !this.players.has(m.from);
+        this.gone.delete(m.from);
         this.players.set(m.from, { id: m.from, name: m.name || m.from, joinedAt: m.joinedAt ?? this.now(), ready: !!m.ready });
         if (isNew) this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready }); // so the newcomer sees me
         break;
@@ -136,17 +215,17 @@ export class Room {
       case "sync": if (this.isHost) this.#send({ type: "syncReply", to: m.from, t0: m.t0, th: this.now() }); break;
       case "syncReply": {
         if (m.to !== this.me) break;
+        if (m.from !== this.offsetFrom) { this.offsetFrom = m.from; this.offset = null; this.bestRtt = Infinity; } // a new host: measure again
         const rtt = this.now() - m.t0;
-        if (rtt < this.bestRtt) { this.bestRtt = rtt; this.offset = m.th - (m.t0 + rtt / 2); } // host clock minus mine
+        if (rtt < this.bestRtt) { this.bestRtt = rtt; this.offset = m.th - (m.t0 + rtt / 2); this.#retime(); } // host clock minus mine
         break;
       }
       case "ready": { const p = this.players.get(m.from); if (p) p.ready = !!m.ready; break; }
-      case "leave": this.players.delete(m.from); this.results.delete(m.from); break;
+      case "leave": this.#drop(m.from); break;
       case "start": {
         // translate the host's start time into my clock (skew includes network delay, fine for a party game)
-        const startAt = this.offset !== null ? m.startAt - this.offset : m.startAt + this.skew; // measured offset if I have one
-        this.round = { clipId: m.clipId, startAt, roundNo: m.roundNo, extra: m.extra ?? {}, players: m.players ?? null };
-        this.results = new Map();
+        const startAt = this.#toMine(m.from, m.startAt, m.startAt + this.skew); // measured offset if I have one for the sender
+        this.#setRound({ clipId: m.clipId, startAt, roundNo: m.roundNo, extra: m.extra ?? {}, players: m.players ?? null, lengthMs: m.lengthMs ?? null }, { from: m.from, at: m.startAt });
         this.#emit("start", this.round);
         break;
       }
