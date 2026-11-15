@@ -29,6 +29,9 @@ const round2 = (v: number | null | undefined) => (v === null || v === undefined 
 
 // ---- The round log, re-scored ----
 
+/** "camera" for a person in front of a webcam; "simulated" for the built-in stand-in player, which moves too evenly to tell a real player's habits. */
+const playerSource = (r: Rescored["record"]) => (r.device.camera ? "camera" : "simulated");
+
 interface Item { id: string; frozenCase: boolean; record: Rescored["record"]; now: Rescored["now"]; was: number | null; verdict: Verdict | null; source?: Rescored; transform?: Transform }
 
 function loadAll(): { items: Rescored[]; derived: ReturnType<typeof deriveAll> } {
@@ -53,6 +56,7 @@ export function evalSummary() {
     const v = judge(it, items);
     return {
       id: it.record.id, frozenCase: isFrozen(it.record.id), clip: clipName(it.record), mode: it.record.mode, channel: it.record.channel, tag: it.record.tag,
+      player: playerSource(it.record),
       scoreWhenPlayed: it.was, scoreNow: it.now.score, lagMs: Math.round(it.now.lagMs),
       expectation: v?.expectation ?? null, holds: v?.holds ?? null, detail: v?.detail ?? null,
     };
@@ -81,7 +85,7 @@ export function roundDetail(id: string) {
   const r = c ? c.now : base.now;
   const verdict = c ? c.verdict : judge(base, items);
   const common = {
-    id, clip: clipName(base.record), mode: base.record.mode, channel: base.record.channel, tag: base.record.tag,
+    id, clip: clipName(base.record), mode: base.record.mode, channel: base.record.channel, tag: base.record.tag, player: playerSource(base.record),
     transform: transform ?? null, sourceScore: c ? base.now.score : null, score: r.score, tier: r.tier, failure: r.failure,
     lagMs: Math.round(r.lagMs), timing: round2(r.timing),
     expectation: verdict?.expectation ?? null, holds: verdict?.holds ?? null, detail: verdict?.detail ?? null,
@@ -159,7 +163,7 @@ export function unsupportedNumbers(text: string): string[] {
 export const evalSummaryTool = tool(async () => recorded("eval_summary", JSON.stringify(evalSummary())), {
   name: "eval_summary",
   description:
-    "Re-scores every recorded Jester round with the current scorer and returns, as JSON: each round (clip, mode, tag, score when played, score now, lag, expectation, whether it holds), every derived case (late, frozen, seated, walked-out, jittered and mirrored copies of good rounds, with whether each expectation holds; holds null means report only or not applicable), and the ids that do not hold. Deterministic.",
+    "Re-scores every recorded Jester round with the current scorer and returns, as JSON: each round (clip, mode, tag, player: camera or simulated stand-in, score when played, score now, lag, expectation, whether it holds), every derived case (late, frozen, seated, walked-out, jittered and mirrored copies of good rounds, with whether each expectation holds; holds null means report only or not applicable), and the ids that do not hold. Deterministic.",
   schema: z.object({}),
 });
 
