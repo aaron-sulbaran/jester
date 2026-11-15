@@ -61,7 +61,7 @@ function follow(live: LiveTrack, frameDetections: FrameDetections, detection: nu
   live.vx = (person.box.cx - previous.box.cx) / elapsed;
   live.vy = (person.box.cy - previous.box.cy) / elapsed;
   live.lastFrame = frame;
-  live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline });
+  live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline, ...(person.depth ? { depth: person.depth } : {}) });
 }
 
 /** The track's usual box: the median centre and size of its last END_POINTS boxes, so one odd box does not count. */
@@ -166,7 +166,7 @@ export function linkTracks(
       const track: Track = {
         id: all.length,
         shot: cuts.filter((c) => c <= frame).length,
-        points: [{ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline }],
+        points: [{ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline, ...(person.depth ? { depth: person.depth } : {}) }],
       };
       all.push(track);
       live.push({ track, lastFrame: frame, vx: 0, vy: 0 });

@@ -7,6 +7,7 @@
 //   wrap-up   any call after the decision (a closing message)
 //
 // node scripts/chamberlain-bench.ts <cases.json> <review-agent module> <label> [reps] [precedents.json]
+// JESTER_REVIEW_MODE=fast in the environment runs the one-call flow; otherwise the deep flow.
 //
 // cases.json: { cases: [{ id, title, credit, facts }] } with frames at frames/<id>-0.jpg .. -3.jpg beside it.
 // Keys: ANTHROPIC_API_KEY from the file JESTER_REVIEW_ENV points at. Run it with tracing off for real clips:
@@ -99,7 +100,7 @@ for (let rep = 1; rep <= reps; rep++) {
     try {
       const d = await agent.reviewSubmission(
         { title: c.title, credit: c.credit, facts: c.facts, frames: frameUrls(c.id), synthetic: c.synthetic === true, ...(precedents ? { precedents } : {}) },
-        { apiKey, model: "claude-sonnet-5-5", callbacks: [meter] },
+        { apiKey, model: "claude-sonnet-5-5", mode: process.env.JESTER_REVIEW_MODE === "fast" ? "fast" : "deep", callbacks: [meter] },
       );
       results.push({ case: c.id, rep, ms: Date.now() - started, verdict: d.verdict, nameCheck: d.nameCheck, reason: d.reason, stages: meter.totals, decision: d });
       console.log(`${label} ${c.id} #${rep}: ${d.verdict} in ${((Date.now() - started) / 1000).toFixed(1)} s (${Object.entries(meter.totals).map(([s, t]) => `${s} ${t.calls}`).join(", ")})`);
