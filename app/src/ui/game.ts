@@ -9,7 +9,7 @@ import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
 import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
 import { playWithSound } from "../sound.ts";
-import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
+import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, motionOf, rankFor } from "../feelText.ts";
@@ -735,8 +735,14 @@ export function initGame(deps: GameDeps) {
 
   /** Each player wears the jester colourway that matches their colour (player 1 is p1, and so on). */
   function variantOf(row: ResultRow) {
-    const i = playerColors().indexOf(row.color);
-    return variantFor(i < 0 ? rows.indexOf(row) : i);
+    const own = variantOfColour(row.color);
+    if (own) return own;
+    // A colour with no rendered jester gets the first colourway nobody else at the table is wearing, so two
+    // players never crown as the same jester.
+    const taken = new Set(rows.map((r) => variantOfColour(r.color)).filter((v): v is string => v !== null));
+    const free = VARIANTS.filter((v) => !taken.has(v));
+    const unmatched = rows.filter((r) => variantOfColour(r.color) === null);
+    return free[unmatched.indexOf(row)] ?? variantFor(rows.indexOf(row));
   }
 
   // ---- Between the reveal and the crowning: the curtain call ----
