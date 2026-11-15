@@ -213,7 +213,15 @@ body:not(.solo) #solo { display: none; }
 .mode-says { margin-top: -6px; font-size: 16px; min-height: 1.4em; }
 
 /* The bank: taped photos. Posters show in Normal; in Blind they stay under the question mark. */
-.bank { display: flex; flex-wrap: wrap; gap: 28px 34px; justify-content: center; max-width: 1100px; }
+/* One row of taped photos you scroll sideways, so a full bank never pushes the Play ticket off the screen. The
+   padding leaves room for the tape, the picked clip's star and the hard shadows inside the scrolling row. */
+.bank {
+  display: flex; flex-wrap: nowrap; gap: 30px; justify-content: safe center; align-items: flex-start;
+  width: 100%; max-width: 1240px; overflow: auto hidden; overscroll-behavior-x: contain;
+  padding: 30px 26px 24px; margin: -12px 0 -8px; scroll-snap-type: x proximity; scroll-padding-inline: 26px;
+  scrollbar-width: thin; scrollbar-color: #B48C61 transparent;
+}
+.bank .clip { flex: 0 0 auto; scroll-snap-align: start; }
 .clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 body[data-mode="blind"] .clip-pic img { display: none; }
 body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
@@ -488,6 +496,7 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .btn-main { width: 100%; }
   .btn-main .ticket { width: 100%; justify-content: center; }
   /* No sticky bars: on a phone a pinned ticket covered the first clip and the part chips. */
+  .bank .clip { width: 68vw; }
   .side-nav { top: 8px; right: 8px; gap: 8px; }
   .side-nav .btn-quiet { min-height: 40px; padding: 6px 12px 6px 30px; font-size: 14px; }
   .side-nav .btn-quiet::before { left: 11px; }
@@ -565,4 +574,5 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 #clipReady .row-actions { justify-content: flex-start; gap: 12px; padding-left: 8px; }
 #clipReady .link { background: var(--photo); box-shadow: var(--lift); padding: 8px 14px; }
 body[data-screen="turn"] #clipReady { display: none; }
-@media (max-width: 760px) { #clipReady { left: 8px; right: 8px; bottom: 8px; width: auto; } }
+/* On a phone it sits at the top, under the corner tags, clear of the Play ticket at the bottom. */
+@media (max-width: 760px) { #clipReady { left: 8px; right: 8px; top: 62px; bottom: auto; width: auto; } }
