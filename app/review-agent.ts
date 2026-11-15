@@ -19,6 +19,18 @@ import { castText, type CastLine } from "./src/castSummary.ts";
 
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 
+/**
+ * Where every Chamberlain and cast-check model call goes: Anthropic's own API, never a base URL or gateway
+ * from the environment (ANTHROPIC_BASE_URL, a LangSmith gateway). The Send in a clip notice names Anthropic.
+ */
+export const ANTHROPIC_API_URL = "https://api.anthropic.com";
+
+/** The Chamberlain's model, pinned to Anthropic's API. Both flows and the playability-checker subagent use it. */
+export async function chamberlainModel(apiKey: string, model: string) {
+  const { ChatAnthropic } = await import("@langchain/anthropic");
+  return new ChatAnthropic({ model, apiKey, anthropicApiUrl: ANTHROPIC_API_URL, maxTokens: 2000, maxRetries: 2 });
+}
+
 export interface ClipFacts {
   /** The analysis refusal ("No person found in this clip."), or null when it found someone to copy. */
   error: string | null;
@@ -461,9 +473,8 @@ export async function reviewSubmission(input: ReviewInput, settings: ReviewSetti
   const removed = stopInheritedTracing();
   if (removed.length) console.warn(`[review] Ignored ${removed.join(", ")} from the environment: this review is traced only through a tracer passed in.`);
   // Loaded only when a review runs, so the dev server and `vite build` start without the agent packages.
-  const [{ createDeepAgent }, { ChatAnthropic }, { tool }, { z }] = await Promise.all([
+  const [{ createDeepAgent }, { tool }, { z }] = await Promise.all([
     import("deepagents"),
-    import("@langchain/anthropic"),
     import("@langchain/core/tools"),
     import("zod"),
   ]);
@@ -498,7 +509,7 @@ export async function reviewSubmission(input: ReviewInput, settings: ReviewSetti
     returnDirect: true,
   });
 
-  const model = new ChatAnthropic({ model: settings.model, apiKey: settings.apiKey, maxTokens: 2000, maxRetries: 2 });
+  const model = await chamberlainModel(settings.apiKey, settings.model);
   let agent;
   if (mode === "deep") {
     const readClipFacts = tool(async () => JSON.stringify(input.facts), {
@@ -519,6 +530,8 @@ export async function reviewSubmission(input: ReviewInput, settings: ReviewSetti
         description: "Judges from the game's analysis facts whether a clip is playable in Jester: plays well, does not play, or unsure, with the numbers.",
         systemPrompt: PLAYABILITY,
         tools: [readClipFacts],
+        // The same pinned client, said outright rather than left to deepagents' default.
+        model,
       }],
     });
   } else {

@@ -34,6 +34,16 @@
         <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
         <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
       </filter>
+      <!-- The same round white edge for the small paper stickers (the props drifting beside the title), with room
+           around them so a 38 px star keeps its whole rim. #die-cut's square growth left them with boxy corners. -->
+      <filter id="die-cut-prop" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="4.6" result="soft" />
+        <feComponentTransfer in="soft" result="grown"><feFuncA type="linear" slope="80" intercept="-2.8" /></feComponentTransfer>
+        <feOffset in="grown" dx="5" dy="6" result="dropped" />
+        <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+        <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+        <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
       <filter id="sticker" x="-12%" y="-12%" width="130%" height="130%" color-interpolation-filters="sRGB">
         <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="grown" />
         <feOffset in="grown" dx="4" dy="5" result="dropped" />
@@ -241,6 +251,14 @@
           <circle cx="24" cy="28" r="5.5" fill="#D93A2B" />
         </g>
       </symbol>
+      <symbol id="ico-settings" viewBox="0 0 48 48">
+        <g stroke="#1E1B18" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M6 11.5 H42 M6 24 H42 M6 36.5 H42" fill="none" />
+          <circle cx="30" cy="11.5" r="6" fill="#D93A2B" stroke-width="3.6" />
+          <circle cx="15" cy="24" r="6" fill="#FFC93C" stroke-width="3.6" />
+          <circle cx="34" cy="36.5" r="6" fill="#4F7BF0" stroke-width="3.6" />
+        </g>
+      </symbol>
     </defs>
   </svg>
 
@@ -273,9 +291,9 @@
     <!-- Home: on every screen once you leave the start. Mid-game it asks first. -->
     <!-- Top right on every screen: How to play (start screen only) and Sound (game.ts). -->
     <nav class="side-nav" id="sideNav" aria-label="Help and sound">
-      <button type="button" class="btn btn-quiet" id="howtoLink"><svg class="ico" aria-hidden="true"><use href="#ico-howto" /></svg>How to play</button>
-      <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true"><svg class="ico ico-on" aria-hidden="true"><use href="#ico-sound-on" /></svg><svg class="ico ico-off" aria-hidden="true"><use href="#ico-sound-off" /></svg><span id="soundSay">Sound: on</span></button>
-      <button type="button" class="btn btn-quiet" id="settingsOpen">Settings</button>
+      <button type="button" class="btn btn-quiet" id="howtoLink" title="How to play"><svg class="ico" aria-hidden="true"><use href="#ico-howto" /></svg><span class="side-say">How to play</span></button>
+      <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true" title="Sound: on"><svg class="ico ico-on" aria-hidden="true"><use href="#ico-sound-on" /></svg><svg class="ico ico-off" aria-hidden="true"><use href="#ico-sound-off" /></svg><span class="side-say" id="soundSay">Sound: on</span></button>
+      <button type="button" class="btn btn-quiet" id="settingsOpen" title="Settings"><svg class="ico" aria-hidden="true"><use href="#ico-settings" /></svg><span class="side-say">Settings</span></button>
     </nav>
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
       <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
@@ -322,7 +340,7 @@
       <div class="masking"><h2 class="tape">How to play</h2></div>
       <ol class="steps">
         <li class="step"><span class="step-pic" aria-hidden="true"><span class="clip-q">?</span></span><b>Pick a clip.</b><span>In Blind, nobody sees it. In Normal, you dance along with it.</span></li>
-        <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 200 130"><path d="M50 22 H150 Q156 22 156 28 V88 H44 V28 Q44 22 50 22 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M60 34 H140 V78 H60 Z" fill="#2848C8"/><path d="M30 92 H170 L160 106 H40 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M128 118 Q160 124 176 108" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round"/><path d="M168 100 L178 107 L166 114" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>Pass the laptop.</b><span>Each player gets a secret part from the clip: a person, or a thing like a ball.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 200 130"><path d="M50 22 H150 Q156 22 156 28 V88 H44 V28 Q44 22 50 22 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M60 34 H140 V78 H60 Z" fill="#2848C8"/><path d="M30 92 H170 L160 106 H40 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M128 118 Q160 124 176 108" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round"/><path d="M168 100 L178 107 L166 114" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>Pass the laptop.</b><span>Each player gets a secret part from the clip: one of the people in it.</span></li>
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="-20 -30 340 300"><use href="/art.svg#dog" width="300" height="180" y="60" style="color: rgba(255, 254, 250, .32)" /><use href="/art.svg#player" x="95" y="-20" width="140" height="190" style="color: var(--ticket)" /></svg></span><b>Copy the shape.</b><span>Stand back so your whole body is in view. Get inside the shape and move when it moves, like a mirror.</span></li>
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 300 180"><use href="/art.svg#crawl" /></svg></span><b>See what you did.</b><span>Everyone is cut out into the clip, then the best jester gets the spotlight.</span></li>
       </ol>
@@ -340,9 +358,9 @@
           <span class="washi w-dots" aria-hidden="true"></span>
           <h3 id="setHeadSaved"><svg class="ico" aria-hidden="true"><use href="#ico-save" /></svg>What Jester saves</h3>
           <ul class="how">
-            <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's name and size, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
+            <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's size and frame rate, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
             <li>A clip you send in is kept private until it's reviewed. To check it, a few frames, what the game measured, its name and your name go to Anthropic, the company that makes the AI.</li>
-            <li>In an online room, your face picture and a short cut-out of you go to the others in the room for the recap and the crowning. They aren't stored.</li>
+            <li>In an online room, your photo goes to everyone in the room, including people who join after you, until you leave. A short cut-out of you goes to the others in your round for the recap and the crowning. Neither is stored.</li>
             <li>Your settings and how many of you play stay in this browser.</li>
           </ul>
         </section>
@@ -388,9 +406,30 @@
         <svg class="drift-prop" style="left:7%;top:4%;--s:84px;--r:-14deg;--d:8.5s;--t:-2s"><use href="#jester-hat" /></svg>
         <svg class="drift-prop" style="left:13%;top:14%;--s:44px;--r:10deg;--d:11s;--t:-6s"><use href="#star" /></svg>
         <svg class="drift-prop" style="left:3%;top:18%;--s:50px;--r:8deg;--d:9.5s;--t:-4s"><use href="#ico-clapper" /></svg>
-        <svg class="drift-prop" style="right:8%;top:10%;--s:56px;--r:12deg;--d:10s;--t:-1s"><use href="#ico-watch" /></svg>
-        <svg class="drift-prop" style="right:4%;top:19%;--s:46px;--r:-10deg;--d:12s;--t:-7s"><use href="#ico-sound-on" /></svg>
-        <svg class="drift-prop" style="right:20%;top:7%;--s:38px;--r:-18deg;--d:7.5s;--t:-3s"><use href="#star" /></svg>
+      </div>
+      <!-- A jester giving it everything for an audience of one: our own homage to the jester and queen loop, cut
+           from paper in our colours. Decoration only; still under reduced motion and Calm motion. -->
+      <div class="royal" id="royalAudience" aria-hidden="true">
+        <span class="royal-floor"></span>
+        <svg class="royal-throne" viewBox="0 0 120 150">
+          <g stroke="#1E1B18" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M18 122 V32 Q18 10 60 10 Q102 10 102 32 V122 Z" fill="#D93A2B" stroke-width="4" />
+            <path d="M30 118 V36 Q30 22 60 22 Q90 22 90 36 V118" fill="none" stroke="#F4BE1A" stroke-width="3" />
+            <circle cx="18" cy="30" r="6" fill="#F4BE1A" stroke-width="3" /><circle cx="102" cy="30" r="6" fill="#F4BE1A" stroke-width="3" />
+            <rect x="14" y="120" width="10" height="26" fill="#93613A" stroke-width="3" /><rect x="96" y="120" width="10" height="26" fill="#93613A" stroke-width="3" />
+            <path d="M38 108 Q36 66 60 60 Q84 66 82 108 Z" fill="#6B2FB3" stroke-width="4" />
+            <rect x="8" y="104" width="104" height="18" fill="#93613A" stroke-width="4" />
+            <ellipse cx="60" cy="60" rx="16" ry="6" fill="#FFFEFA" stroke-width="3" />
+            <circle cx="53" cy="88" r="5" fill="#EDCB8E" stroke-width="3" /><circle cx="67" cy="88" r="5" fill="#EDCB8E" stroke-width="3" />
+            <circle cx="60" cy="43" r="15" fill="#EDCB8E" stroke-width="4" />
+            <path d="M46 31 L48 18 L54 25 L60 13 L66 25 L72 18 L74 31 Z" fill="#F4BE1A" stroke-width="3" />
+            <path d="M51 42 h7 M62 42 h7" fill="none" stroke-width="2.5" />
+            <circle cx="55" cy="44.5" r="1.8" fill="#1E1B18" stroke="none" /><circle cx="66" cy="44.5" r="1.8" fill="#1E1B18" stroke="none" />
+            <path class="royal-brow" d="M62 36.5 l7 -0.5" fill="none" stroke-width="2.5" />
+            <path d="M56 51.5 h8" fill="none" stroke-width="2.5" />
+          </g>
+        </svg>
+        <span class="royal-jester"></span>
       </div>
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
@@ -444,7 +483,7 @@
         <h2 class="library-title" id="libraryTitle">Pick from the library</h2>
         <span class="library-count" id="libraryCount"></span>
         <button type="button" class="link library-more" id="libraryMore" hidden></button>
-        <label class="field library-find" role="search"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
+        <label class="field library-find" role="search"><span><svg class="ico" aria-hidden="true"><use href="#ico-search" /></svg>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
       </div>
       <div class="bank" id="bank" role="group" aria-labelledby="libraryTitle"></div>
       <p class="typed library-none" id="libraryNone" role="status" hidden></p>
@@ -539,6 +578,25 @@
         <!-- Before a room: your name, then make a room, or join one with a friend's code. Opened from a join link
              (?room=CODE), the code is filled in and Join is the main action. -->
         <div id="roomJoin">
+          <!-- The photo booth: a taped print. The camera starts only from Take my photo; Snap counts down and takes the
+               face circle; Retake and Skip the photo are there before joining. Without a photo you join with the grey face. -->
+          <div class="room-booth-col" id="roomBoothCol" data-state="off">
+            <figure class="print room-booth">
+              <span class="washi w-pink" aria-hidden="true"></span>
+              <span class="room-booth-pic">
+                <canvas id="roomBoothView" width="360" height="360" aria-hidden="true"></canvas>
+                <span class="room-booth-ring" aria-hidden="true"></span>
+                <span class="room-booth-count" id="roomBoothCount" aria-hidden="true"></span>
+                <span class="room-booth-flash" id="roomBoothFlash" aria-hidden="true"></span>
+              </span>
+              <figcaption id="roomBoothSays">No photo yet. You can join without one.</figcaption>
+            </figure>
+            <div class="room-booth-actions">
+              <button type="button" class="btn btn-quiet" id="roomBoothGo">Take my photo</button>
+              <button type="button" class="link" id="roomNoPhoto">Skip the photo</button>
+            </div>
+            <p class="aside room-booth-note">Your jester wears your photo. It goes to everyone in this room, including people who join after you, until you leave. It isn't stored anywhere.</p>
+          </div>
           <div class="room-invite" id="roomInvite" hidden>
             <p class="room-code-label">Room code</p>
             <p class="room-code" id="roomInviteCode"></p>
@@ -549,7 +607,7 @@
           </div>
           <div class="room-have-code" id="roomHaveCode">
             <label class="field"><span>Or join with a friend's code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></label>
-            <button type="button" class="btn btn-quiet" id="roomEnter"><span class="ticket"><span class="ticket-text">Join</span></span></button>
+            <button type="button" class="btn btn-quiet" id="roomEnter"><svg class="ico" aria-hidden="true"><use href="#ico-join" /></svg><span class="ticket"><span class="ticket-text">Join</span></span></button>
           </div>
         </div>
         <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
@@ -562,7 +620,7 @@
               <h2 class="room-code" id="roomCodeText"></h2>
               <div class="room-link-row">
                 <p class="room-link" id="roomLinkLine" hidden><span id="roomLinkText" hidden></span> <span id="roomWhere"></span></p>
-                <button type="button" class="btn btn-quiet" id="roomCopy">Copy link</button>
+                <button type="button" class="btn btn-quiet" id="roomCopy"><svg class="ico" aria-hidden="true"><use href="#ico-copy" /></svg><span id="roomCopySay">Copy link</span></button>
               </div>
             </div>
             <figure class="print room-qr" id="roomQr">
@@ -573,21 +631,36 @@
           </div>
           <div class="room-cast-wrap">
             <ul id="roomRoster" class="room-cast" aria-label="Players in the room"></ul>
+            <button type="button" class="link" id="roomPhotoOff" hidden>Take my photo off</button>
           </div>
           </div>
           <div class="room-side" id="roomSidePlay">
           <div class="room-table">
             <div id="roomHostRow" hidden>
-              <div class="field room-pick"><span class="room-step">Pick the clip</span>
-                <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick the clip">
-                  <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
-                  <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              <div class="field room-pick"><span class="room-step" id="roomPickHead">Pick the clip</span>
+                <!-- Taped clip cards, like the start screen's library: Surprise me, one card per bank clip (room.ts adds
+                     them), then Upload your own. The three built-in scenes are for the team only (?dev=1). -->
+                <div class="room-pick-row" id="roomModes" role="radiogroup" aria-labelledby="roomPickHead">
+                  <button type="button" class="clip surprise" role="radio" data-scene="surprise" aria-checked="true">
+                    <span class="washi w-pink" aria-hidden="true"></span>
+                    <span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span>
+                    <span class="clip-name">Surprise me</span>
+                    <span class="clip-hint" id="roomSurpriseHint">Any clip from the bank. Nobody sees it until the end.</span>
+                    <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+                  </button>
+                  <button type="button" class="clip room-upload-card" role="radio" data-scene="upload" aria-checked="false">
+                    <span class="washi w-dots" aria-hidden="true"></span>
+                    <span class="clip-pic" aria-hidden="true"><span class="clip-q">+</span></span>
+                    <span class="clip-name">Upload your own</span>
+                    <span class="clip-hint">A video from your laptop. Your friends never get the file.</span>
+                    <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+                  </button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="duo" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Dance duo</span><span class="clip-hint">Built-in test scene: two dancers.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="demo" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Dance break</span><span class="clip-hint">Built-in test scene: a dancer and a ball.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
+                  <button type="button" class="clip dev-only" role="radio" data-scene="dribble" aria-checked="false"><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name">Pickup game</span><span class="clip-hint">Built-in test scene: dribbling.</span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg></button>
                 </div>
-                <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
+                <!-- Kept for scripts: always in step with the picked bank card. -->
+                <div id="roomBankRow" hidden><select id="roomBankSelect" aria-hidden="true" tabindex="-1"></select></div>
                 <div class="field" id="roomUploadRow" hidden>
                   <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
                   <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
@@ -595,8 +668,8 @@
               </div>
               <div class="room-switch">
                 <div class="modes-pick" id="roomPlayMode" role="radiogroup" aria-label="How everyone plays">
-                  <button type="button" class="mode" role="radio" data-play="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
-                  <button type="button" class="mode" role="radio" data-play="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+                  <button type="button" class="mode" role="radio" data-play="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end.</span></button>
+                  <button type="button" class="mode" role="radio" data-play="normal" aria-checked="false"><b>Normal</b><span>Everyone sees the clip and dances along with it.</span></button>
                 </div>
                 <p class="room-play-says" id="roomPlaySays" aria-hidden="true"></p>
               </div>
@@ -609,7 +682,7 @@
               <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
               <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
             </div>
-            <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
+            <p class="aside room-privacy">Your photo goes to everyone in this room, including people who join after you, until you leave. A short cut-out clip of you goes to the others in your round for the recap and the crowning. Neither is stored anywhere.</p>
           </div>
           </div>
           <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->
@@ -622,13 +695,13 @@
               </div>
               <form class="room-chat-form" id="roomChatForm">
                 <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
-                <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
+                <button type="submit" class="btn btn-quiet" id="roomChatSend"><svg class="ico" aria-hidden="true"><use href="#ico-send" /></svg>Send</button>
               </form>
             </div>
           </section>
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
-        <button type="button" class="link" id="roomBack">Back</button>
+        <button type="button" class="link" id="roomBack"><svg class="ico" aria-hidden="true"><use href="#ico-back" /></svg><span id="roomBackSay">Back</span></button>
       </div>
     </section>
 
@@ -826,7 +899,7 @@
     </section>
     <section id="blind" class="panel hidden">
       <div id="blindSetup">
-        <p>Everyone gets a secret role from the clip: a person, or a thing like a ball. Nobody is told what they are. You see only a moving outline or stick figure, never the clip, and copy it. At the end, everyone is put back together in one video.</p>
+        <p>Everyone gets a secret role from the clip: one of the people in it. Nobody is told what they are. You see only a moving outline or stick figure, never the clip, and copy it. At the end, everyone is put back together in one video.</p>
         <div class="row">
           <button id="blindDribble">Dribble: one player dribbles, one is the ball</button>
           <button id="blindDemo">Dancer and a ball</button>

@@ -7,6 +7,7 @@
 
 import type { Guide } from "../../clip/src/index.ts";
 import { applyCast, castSummary } from "./castSummary.ts";
+import { folderWait } from "./folderWait.ts";
 import { addClip, analyseClip, bankLock, describe, rereadClip, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
 import { cleanText, withClip } from "./bankIndex.ts";
 import { jesterBars } from "./ui/jesterBar.ts";
@@ -370,12 +371,24 @@ function ask(question: string): Promise<boolean> {
   });
 }
 
+let freshCount = 0;
+let waitingOnFolder = false;
+/** With the every-minute chip on and no bank folder, the minute loop cannot start: say so instead of skipping in silence. */
+function showFolderWait() {
+  const stuck = pressed("deskAuto") && status?.canJudge === true && !dir;
+  const text = folderWait(freshCount, stuck, $("deskFolder").textContent || "Pick the bank folder");
+  if (text) { problem(text); waitingOnFolder = true; }
+  else if (waitingOnFolder) { problem(null); waitingOnFolder = false; }
+}
+
 /** Waiting for the Chamberlain: new clips it has not looked at yet. Not a person's job unless it hands one over. */
 function renderQueue(pending: Pending[]) {
   const fresh = status?.canJudge ? pending.filter((p) => !p.logged) : [];
   const list = $("deskQueue");
   list.replaceChildren();
   $("deskQueueCount").textContent = fresh.length === 0 ? "Nothing new." : `${fresh.length} new ${fresh.length === 1 ? "clip" : "clips"}, reviewed next.`;
+  freshCount = fresh.length;
+  showFolderWait();
   for (const p of fresh) {
     const li = document.createElement("li");
     li.textContent = `${p.title ? `"${p.title}"` : "No name"}${p.credit ? `, by ${p.credit}` : ""}, sent at ${new Date(p.created_at).toLocaleTimeString()}`;
@@ -597,6 +610,7 @@ let timer = 0;
 function syncAuto() {
   clearInterval(timer);
   timer = 0;
+  showFolderWait();
   if (!pressed("deskAuto") || !dir || !status?.canJudge) return;
   void reviewQueue();
   timer = window.setInterval(() => { if (dir) void reviewQueue(); }, 60000);

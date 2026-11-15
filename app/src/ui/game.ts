@@ -204,8 +204,9 @@ export function initGame(deps: GameDeps) {
   let count = Math.min(4, Math.max(1, Number(saved(PLAYERS_KEY)) || 1));
   let how: How = (["turns", "duel", "online"] as const).find((h) => h === saved(HOW_KEY)) ?? "turns";
   let query = "";
-  /** The library first shows the clips made for this many players; this shows the rest too. */
-  let showAll = false;
+  /** The library first shows the clips made for this many players; the tag shows the rest too. Unset follows the
+   * bank: when no clip has a part for each player, the smaller clips show from the start and some players share. */
+  let showAll: boolean | null = null;
   /** Each clip with a thing in it (a ball, a dog) plays the thing as a part unless the cast screen turns it off. */
   const thingsOff = new Set<string>();
   const withThingsFor = (c: BankClip) => !thingsOff.has(c.id);
@@ -216,11 +217,18 @@ export function initGame(deps: GameDeps) {
   const madeFor = (c: BankClip) => (isDuel() ? c.people === 1 : count === 1 ? partsOf(c) === 1 : partsOf(c) >= count);
   // The rest, behind "Show bigger clips too" (one player plays one part) or "Show smaller clips too" (some share).
   // A duel needs one person, so it has no rest.
-  const fits = (c: BankClip) => madeFor(c) || (showAll && !isDuel());
+  /** Three or four players and no clip with that many parts: share rather than land on an empty library. */
+  const noneMadeFor = () => count > 1 && !isDuel() && bank.length > 0 && !bank.some(madeFor);
+  const showRest = () => !isDuel() && (showAll ?? noneMadeFor());
+  const fits = (c: BankClip) => madeFor(c) || showRest();
+  /** Sharing because nothing fits: the clips with the most parts come closest, so they go first and Surprise me draws from them. */
+  const sharing = () => showRest() && noneMadeFor();
+  const mostParts = () => Math.max(0, ...bank.map(partsOf));
   /** The clips the library shows right now, the ones made for this many first. */
-  const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query))).sort((x, y) => Number(madeFor(y)) - Number(madeFor(x)));
+  const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query)))
+    .sort((x, y) => Number(madeFor(y)) - Number(madeFor(x)) || (sharing() ? partsOf(y) - partsOf(x) : 0));
   /** Surprise me draws from what the library shows, the name search aside. */
-  const surprises = () => bank.filter(fits);
+  const surprises = () => (sharing() ? bank.filter((c) => partsOf(c) === mostParts()) : bank.filter(fits));
   /** "for 2 players", "for a duel". */
   const forPick = () => (isDuel() ? "for a duel" : `for ${count} ${count === 1 ? "player" : "players"}`);
 
@@ -272,13 +280,15 @@ export function initGame(deps: GameDeps) {
     $("startOr").hidden = bank.length === 0;
     surpriseCard.disabled = surprises().length === 0;
     // In Blind a library pick still shows its name; a surprise keeps even that from whoever picked it.
-    $("surpriseHint").textContent = `Any clip ${isDuel() ? "with one person" : showAll ? "shown here" : forPick()}.` + (mode === "blind" ? " Not even you know which." : "");
+    const most = mostParts();
+    $("surpriseHint").textContent = `Any clip ${isDuel() ? "with one person" : sharing() ? `for ${most} ${most === 1 ? "player" : "players"}` : showRest() ? "shown here" : forPick()}.`
+      + (mode === "blind" ? " Not even you know which." : "") + (sharing() ? " Some of you will share." : "");
     $("libraryHead").hidden = bank.length === 0;
     $("libraryCount").textContent = `${list.length} ${list.length === 1 ? "clip" : "clips"}`;
     const rest = bank.filter((c) => !madeFor(c)).length;
     const more = $<HTMLButtonElement>("libraryMore");
     more.hidden = isDuel() || rest === 0;
-    more.textContent = showAll ? (count === 1 ? "Hide bigger clips" : "Hide smaller clips") : (count === 1 ? "Show bigger clips too" : "Show smaller clips too");
+    more.textContent = showRest() ? (count === 1 ? "Hide bigger clips" : "Hide smaller clips") : (count === 1 ? "Show bigger clips too" : "Show smaller clips too");
     // Each on your own device: the room has its own clip pick, so the library steps aside.
     $("screen-start").dataset.how = isOnline() ? "online" : "here";
     const none = $("libraryNone");
@@ -348,7 +358,7 @@ export function initGame(deps: GameDeps) {
   };
   function setCount(n: number) {
     count = n;
-    showAll = false;
+    showAll = null;
     keep(PLAYERS_KEY, String(n));
     for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(Number(o.dataset.players) === n));
     $("howPick").hidden = n < 2;
@@ -366,7 +376,7 @@ export function initGame(deps: GameDeps) {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-how]")) {
     b.addEventListener("click", () => { setHow(b.dataset.how as How); renderBank(); });
   }
-  $("libraryMore").addEventListener("click", () => { showAll = !showAll; renderBank(); });
+  $("libraryMore").addEventListener("click", () => { showAll = !showRest(); renderBank(); });
   for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
@@ -837,7 +847,7 @@ export function initGame(deps: GameDeps) {
     const on = sfx.soundOn();
     soundButton.setAttribute("aria-pressed", String(on));
     // Only the words change; the horn icon beside them follows aria-pressed in style.css.
-    $("soundSay").textContent = on ? "Sound: on" : "Sound: off";
+    $("soundSay").textContent = soundButton.title = on ? "Sound: on" : "Sound: off";
   };
   soundButton.addEventListener("click", () => { sfx.setSound(!sfx.soundOn()); showSound(); });
   showSound();

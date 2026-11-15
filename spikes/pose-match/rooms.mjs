@@ -28,6 +28,15 @@ export const MAX_CHAT_CHARS = 140;
 // Chat a device will show from each player: a burst of CHAT_BURST lines, then one line per CHAT_EVERY_MS. The rest
 // are dropped quietly, so a client that skips the chat form cannot flood everyone else's screen.
 export const CHAT_BURST = 3, CHAT_EVERY_MS = 400;
+// Pictures with a known small size get a hard cap on receipt: no more pieces than the cap needs, and nothing longer
+// once assembled. The lobby photo is about 20 000 characters.
+export const MEDIA_MAX_CHARS = { lobbyface: 200_000 };
+// The kinds the game sends. A sender who is not a player here, or a kind outside this list, gets small bounds instead
+// of the full ones: at most SMALL_PIECES pieces, and at most MAX_STRANGERS such senders held (the oldest dropped first).
+// Every sender holds at most MAX_KINDS kinds. So someone with the room code cannot fill memory, and nothing the game
+// sends changes.
+export const KNOWN_KINDS = new Set(["face", "cuts", "done", "scene", "lobbyface"]);
+export const SMALL_PIECES = 4, MAX_STRANGERS = 4, MAX_KINDS = 8;
 /** One line of chat: text only, trimmed, on one line, and short. Anything else is dropped. */
 const cleanChat = (t) => (typeof t === "string" ? t.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT_CHARS) : "");
 
@@ -39,6 +48,7 @@ export class Room {
     this.round = null;          // { clipId, startAt (local clock), roundNo }
     this.media = new Map();     // playerId -> { kind: fullText }, pictures sent in chunks after a round
     this.pendingMedia = new Map(); // "from|kind" -> { mid, n, pieces: Map(i -> data), at }
+    this.strangers = [];        // senders who are not players and whose media this room holds, oldest first
     this.listeners = { update: [], start: [], chat: [] };
     this.skew = 0;              // estimated (my clock - sender clock), updated from each message
     this.offset = null;         // host clock minus my clock, measured by ping and reply (null until measured)
@@ -184,6 +194,16 @@ export class Room {
     if (!validKind(m.kind) || typeof m.mid !== "string" || m.mid.length === 0 || m.mid.length > 64) return;
     if (!Number.isInteger(m.i) || !Number.isInteger(m.n) || m.n < 1 || m.n > MAX_PIECES || m.i < 0 || m.i >= m.n) return;
     if (typeof m.data !== "string" || m.data.length > MAX_CHUNK_CHARS) return;
+    const cap = MEDIA_MAX_CHARS[m.kind];
+    if (cap && m.n > Math.ceil(cap / MAX_CHUNK_CHARS)) return;
+    const player = this.players.has(m.from);
+    if ((!player || !KNOWN_KINDS.has(m.kind)) && m.n > SMALL_PIECES) return;
+    const held = this.media.get(m.from);
+    if (held && !(m.kind in held) && Object.keys(held).length >= MAX_KINDS) return;
+    if (!player && !this.strangers.includes(m.from)) {
+      this.strangers.push(m.from);
+      while (this.strangers.length > MAX_STRANGERS) { const old = this.strangers.shift(); if (!this.players.has(old)) this.#dropMedia(old); }
+    }
     const key = m.from + "|" + m.kind;
     let p = this.pendingMedia.get(key);
     if (!p || p.mid !== m.mid) { p = { mid: m.mid, n: m.n, pieces: new Map(), at: this.now() }; this.pendingMedia.set(key, p); } // newer mid wins
@@ -193,6 +213,7 @@ export class Room {
     let text = "";
     for (let i = 0; i < p.n; i++) text += p.pieces.get(i);
     this.pendingMedia.delete(key);
+    if (cap && text.length > cap) return;
     this.media.set(m.from, { ...(this.media.get(m.from) ?? {}), [m.kind]: text });
   }
 
