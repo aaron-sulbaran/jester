@@ -11,6 +11,7 @@ import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
+import { startRide, type Ride } from "./ride.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, motionOf, rankFor } from "../feelText.ts";
 import { say } from "../host.ts";
@@ -356,11 +357,39 @@ export function initGame(deps: GameDeps) {
     const from = surprises().length ? surprises() : bank;
     const clip = pick.kind === "bank" ? pick.clip : from[Math.floor(Math.random() * from.length)];
     if (!clip) return;
-    const r = await bankScene(clip, deps.clipVideo);
-    if (r.error !== null) return startProblem(r.error);
+    // A surprise gets the merry-go-round while its moves load; the cast screen follows once both are done.
+    const ride = pick.kind === "surprise" ? surpriseRide(clip, from) : null;
+    const loading = bankScene(clip, deps.clipVideo);
+    let loaded = false;
+    void loading.then(() => { loaded = true; });
+    if (ride) {
+      await ride.landed;
+      if (!loaded) ride.say("Got one. Getting its moves ready.");
+    }
+    const r = await loading;
+    if (r.error !== null) { ride?.close(); return startProblem(r.error); }
     scene = r.data;
     openCast();
+    ride?.close();
   });
+
+  /**
+   * The ride for a surprise: six to eight photos, the picked clip at a random place among others it could have been.
+   * In Blind every photo is the same question mark with no name, so nothing on screen says which clip it is.
+   */
+  function surpriseRide(clip: BankClip, from: BankClip[]): Ride {
+    const blind = mode === "blind";
+    const slots = Math.max(6, Math.min(8, from.length));
+    const pickAt = Math.floor(Math.random() * slots);
+    const others = from.filter((c) => c.id !== clip.id);
+    for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j]!, others[i]!]; }
+    const pool = others.length ? others : [clip];
+    const photos = Array.from({ length: slots }, (_, i) => {
+      const c = i === pickAt ? clip : pool[(i < pickAt ? i : i - 1) % pool.length]!;
+      return blind ? { name: "", poster: null } : { name: c.title, poster: c.poster || null };
+    });
+    return startRide(photos, pickAt, blind ? "Got one. Nobody sees it until the end." : `Got one: ${clip.title}.`);
+  }
 
   // ---- Send in a clip: an invite under the Play ticket opens its own screen ----
 
