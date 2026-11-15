@@ -6,8 +6,9 @@
 // reasons go in jester-review-log.json beside that env file, since the table has no column for them. When
 // Aaron decides a clip the Chamberlain asked about, a short precedent goes in jester-precedents.json beside
 // it (review-precedents.ts), and the Chamberlain reads the recent ones before each review. With
-// LANGSMITH_API_KEY in the env file, every review is traced to LangSmith (LANGSMITH_PROJECT, by default
-// jester-chamberlain).
+// LANGSMITH_API_KEY and JESTER_REVIEW_TRACE=1 in the env file, each review is traced to LangSmith
+// (LANGSMITH_PROJECT, by default jester-chamberlain). Turn that on for real submissions only once the
+// Submit your own notice names LangSmith.
 //
 // What leaves the laptop: the four frames, the analysis facts, the submitter's title and credit, and the
 // recent precedents go to Anthropic for each review (and to LangSmith when tracing is on). Nothing else does. Videos come down from Supabase and stay here.
@@ -64,6 +65,12 @@ interface LogEntry {
   steering?: boolean;
   playability?: string;
   at: string;
+}
+
+/** A LangSmith tracer for one review, with its own client: nothing is set in the process environment. */
+async function tracerFor(trace: { apiKey: string; project: string }) {
+  const [{ LangChainTracer }, { Client }] = await Promise.all([import("@langchain/core/tracers/tracer_langchain"), import("langsmith")]);
+  return new LangChainTracer({ projectName: trace.project, client: new Client({ apiKey: trace.apiKey }) });
 }
 
 /** KEY=VALUE lines; quotes around a value are dropped. Missing file: nothing. */
@@ -183,12 +190,10 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     const anthropicKey = env.ANTHROPIC_API_KEY;
     const model = env.JESTER_REVIEW_MODEL || DEFAULT_MODEL;
     const langsmithKey = env.LANGSMITH_API_KEY;
-    // LangChain reads its tracing settings from the process environment when a run starts.
-    if (langsmithKey) {
-      process.env.LANGSMITH_TRACING = "true";
-      process.env.LANGSMITH_API_KEY = langsmithKey;
-      process.env.LANGSMITH_PROJECT = env.LANGSMITH_PROJECT || "jester-chamberlain";
-    }
+    // Tracing desk reviews sends real submissions' frames, titles and credits to LangSmith, which the Submit
+    // your own notice does not name yet. So it takes two deliberate settings, and goes only to this run's
+    // own tracer, never the whole process.
+    const trace = langsmithKey && env.JESTER_REVIEW_TRACE === "1" ? { apiKey: langsmithKey, project: env.LANGSMITH_PROJECT || "jester-chamberlain" } : null;
     const queueMissing = [
       ...(options.envFile ? [] : ["JESTER_REVIEW_ENV (the dev server was started without it)"]),
       ...(url ? [] : ["SUPABASE_URL"]),
@@ -197,7 +202,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     const judgeMissing = anthropicKey ? [] : ["ANTHROPIC_API_KEY"];
     /** No key value may ever leave in a message, whatever the libraries put in their errors. */
     const scrub = (text: string) => [serviceKey, anthropicKey, langsmithKey].reduce((t, k) => (k ? t.split(k).join("[key]") : t), text);
-    return { url, serviceKey, anthropicKey, model, queueMissing, judgeMissing, scrub };
+    return { url, serviceKey, anthropicKey, model, trace, queueMissing, judgeMissing, scrub };
   };
 
   /** The bank's own index, so a row is marked approved only once its clip is really in the bank. */
@@ -289,7 +294,10 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             const input = body as unknown as ReviewInput;
             if (!input.facts || !Array.isArray(input.frames) || input.frames.length > 8) return fail(400, "The review needs the clip's facts and up to 8 frames.");
             try {
-              return ok(await reviewSubmission({ ...input, precedents: readPrecedents() }, { apiKey: s.anthropicKey, model: s.model }));
+              // Exactly what the Chamberlain reads, precedents included, so a saved case replays as it was judged.
+              const judged: ReviewInput = { ...input, precedents: readPrecedents() };
+              const callbacks = s.trace ? [await tracerFor(s.trace)] : undefined;
+              return ok(await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, ...(callbacks ? { callbacks } : {}) }));
             } catch (err) {
               return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
