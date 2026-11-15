@@ -511,6 +511,9 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .btn-main .ticket { width: 100%; justify-content: center; }
   /* No sticky bars: on a phone a pinned ticket covered the first clip and the part chips. */
   .bank .clip { width: 68vw; }
+  .send-layout { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .send-invite { padding: 14px 16px; }
+  .send-invite-text { font-size: 21px; }
   .side-nav { top: 8px; right: 8px; gap: 8px; }
   .side-nav .btn-quiet { min-height: 40px; padding: 6px 12px 6px 30px; font-size: 14px; }
   .side-nav .btn-quiet::before { left: 11px; }
