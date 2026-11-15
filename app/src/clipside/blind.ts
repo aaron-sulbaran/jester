@@ -2,9 +2,23 @@
 // comparing, the old stick figure); a thing is its outline. Behind them a stage, or the old plain background.
 // Placement comes from `placeSubject` in ../../../clip.
 
-import { boxFromLandmarks, bodyTurns, NO_TURN, placeSubject, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
+import { boneLengths, boxFromLandmarks, bodyTurns, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
-import { drawPuppet, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
+import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
+
+type Puppet3d = typeof import("./puppet3d.ts");
+let puppet3d: Puppet3d | null = null;
+let loading3d: Promise<void> | null = null;
+/** Starts loading the 3D puppet (three.js) the first time it is asked for; until then the flat sticker stands in. */
+function want3d(): Promise<void> {
+  loading3d ??= import("./puppet3d.ts").then((m) => { puppet3d = m; }, () => { loading3d = null; });
+  return loading3d;
+}
+
+/** Loads the 3D puppet ahead of time, so the first frame a player sees is already 3D. */
+export function preload3d(): Promise<void> {
+  return want3d();
+}
 
 export type Look = "outline" | "stick" | "puppet";
 
@@ -29,6 +43,8 @@ export interface PuppetClip {
   footY: number | null;
   /** Median middle of the hips (else shoulders), normalized; null when never seen. */
   centerX: number | null;
+  /** Each bone's full length, for lifting the pose into 3D. */
+  lengths: BoneLengths;
 }
 
 /** The puppet's state at one moment: its turn, and the whole guide's facts. */
@@ -62,7 +78,7 @@ export function puppetClip(guide: Guide): PuppetClip {
     const lowest = ANKLES_AND_FEET.filter(seen).map((i) => l[i]![1]);
     if (lowest.length) feet.push(Math.max(...lowest));
   }
-  const clip: PuppetClip = { turns: bodyTurns(drawingGuide(guide)), torso: median(torsos), footY: median(feet), centerX: median(centers) };
+  const clip: PuppetClip = { turns: bodyTurns(drawingGuide(guide)), torso: median(torsos), footY: median(feet), centerX: median(centers), lengths: boneLengths(guide) };
   clips.set(guide, clip);
   return clip;
 }
@@ -275,9 +291,20 @@ export function drawBlindSubject(
     const at = pose ?? guidePoseAt(guide, index);
     const torso = at.clip.torso !== null ? at.clip.torso * view.scale : sizePx * 0.3;
     const depth = guide.depths?.[index] ?? null;
+    if (style.puppet === "d") {
+      want3d();
+      if (puppet3d?.available()) {
+        const { width, height } = guide.source;
+        const lifted = liftPose(landmarks, depth, at.turn, at.clip.lengths, width, height);
+        // Source pixels to canvas pixels; depth scales the same way.
+        lifted.joints = lifted.joints.map((p) => (p ? [p[0] * view.scale + view.offsetX, p[1] * view.scale + view.offsetY, p[2] * view.scale] : null));
+        floorShadow(ctx, landmarks, map, torso);
+        if (puppet3d.drawPuppet3d(ctx, { lifted, turn: at.turn, torso, suit: suitFor(style.color) })) return;
+      }
+    }
     let swing = swings.get(canvas);
     if (!swing) { swing = newSwing(); swings.set(canvas, swing); }
-    drawPuppet(ctx, { landmarks, depth, turn: at.turn, torso }, map, suitFor(style.color), style.puppet ?? "a", swing);
+    drawPuppet(ctx, { landmarks, depth, turn: at.turn, torso }, map, suitFor(style.color), style.puppet === "b" ? "b" : "a", swing);
     return;
   }
 

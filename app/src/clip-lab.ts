@@ -3,13 +3,13 @@
 // person, ?fresh=1 ignores the saved analysis, ?model=lite|heavy times another pose model and
 // ?search=tracking looks for people the old way (MediaPipe VIDEO mode), neither saved,
 // ?overlay=skeleton|outline|both, ?look=puppet|outline|stick and ?place=fit|exact set the switches;
-// ?guide=a|b|c picks which puppet on trial (a by default) and ?stage=plain|spot its stage.
+// ?guide=d|a|b picks which puppet on trial (d, the 3D jester, by default) and ?stage=plain|spot its stage.
 // After each run, window.__clipLab holds a summary.
 
 import { linkTracks, pointNearFrame, type Box, type Guide, type Placement, type View } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
 import { finishClip, prepareClip, subjectGuides, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
-import { blindView, drawBlind, guideFrameAt, guidePoseAt, guideSliceAt, traceOutline, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, traceOutline, type Look } from "./clipside/blind.ts";
 import type { Construction, StageLook } from "./clipside/puppet.ts";
 import type { PersonSearch, PoseModel } from "./clipside/detect.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
@@ -69,8 +69,9 @@ const overlayMode = radioGroup<Overlay>("overlay", ["skeleton", "outline", "both
 const look = radioGroup<Look>("look", ["puppet", "outline", "stick"], "puppet", resetView);
 const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
 const askedGuide = params.get("guide");
-const labPuppet: Construction = askedGuide === "b" || askedGuide === "c" ? askedGuide : "a";
+const labPuppet: Construction = askedGuide === "a" || askedGuide === "b" ? askedGuide : "d";
 const labStage: StageLook = params.get("stage") === "spot" ? "spot" : "plain";
+if (labPuppet === "d") void preload3d();
 const askedModel = params.get("model");
 const poseModel: PoseModel = askedModel === "lite" || askedModel === "heavy" ? askedModel : "full";
 const personSearch: PersonSearch = params.get("search") === "tracking" ? "tracking" : "every-frame";

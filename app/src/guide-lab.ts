@@ -1,5 +1,5 @@
-// Guide lab (guide-lab.html): the three jester puppets on trial, side by side on one drawn dancer who turns
-// all the way round, so the team can pick one. Uses the game's own drawing (clipside/blind.ts) on a guide
+// Guide lab (guide-lab.html): the jester puppets on trial (the 3D jester, then the flat sticker and the flat
+// cut paper for comparison), side by side on one drawn dancer who turns all the way round, so the team can pick. Uses the game's own drawing (clipside/blind.ts) on a guide
 // built here, with the tracker's depth or without it. Dev only.
 
 import { boxFromLandmarks, type Guide } from "../../clip/src/index.ts";
@@ -9,44 +9,59 @@ import { CONSTRUCTIONS, type Construction, type StageLook } from "./clipside/pup
 const W = 1280, H = 720, HZ = 15, DURATION_S = 12, ASPECT = W / H, SCALE = 0.45;
 type V = [number, number, number];
 
-const smooth = (t: number) => { const u = Math.min(1, Math.max(0, t)); return u * u * (3 - 2 * u); };
 
-/** The dancer's turn in degrees at `t` seconds: still, round to the back, on round to the front, then a sway. */
+/** Eases in and out with no jolt at either end (smootherstep). */
+const ease = (t: number) => { const u = Math.min(1, Math.max(0, t)); return u * u * u * (u * (u * 6 - 15) + 10); };
+
+/** The dancer's turn in degrees at `t` seconds: a beat facing us, one full turn, then a sway side to side. */
 function yawAt(t: number): number {
-  if (t < 1.5) return 0;
-  if (t < 4) return 180 * smooth((t - 1.5) / 2.5);
-  if (t < 5.5) return 180;
-  if (t < 8) return 180 + 180 * smooth((t - 5.5) / 2.5);
-  return 40 * Math.sin((2 * Math.PI * (t - 8)) / 4);
+  if (t < 1) return 0;
+  if (t < 7) return 360 * ease((t - 1) / 6);
+  return 30 * Math.sin((2 * Math.PI * (t - 7)) / 2.5) * ease((t - 7) / 0.8) * ease((12 - t) / 0.8);
 }
 
-/** The dancer's joints at `t` in body space: x toward their left, y up, z away from the camera, in metres. */
+/**
+ * The dancer's joints at `t` in body space: x toward their left, y up, z away from the camera, in metres.
+ * A bounce on a 0.8 s beat bends the knees (they come forward, the bones keep their length), the hips sway,
+ * the arms swing up and down out of step with each other with the elbows bending, and the head nods.
+ */
 function joints(t: number): Record<number, V> {
+  const beat = (2 * Math.PI * t) / 0.8, bar = (2 * Math.PI * t) / 1.6;
+  const bounce = 0.05 * (0.5 - 0.5 * Math.cos(beat));
+  const sway = 0.035 * Math.sin(bar);
   const arm = (side: 1 | -1, phase: number): V[] => {
-    const raise = (25 + 75 * (0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 3 + phase))) * (Math.PI / 180);
-    const bend = raise + 0.4;
-    const s: V = [0.18 * side, 1.42, 0];
-    const e: V = [s[0] + side * Math.sin(raise) * 0.27, s[1] - Math.cos(raise) * 0.27, -0.03];
-    const w: V = [e[0] + side * Math.sin(bend) * 0.25, e[1] - Math.cos(bend) * 0.25, -0.06];
-    const h: V = [w[0] + side * Math.sin(bend) * 0.08, w[1] - Math.cos(bend) * 0.08, -0.07];
+    const raise = ((30 + 75 * (0.5 + 0.5 * Math.sin(bar + phase))) * Math.PI) / 180;
+    const bend = raise + 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(bar + phase + 1.2));
+    const reach = -0.08 * (0.5 + 0.5 * Math.sin(bar + phase + 0.6));
+    const s: V = [0.18 * side - sway * 0.4, 1.42 - bounce, 0];
+    const e: V = [s[0] + side * Math.sin(raise) * 0.27, s[1] - Math.cos(raise) * 0.27, reach];
+    const w: V = [e[0] + side * Math.sin(bend) * 0.25, e[1] - Math.cos(bend) * 0.25, reach * 2];
+    const h: V = [w[0] + side * Math.sin(bend) * 0.08, w[1] - Math.cos(bend) * 0.08, reach * 2.2];
     return [s, e, w, h];
   };
-  const bob = 0.03 * Math.sin(2 * Math.PI * t);
+  const leg = (side: 1 | -1): V[] => {
+    const hip: V = [0.1 * side + sway, 0.92 - bounce, 0];
+    const ankle: V = [0.11 * side, 0.08, 0.02];
+    const half = (hip[1] - ankle[1]) / 2;
+    const forward = Math.sqrt(Math.max(0, 0.42 * 0.42 - half * half));
+    const knee: V = [(hip[0] + ankle[0]) / 2, (hip[1] + ankle[1]) / 2, -forward];
+    return [hip, knee, ankle];
+  };
   const [ls, le, lw, lhand] = arm(1, 0);
-  const [rs, re, rw, rhand] = arm(-1, Math.PI);
+  const [rs, re, rw, rhand] = arm(-1, Math.PI * 0.9);
+  const [lh, lk, la] = leg(1);
+  const [rh, rk, ra] = leg(-1);
+  const nod = 0.012 * Math.sin(beat + 0.5);
+  const headY = 1.62 - bounce + nod, hx = -sway * 0.3;
   const j: Record<number, V> = {
-    0: [0, 1.62, -0.1], 1: [0.02, 1.65, -0.09], 2: [0.035, 1.65, -0.08], 3: [0.05, 1.65, -0.07],
-    4: [-0.02, 1.65, -0.09], 5: [-0.035, 1.65, -0.08], 6: [-0.05, 1.65, -0.07],
-    7: [0.075, 1.6, 0], 8: [-0.075, 1.6, 0], 9: [0.025, 1.56, -0.08], 10: [-0.025, 1.56, -0.08],
+    0: [hx, headY, -0.1], 1: [hx + 0.02, headY + 0.03, -0.09], 2: [hx + 0.035, headY + 0.03, -0.08], 3: [hx + 0.05, headY + 0.03, -0.07],
+    4: [hx - 0.02, headY + 0.03, -0.09], 5: [hx - 0.035, headY + 0.03, -0.08], 6: [hx - 0.05, headY + 0.03, -0.07],
+    7: [hx + 0.075, headY - 0.02, 0], 8: [hx - 0.075, headY - 0.02, 0], 9: [hx + 0.025, headY - 0.06, -0.08], 10: [hx - 0.025, headY - 0.06, -0.08],
     11: ls!, 12: rs!, 13: le!, 14: re!, 15: lw!, 16: rw!,
     17: lhand!, 18: rhand!, 19: lhand!, 20: rhand!, 21: lw!, 22: rw!,
-    23: [0.1, 0.92, 0], 24: [-0.1, 0.92, 0],
-    25: [0.11, 0.5, -0.04 - Math.max(0, bob) * 2], 26: [-0.11, 0.5, -0.04 - Math.max(0, -bob) * 2],
-    27: [0.11, 0.08, 0.02], 28: [-0.11, 0.08, 0.02],
+    23: lh!, 24: rh!, 25: lk!, 26: rk!, 27: la!, 28: ra!,
     29: [0.11, 0.03, 0.06], 30: [-0.11, 0.03, 0.06], 31: [0.12, 0.0, -0.12], 32: [-0.12, 0.0, -0.12],
   };
-  // The body bobs; the feet stay on the floor.
-  for (let i = 0; i <= 26; i++) j[i] = [j[i]![0], j[i]![1] - Math.abs(bob), j[i]![2]];
   return j;
 }
 
@@ -59,7 +74,7 @@ function dancerGuide(withDepth: boolean): Guide {
     const yaw = (yawAt(t) * Math.PI) / 180;
     const step = 0.12 * Math.sin((2 * Math.PI * t) / 6);
     // The face fades from the tracker's view as the back comes round.
-    const face = 0.1 + 0.9 * smooth((Math.cos(yaw) + 0.25) / 0.4);
+    const face = 0.1 + 0.9 * ease((Math.cos(yaw) + 0.25) / 0.4);
     const j = joints(t);
     const lm: [number, number, number][] = [], depth: number[] = [];
     for (let i = 0; i < 33; i++) {
@@ -104,14 +119,14 @@ function select<T extends string>(label: string, values: [T, string][], value: T
   return [wrap, () => s.value as T];
 }
 
-const panels: Panel[] = (["a", "b", "c"] as const).map((id) => {
+const panels: Panel[] = (["d", "a", "b"] as const).map((id) => {
   const box = document.createElement("section");
   box.className = "option";
   const h = document.createElement("h2");
-  h.textContent = id.toUpperCase();
+  h.textContent = id === "d" ? "3D" : id.toUpperCase();
   const p = document.createElement("p");
   p.textContent = CONSTRUCTIONS[id];
-  const [puppetLabel, puppet] = select<Construction>("Puppet", [["a", "A sticker"], ["b", "B cut paper"], ["c", "C paper doll"]], id);
+  const [puppetLabel, puppet] = select<Construction>("Puppet", [["d", "3D jester"], ["a", "A flat sticker"], ["b", "B flat cut paper"]], id);
   const [stageLabel, stage] = select<StageLook>("Stage", [["plain", "Plain"], ["spot", "Spotlight"]], params.get("stage") === "spot" ? "spot" : "plain");
   const picks = document.createElement("div");
   picks.className = "pick";

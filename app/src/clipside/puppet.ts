@@ -16,12 +16,16 @@ import type { Depth, Turn } from "../../../clip/src/index.ts";
 
 type P = [number, number];
 
-/** How the puppet is built. a: one die-cut sticker. b: layered cut paper. c: a jointed paper doll with pins. */
-export type Construction = "a" | "b" | "c";
+/**
+ * How the puppet is built. d: a solid 3D jester (puppet3d.ts), drawn as one die-cut sticker. a: the flat
+ * jester as one die-cut sticker. b: the flat jester in layered cut paper. (The jointed paper doll is gone:
+ * pins and joints read as a toy, not a body.)
+ */
+export type Construction = "a" | "b" | "d";
 export const CONSTRUCTIONS: Record<Construction, string> = {
-  a: "Die-cut sticker: the whole jester is one sticker with a white edge and one hard shadow",
-  b: "Layered cut paper: every piece is its own paper layer casting a hard shadow on the one below",
-  c: "Jointed paper doll: every piece has its own white edge, held together with gold split pins",
+  d: "3D jester: a solid body of round shapes, posed in depth from the tracker, as one die-cut sticker",
+  a: "Flat sticker: the jester drawn flat, one white edge and one hard shadow",
+  b: "Flat cut paper: the jester drawn flat, every piece casting a hard shadow on the one below",
 };
 /** The stage: the frontend agent's navy backdrop and shoebox floor, with or without a flat spotlight. */
 export type StageLook = "plain" | "spot";
@@ -113,9 +117,9 @@ function taperPath(ctx: CanvasRenderingContext2D, a: P, b: P, ra: number, rb: nu
 
 /**
  * One cut piece of the puppet. `outline` traces its outer edge (for its white edge and its shadow); `art`
- * paints it, ink outline included. `pins` are where a paper doll's split pins go once it is down.
+ * paints it, ink outline included.
  */
-interface Piece { outline: (ctx: CanvasRenderingContext2D) => void; art: (ctx: CanvasRenderingContext2D) => void; pins?: P[] }
+interface Piece { outline: (ctx: CanvasRenderingContext2D) => void; art: (ctx: CanvasRenderingContext2D) => void }
 
 const plain = (outline: (ctx: CanvasRenderingContext2D) => void, fill: string, ink: number): Piece => ({
   outline,
@@ -201,11 +205,7 @@ export function drawPuppet(
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  if (construction === "a") {
-    // One sticker: a white edge round the whole figure and one hard shadow, as the #die-cut filter does.
-    silhouette(ctx, pieces, rim + ink / 2, drop);
-    for (const p of pieces) p.art(ctx);
-  } else if (construction === "b") {
+  if (construction === "b") {
     // Layered cut paper: each piece throws its own hard shadow onto whatever is under it.
     const small = mul(drop, 0.6);
     for (const p of pieces) {
@@ -218,15 +218,9 @@ export function drawPuppet(
       p.art(ctx);
     }
   } else {
-    // A paper doll: one hard shadow for the figure, then each piece with its own white edge, pinned at its joints.
-    silhouette(ctx, pieces, rim * 0.6 + ink / 2, drop, false);
-    for (const p of pieces) {
-      p.outline(ctx);
-      ctx.lineWidth = rim * 1.2 + ink; ctx.strokeStyle = PHOTO; ctx.stroke();
-      ctx.fillStyle = PHOTO; ctx.fill();
-      p.art(ctx);
-      for (const pin of p.pins ?? []) splitPin(ctx, pin, T, ink);
-    }
+    // One sticker: a white edge round the whole figure and one hard shadow, as the #die-cut filter does.
+    silhouette(ctx, pieces, rim + ink / 2, drop);
+    for (const p of pieces) p.art(ctx);
   }
   ctx.restore();
 }
@@ -257,16 +251,8 @@ function silhouette(ctx: CanvasRenderingContext2D, pieces: Piece[], grow: number
   ctx.drawImage(layer, 0, 0);
 }
 
-/** A gold split pin: a round head with the slit across it. */
-function splitPin(ctx: CanvasRenderingContext2D, p: P, T: number, ink: number) {
-  const r = Math.max(3.5, T * 0.06);
-  ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, TAU);
-  ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = Math.max(2, ink * 0.6); ctx.strokeStyle = INK; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(p[0] - r * 0.5, p[1]); ctx.lineTo(p[0] + r * 0.5, p[1]); ctx.stroke();
-}
-
 /** The hard --shade ellipse under the feet. */
-function floorShadow(ctx: CanvasRenderingContext2D, lm: readonly Landmark[], map: (x: number, y: number) => P, T: number) {
+export function floorShadow(ctx: CanvasRenderingContext2D, lm: readonly Landmark[], map: (x: number, y: number) => P, T: number) {
   const feet = [L_ANKLE, R_ANKLE, L_HEEL, R_HEEL, L_TOE, R_TOE].map((i) => lm[i]).filter((l): l is Landmark => !!l && l[2] >= SEEN).map((l) => map(l[0], l[1]));
   if (!feet.length) return;
   const xs = feet.map((p) => p[0]);
@@ -282,9 +268,9 @@ function limbPieces(joints: (P | null)[], radii: number[], color: string, ink: n
   const [a, b, c] = joints;
   const [ra, rb, rc] = radii as [number, number, number];
   const out: Piece[] = [];
-  if (a && b) out.push({ ...plain((ctx) => taperPath(ctx, a, b, ra, rb), color, ink), pins: [a] });
+  if (a && b) out.push(plain((ctx) => taperPath(ctx, a, b, ra, rb), color, ink));
   if (b && c) {
-    out.push({ ...plain((ctx) => taperPath(ctx, b, c, rb, rc), color, ink), pins: [b] });
+    out.push(plain((ctx) => taperPath(ctx, b, c, rb, rc), color, ink));
     const d = unit(sub(c, b));
     out.push(plain((ctx) => taperPath(ctx, sub(c, mul(d, rc * 0.8)), add(c, mul(d, rc * 0.2)), rc * 1.25, rc * 1.25), PHOTO, ink * 0.85));
     if (end) out.push(end);
