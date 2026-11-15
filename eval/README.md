@@ -4,13 +4,13 @@ Every round anyone plays on a dev server is saved, and one command replays them 
 
 ## How rounds get saved
 
-`app/round-log-dev-server.ts` (dev server only) points every app import of `engine/src/index.ts` at `app/src/dev/roundTap.ts`. That file calls the real scorer, returns its result untouched, and when the page is idle sends the round to the dev server, which writes `eval/data/rounds/<id>.json` (git-ignored). Solo, rooms, blind, duel, the link reveal and the labs are all covered, and no game file changed. A production build does not include any of it. `JESTER_ROUND_LOG=0 npm run dev` turns it off.
+`app/round-log-plugin.ts` gives every app file that imports `engine/src/index.ts` a generated module whose scorers come from `app/src/dev/roundTap.ts`, bound to that file's name. The tap calls the real scorer, returns its result untouched, and when the page is idle saves the round. On a dev server it goes to the dev server, which writes `eval/data/rounds/<id>.json` (git-ignored); `JESTER_ROUND_LOG=0 npm run dev` turns it off. On the live site, built with `JESTER_RECORD_ROUNDS=1`, it goes straight to the Supabase table `rounds`; `npm run pull` brings those rounds here. Solo, rooms, blind, duel and the labs are all covered, and no game file changed. A build without that setting includes none of it.
 
 A round keeps the exact two timelines the engine compared (33 points per frame as x, y and visibility; no video, no images, no masks), the full result, the scorer version, the commit and a hash of the engine code, the mode (from the page and the call stack), the bank clip and subject when the page fetched its guides, the camera's size, frame rate and label, the GPU name, and a random id per browser. A 20 second round is about 0.5 MB on disk.
 
 ## Test cases on purpose
 
-Add `?dev=1` to any page (it stays on for the tab). A small panel in the corner asks what you are about to do on purpose before the round: `nailed`, `stood-still`, `seated`, `late-half-second`, `wrong-moves`, `left-right-swapped`, `walked-out-of-frame`. The tag counts for one round. `app/eval-lab.html` does the same with one clip at a time and no game screens.
+Add `?dev=1` to any page (it stays on for the tab), or `?tag=nailed` to tag every round on that page load. A small panel in the corner asks what you are about to do on purpose before the round: `nailed`, `stood-still`, `seated`, `late-half-second`, `wrong-moves`, `left-right-swapped`, `walked-out-of-frame`. The tag counts for one round. `app/eval-lab.html` does the same with one clip at a time and no game screens.
 
 What each tag promises is in `expectations.ts`, one file:
 

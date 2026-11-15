@@ -1,5 +1,5 @@
 // The eval lab (dev server only): play one tagged round at a time against a bank clip or the starter dance.
-// The round log (app/round-log-dev-server.ts) saves every round; this page only picks the clip and the tag,
+// The round log (app/round-log-plugin.ts) saves every round; this page only picks the clip and the tag,
 // plays, and shows the score and the record id.
 
 import { sampleAt } from "../../spikes/pose-match/synthetic.mjs";
