@@ -12,6 +12,7 @@
 // uploaded. Blind mode's reveal reuses this.
 
 import type { BodyPart, LandmarkObject } from "../../engine/src/index.ts";
+import { soundTrack } from "./sound.ts";
 
 /** A binary person mask, as Lisa's tracker gives it: 0/1 per cell over the whole camera image. */
 export interface PersonMask { width: number; height: number; data: Uint8Array }
@@ -20,7 +21,18 @@ export interface Cutout {
   /** Clip time when this frame was captured. */
   clipMs: number;
   image: HTMLCanvasElement;
+  /** Where the player's torso sits in the image (cutAnchor), so the reveal can stand them on the subject's torso. */
+  anchor?: CutAnchor | null;
 }
+
+/**
+ * Where a cutout came from in the camera frame, in image-height units with x scaled by aspect: the crop
+ * square, and the player's torso centre and length (shoulder centre to hip centre) when both are seen.
+ */
+export interface CutAnchor { region: { cx: number; cy: number; side: number }; torso: { x: number; y: number; len: number } | null }
+
+/** Shoulder and hip centres, from landmarks seen well enough. */
+export interface Torso { shoulder: { x: number; y: number }; hip: { x: number; y: number } }
 
 const SIDE = 256; // pixels of the stored square crop (was 160: a tall reveal upscaled it about 7x and looked blurred)
 
@@ -142,6 +154,37 @@ export function partRegion(lms: readonly LandmarkObject[], part: BodyPart, aspec
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, side };
 }
 
+/** The torso of `lms` placed in the crop `cutFrame` makes for the same frame and part. */
+export function cutAnchor(lms: readonly LandmarkObject[], part: BodyPart, aspect: number): CutAnchor | null {
+  if (part !== "body") return null;
+  const region = partRegion(lms, part, aspect);
+  if (!region) return null;
+  const [a, b, c, d] = [11, 12, 23, 24].map((i) => pt(lms[i], aspect));
+  if (!a || !b || !c || !d) return { region, torso: null };
+  const sh = mid([a, b])!, hp = mid([c, d])!;
+  return { region, torso: { x: (sh.x + hp.x) / 2, y: (sh.y + hp.y) / 2, len: dist(sh, hp) } };
+}
+
+/** A separable box blur of an n by n alpha grid, radius r. */
+function blurAlpha(src: Float32Array, n: number, r: number): Float32Array {
+  const tmp = new Float32Array(n * n), out = new Float32Array(n * n);
+  for (let pass = 0; pass < 2; pass++) {
+    const from = pass === 0 ? src : tmp, to = pass === 0 ? tmp : out;
+    for (let a = 0; a < n; a++) {
+      let sum = 0, cnt = 0;
+      const at = (b: number) => (pass === 0 ? from[a * n + b]! : from[b * n + a]!);
+      for (let b = 0; b <= Math.min(n - 1, r); b++) { sum += at(b); cnt++; }
+      for (let b = 0; b < n; b++) {
+        to[pass === 0 ? a * n + b : b * n + a] = sum / cnt;
+        const add = b + r + 1, drop = b - r;
+        if (add < n) { sum += at(add); cnt++; }
+        if (drop >= 0) { sum -= at(drop); cnt--; }
+      }
+    }
+  }
+  return out;
+}
+
 /** The binary mask sampled between cells, so its staircase edge becomes a soft ramp. */
 function sampleMask(mask: PersonMask, nx: number, ny: number): number {
   const fx = nx * mask.width - 0.5, fy = ny * mask.height - 0.5;
@@ -200,17 +243,14 @@ export function cutFrame(
       keep[y * SIDE + x] = k;
     }
   }
-  // One pass of a 3 by 3 blur, so the mask's steps do not show when the cutout is scaled up.
-  for (let y = 0; y < SIDE; y++) {
-    for (let x = 0; x < SIDE; x++) {
-      let s = 0, n = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const xx = x + dx, yy = y + dy;
-        if (xx >= 0 && yy >= 0 && xx < SIDE && yy < SIDE) { s += keep[yy * SIDE + xx]!; n++; }
-      }
-      const i = (y * SIDE + x) * 4 + 3;
-      img.data[i] = Math.round(img.data[i]! * (s / n));
-    }
+  // Soften the edge: two passes of a box blur (close to a gaussian, about 3 px of the crop each way), then
+  // pull the edge in a little, so the mask's steps and its flicker from frame to frame fade out, and no
+  // fringe of the player's room shows round them.
+  const soft = blurAlpha(blurAlpha(keep, SIDE, 3), SIDE, 3);
+  for (let p = 0; p < SIDE * SIDE; p++) {
+    const t = Math.max(0, Math.min(1, (soft[p]! - 0.3) / 0.6));
+    const i = p * 4 + 3;
+    img.data[i] = Math.round(img.data[i]! * t * t * (3 - 2 * t));
   }
   ctx.putImageData(img, 0, 0);
   return out;
@@ -229,6 +269,11 @@ export interface RevealLayer {
   boxAt: (ms: number) => Box | null;
   /** A person's cutout is the whole body sized to the box; a thing's is sized up so a small ball still shows a hand. */
   kind: "person" | "thing";
+  /**
+   * For a person: the subject's shoulder and hip centres at replay time ms (normalized like the clip). With it,
+   * each cutout's torso is stood on the subject's, at one scale fixed for the whole reveal (see steadyOf).
+   */
+  torsoAt?: (ms: number) => Torso | null;
   /** Sideways offset in cutout widths, so players sharing a role stand side by side (default 0). */
   spread?: number;
   /** Name tag drawn above the cutout, e.g. "Alex 87". */
@@ -261,15 +306,81 @@ function nearest(cutouts: readonly Cutout[], ms: number): Cutout | null {
   return Math.abs(best.clipMs - ms) <= 600 ? best : null;
 }
 
+const median = (xs: number[]) => { const v = [...xs].sort((a, b) => a - b); return v.length ? v[v.length >> 1]! : NaN; };
+
+/**
+ * One fixed placement per player for the whole reveal: a single scale (the subject's typical torso over the
+ * player's typical torso, so a small player is scaled up once and a big one down once, never again), and the
+ * player's torso centre steadied over neighbouring frames. Worked out once per layer and canvas size.
+ */
+interface Steady { k: number; centre: Map<Cutout, P> }
+const steadyCache = new WeakMap<readonly Cutout[], { key: string; steady: Steady | null }>();
+
+function steadyOf(layer: RevealLayer, W: number, H: number): Steady | null {
+  const key = `${W}x${H}`;
+  const hit = steadyCache.get(layer.cutouts);
+  if (hit && hit.key === key) return hit.steady;
+  let steady: Steady | null = null;
+  const withTorso = layer.cutouts.filter((c) => c.anchor?.torso);
+  if (layer.torsoAt && withTorso.length >= 3) {
+    // The subject's torso in canvas pixels, sampled at the moments the player was captured.
+    const ts = 1 / (layer.timeScale ?? 1);
+    const subject: number[] = [];
+    for (const c of layer.cutouts) {
+      const t = layer.torsoAt((c.clipMs - Math.max(0, layer.lagMs)) * ts);
+      if (t) subject.push(Math.hypot((t.shoulder.x - t.hip.x) * W, (t.shoulder.y - t.hip.y) * H));
+    }
+    const player = median(withTorso.map((c) => c.anchor!.torso!.len));
+    const k = median(subject) / player;
+    if (subject.length >= 3 && k > 0 && Number.isFinite(k)) {
+      // Torso centre relative to the crop centre, for frames whose torso was not seen.
+      const off = { x: median(withTorso.map((c) => c.anchor!.torso!.x - c.anchor!.region.cx)), y: median(withTorso.map((c) => c.anchor!.torso!.y - c.anchor!.region.cy)) };
+      const raw = layer.cutouts.map((c) => {
+        const a = c.anchor;
+        if (!a) return null;
+        return a.torso ? { x: a.torso.x, y: a.torso.y } : { x: a.region.cx + off.x, y: a.region.cy + off.y };
+      });
+      // Average the centre over about a fifth of a second either side, which takes out the landmark jitter.
+      const centre = new Map<Cutout, P>();
+      layer.cutouts.forEach((c, i) => {
+        if (!raw[i]) return;
+        let sx = 0, sy = 0, n = 0;
+        for (let j = i; j >= 0 && c.clipMs - layer.cutouts[j]!.clipMs <= 200; j--) if (raw[j]) { sx += raw[j]!.x; sy += raw[j]!.y; n++; }
+        for (let j = i + 1; j < layer.cutouts.length && layer.cutouts[j]!.clipMs - c.clipMs <= 200; j++) if (raw[j]) { sx += raw[j]!.x; sy += raw[j]!.y; n++; }
+        centre.set(c, { x: sx / n, y: sy / n });
+      });
+      steady = { k, centre };
+    }
+  }
+  steadyCache.set(layer.cutouts, { key, steady });
+  return steady;
+}
+
+/** Where a cutout goes: its torso centre on the subject's, at the player's one fixed scale; null to fall back to the box. */
+function torsoPlacement(layer: RevealLayer, c: Cutout, W: number, H: number, ms: number, b: Box) {
+  const st = steadyOf(layer, W, H), a = c.anchor;
+  const cs = st?.centre.get(c);
+  if (!st || !a || !cs) return null;
+  const t = layer.torsoAt?.(ms);
+  const tx = t ? ((t.shoulder.x + t.hip.x) / 2) * W : b.cx * W, ty = t ? ((t.shoulder.y + t.hip.y) / 2) * H : b.cy * H;
+  const r = a.region, side = r.side * st.k;
+  // The image is mirrored, so the torso's place across it is measured from the crop's right edge.
+  const u = (r.cx + r.side / 2 - cs.x) / r.side, v = (cs.y - (r.cy - r.side / 2)) / r.side;
+  return { x: tx - u * side, y: ty - v * side, side, cx: tx };
+}
+
 /** Draw every layer's cutout for replay time `ms`. */
 export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
   for (const layer of layers) {
     const b = layer.boxAt(ms);
     const c = nearest(layer.cutouts, ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs));
     if (!b || !c) continue;
-    const side = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
-    const cx = b.cx * W + (layer.spread ?? 0) * side;
-    const x = cx - side / 2, y = b.cy * H - side / 2;
+    const boxSide = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
+    const placed = layer.kind === "person" ? torsoPlacement(layer, c, W, H, ms, b) : null;
+    const side = placed?.side ?? boxSide;
+    const shift = (layer.spread ?? 0) * side;
+    const cx = (placed?.cx ?? b.cx * W) + shift;
+    const x = (placed ? placed.x : b.cx * W - side / 2) + shift, y = placed ? placed.y : b.cy * H - side / 2;
     ctx.save();
     ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = layer.glow ?? 12;
     ctx.drawImage(c.image, x, y, side, side);
@@ -304,10 +415,14 @@ export interface Segment {
  * pauses while a segment's clock gets ready (a video seeking), so no dead frames land in the file.
  * Resolves with a video URL, or null if this browser cannot record (the segments still play).
  */
-export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void, control?: PlaybackControl): Promise<string | null> {
+export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void, control?: PlaybackControl, sound?: HTMLMediaElement | null): Promise<string | null> {
   const ctx = canvas.getContext("2d")!;
   const stream = typeof canvas.captureStream === "function" ? canvas.captureStream(30) : null;
-  const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
+  // The clip's own sound goes into the file too, whenever the browser lets it be tapped.
+  const track = stream && sound ? await soundTrack(sound) : null;
+  if (stream && track) stream.addTrack(track);
+  const types = track ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"] : ["video/webm;codecs=vp9", "video/webm", "video/mp4"];
+  const type = types.find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
   const recorder = stream && type ? new MediaRecorder(stream, { mimeType: type }) : null;
   const chunks: Blob[] = [];
   const total = segments.reduce((sum, seg) => sum + seg.durationMs, 0) || 1;

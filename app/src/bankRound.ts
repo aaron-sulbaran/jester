@@ -44,7 +44,6 @@ export function loadBankVideo(video: HTMLVideoElement, url: string): Promise<Res
     video.addEventListener("error", failed);
     video.pause();
     video.crossOrigin = "anonymous";
-    video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
     video.src = url;

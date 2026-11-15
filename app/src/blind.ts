@@ -25,7 +25,8 @@ import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
-import { cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock } from "./cutout.ts";
+import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
+import { playWithSound } from "./sound.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
 
@@ -112,7 +113,7 @@ export interface GameOptions {
    * with each player's cutout sped up to match.
    */
   speed?: number;
-  /** How far ahead (ms of play time) the faint look-ahead copy of the role runs; 0 turns it off. */
+  /** How far ahead (ms of play time) a faint look-ahead copy of the role runs; 0 (the default) shows a clean figure only. */
   leadMs?: number;
   /** Player colours in turn order (default PLAYER_COLORS). Set by the look. */
   colors?: readonly string[];
@@ -183,42 +184,65 @@ function withThingOutlines(g: Guide): Guide {
 /** The subject's box at replay time `ms` (from the start of the shared stretch). */
 function boxAt(g: Guide, ms: number): Box | null {
   if (ms < 0) return null;
-  return g.boxTrack.frames[guideFrameAt(g, g.range.startMs + ms)]?.box ?? null;
+  // Blended between the two samples around ms (guides are sampled about 15 times a second), so
+  // whatever is placed on the role glides instead of stepping.
+  const frames = g.boxTrack.frames;
+  const pos = Math.min(frames.length - 1, Math.max(0, (ms * g.source.sampleHz) / 1000));
+  const i = Math.floor(pos), j = Math.min(frames.length - 1, i + 1), u = pos - i;
+  const a = frames[i]?.box ?? null, b = frames[j]?.box ?? null;
+  if (!a || !b) return a ?? b;
+  return { cx: a.cx + (b.cx - a.cx) * u, cy: a.cy + (b.cy - a.cy) * u, w: a.w + (b.w - a.w) * u, h: a.h + (b.h - a.h) * u };
+}
+
+/** The subject's shoulder and hip centres at replay time `ms`, from its steadied pose, or null. */
+function torsoAt(g: Guide, ms: number): Torso | null {
+  if (ms < 0) return null;
+  const l = guideAt(g, ms).timeline?.frames[0]?.landmarks;
+  if (!l || l.length < 25) return null;
+  const mid = (a: number, b: number) => ({ x: (l[a]![0] + l[b]![0]) / 2, y: (l[a]![1] + l[b]![1]) / 2 });
+  return { shoulder: mid(11, 12), hip: mid(23, 24) };
 }
 
 /**
- * Hides the clip's own subjects at replay time `ms` so the players can stand in their place: each
- * subject's outline (grown a little, or an ellipse round its box when there is none) is filled with a
+ * Hides the clip's own subjects at replay time `ms` so the players can stand in their place: an
+ * ellipse round each subject's blended box is filled with a
  * heavily blurred copy of the frame underneath.
  */
 function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number) {
   if (ms < 0) return;
   for (const g of guides) {
-    const i = guideFrameAt(g, g.range.startMs + ms);
-    const outline = g.outlines[i] ?? null, box = g.boxTrack.frames[i]?.box ?? null;
-    if (!box && !outline) continue;
-    c.save();
-    c.beginPath();
-    if (outline && outline.length >= 3) {
-      const mx = outline.reduce((a, p) => a + p[0], 0) / outline.length, my = outline.reduce((a, p) => a + p[1], 0) / outline.length;
-      outline.forEach(([x, y], k) => {
-        const px = (mx + (x - mx) * 1.15) * W, py = (my + (y - my) * 1.08) * H;
-        if (k === 0) c.moveTo(px, py); else c.lineTo(px, py);
-      });
-      c.closePath();
-    } else if (box) {
-      // 1.45 and 1.3 reach past the box corners.
-      c.ellipse(box.cx * W, box.cy * H, (box.w * W) / 2 * 1.45, (box.h * H) / 2 * 1.3, 0, 0, Math.PI * 2);
-    }
-    c.clip();
-    // Blur from a frame drawn larger than the canvas, so the blur pulls in colour from around the subject.
-    c.filter = `blur(${Math.round(W / 25)}px)`;
-    c.drawImage(video, -W * 0.05, -H * 0.05, W * 1.1, H * 1.1);
-    c.filter = "none";
-    c.fillStyle = "rgba(0,0,0,0.2)";
-    c.fillRect(0, 0, W, H);
-    c.restore();
+    // An ellipse round the blended box (the raw outline changed shape every frame, which made the cover
+    // flicker), with a soft rim: the blurred frame is drawn on a scratch canvas, kept by a radial fade.
+    const box = boxAt(g, ms);
+    if (!box) continue;
+    const s = coverCanvas(W, H), sc = s.getContext("2d")!;
+    sc.globalCompositeOperation = "source-over";
+    sc.clearRect(0, 0, W, H);
+    sc.filter = `blur(${Math.round(W / 25)}px)`;
+    // Drawn larger than the canvas, so the blur pulls in colour from around the subject.
+    sc.drawImage(video, -W * 0.05, -H * 0.05, W * 1.1, H * 1.1);
+    sc.filter = "none";
+    sc.fillStyle = "rgba(0,0,0,0.2)";
+    sc.fillRect(0, 0, W, H);
+    sc.globalCompositeOperation = "destination-in";
+    sc.save();
+    // 1.55 and 1.4 reach past the box corners; the fade starts at 70% of the way out.
+    sc.translate(box.cx * W, box.cy * H);
+    sc.scale((box.w * W) / 2 * 1.55, (box.h * H) / 2 * 1.4);
+    const fade = sc.createRadialGradient(0, 0, 0, 0, 0, 1);
+    fade.addColorStop(0.7, "rgba(0,0,0,1)"); fade.addColorStop(1, "rgba(0,0,0,0)");
+    sc.fillStyle = fade;
+    sc.fillRect(-1, -1, 2, 2);
+    sc.restore();
+    c.drawImage(s, 0, 0);
   }
+}
+
+let cover: HTMLCanvasElement | null = null;
+function coverCanvas(W: number, H: number): HTMLCanvasElement {
+  cover ??= document.createElement("canvas");
+  if (cover.width !== W || cover.height !== H) { cover.width = W; cover.height = H; }
+  return cover;
 }
 
 /** Below this, a limb is not drawn (clipside/blind.ts and draw.ts). */
@@ -584,7 +608,7 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
     if (!s.face && f.source) s.face = cropFace(f.source, f.width, f.height, f.landmarks, 256);
     if (f.clipMs - lastCut < 60) return;
     const image = cutFrame(f.source, f.width, f.height, f.landmarks, s.part, f.mask);
-    if (image) { s.cutouts.push({ clipMs: f.clipMs, image }); lastCut = f.clipMs; }
+    if (image) { s.cutouts.push({ clipMs: f.clipMs, image, anchor: cutAnchor(f.landmarks, s.part, f.width / f.height) }); lastCut = f.clipMs; }
   });
   // The look may offer a restart while the moves count; it ends this turn at once and plays nothing back.
   let restart: () => void = () => {};
@@ -648,12 +672,11 @@ export function drawDemoScene(ctx: CanvasRenderingContext2D, W: number, H: numbe
 function videoClock(video: HTMLVideoElement, fromMs: number): SegmentClock {
   return {
     async start() {
-      video.muted = true;
       video.pause();
       const seeked = new Promise((r) => { video.addEventListener("seeked", r, { once: true }); setTimeout(r, 1500); });
       video.currentTime = fromMs / 1000;
       await seeked;
-      await video.play();
+      await playWithSound(video);
     },
     now: () => video.currentTime * 1000 - fromMs,
     stop: () => { video.pause(); video.playbackRate = 1; },
@@ -724,6 +747,7 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   return seats.map((s) => ({
     cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
     boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), spread: shiftOf(s),
+    torsoAt: followsBox(s) ? undefined : (ms: number) => torsoAt(s.guide, toPlay(ms)),
     color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`, glow: theme.glow, tagFont: theme.font,
   }));
 }
@@ -774,7 +798,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
-  return recordSegments(canvas, segments, onProgress, control);
+  return recordSegments(canvas, segments, onProgress, control, video);
 }
 
 // ---- The game ----
@@ -796,7 +820,7 @@ function roleOf(s: Seat, scene: Scene, ui: BlindUi, leadMs: number): RoleInfo {
 
 /** Play one game: deal roles, one turn each on this laptop, then the reveal. Resolves with the results. */
 export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, deps: BlindDeps, options: GameOptions = {}): Promise<ResultRow[]> {
-  const speed = options.speed ?? 1, leadMs = options.leadMs ?? 400;
+  const speed = options.speed ?? 1, leadMs = options.leadMs ?? 0;
   // Tracking from a real video jitters and loses people; steady every person role once (scored as is) and
   // draw a copy with every limb shown, so the figure never cuts out.
   clip = { ...clip, guides: clip.guides.map(steadyRole) };
