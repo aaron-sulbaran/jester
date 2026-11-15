@@ -63,6 +63,7 @@ function syncFolder() {
 
 $("deskFolder").addEventListener("click", async () => {
   problem(null);
+  if (busy) return problem("Wait for the review to finish before switching folders.");
   let handle = remembered;
   if (!handle || dir) {
     const picked = await pickFolder();
@@ -162,14 +163,14 @@ async function readySubmission(p: Pending): Promise<Result<{ file: File; type: V
  * The bank clip that already holds this exact video, if any. Bank ids end in the start of the clip's
  * fingerprint (bankIdFor) and each clip's guides.json carries all of it, so the check is exact.
  */
-async function alreadyInBank(fingerprint: string): Promise<{ id: string; title: string } | null> {
-  if (!dir) return null;
-  const index = await readIndex(dir);
+async function alreadyInBank(fingerprint: string, folder: FileSystemDirectoryHandle | null): Promise<{ id: string; title: string } | null> {
+  if (!folder) return null;
+  const index = await readIndex(folder);
   if (index.error !== null) return null;
   const ends = new RegExp(`-${fingerprint.slice(0, 6)}(?:[0-9a-f]*|-\\d+)$`);
   for (const clip of index.data.clips.filter((c) => ends.test(c.id))) {
     try {
-      const file = await (await (await dir.getDirectoryHandle(clip.id)).getFileHandle("guides.json")).getFile();
+      const file = await (await (await folder.getDirectoryHandle(clip.id)).getFileHandle("guides.json")).getFile();
       const guides = JSON.parse(await file.text()) as { fingerprint?: string }[];
       if (guides.length > 0 && guides.every((g) => g.fingerprint === fingerprint)) return { id: clip.id, title: clip.title };
     } catch {
@@ -179,20 +180,27 @@ async function alreadyInBank(fingerprint: string): Promise<{ id: string; title: 
   return null;
 }
 
-/** Fingerprints reviewed in this run of the queue, so a second copy sent in the same batch is caught too. */
-const seenThisRun = new Map<string, string>();
+/**
+ * Clips still pending in this page session, by fingerprint, so a second copy of one is caught. A clip never
+ * matches itself (a retry after a failed review), and one that was turned away is forgotten, so its sender can
+ * send it again under a better name. Approved ones are caught by the bank check instead.
+ */
+const pendingByPrint = new Map<string, { id: string; label: string }>();
+const forget = (id: string) => { for (const [fp, e] of pendingByPrint) if (e.id === id) pendingByPrint.delete(fp); };
 
 // ---- Decisions ----
 
-async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Partial<Decision> = {}): Promise<Result<string>> {
-  if (!dir) return { data: null, error: `Pick the bank folder${status?.bankFolder ? ` "${status.bankFolder}"` : ""} first: approved clips go there.` };
+async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Partial<Decision> = {}, into: FileSystemDirectoryHandle | null = dir): Promise<Result<string>> {
+  // One folder for the whole decision, even if the folder button is pressed meanwhile.
+  const folder = into;
+  if (!folder) return { data: null, error: `Pick the bank folder${status?.bankFolder ? ` "${status.bankFolder}"` : ""} first: approved clips go there.` };
   const ready = await readySubmission(p);
   if (ready.error !== null) return ready;
-  const twin = await alreadyInBank(ready.data.found.guides[0]!.fingerprint);
+  const twin = await alreadyInBank(ready.data.found.guides[0]!.fingerprint, folder);
   if (twin) return { data: null, error: `This video is already in the bank as "${twin.title}". Turn this copy away.` };
   const name = cleanText(title, 80);
   if (!name) return { data: null, error: "Name the move or dance first." };
-  const added = await addClip(dir, video, ready.data.file, ready.data.type, ready.data.found.guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
+  const added = await addClip(folder, video, ready.data.file, ready.data.type, ready.data.found.guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
   if (added.error !== null) return added;
   const saved = await api("decide", {
     id: p.id, video_path: p.video_path, title: added.data.entry.title, status: "approved", by, bankId: added.data.entry.id,
@@ -200,11 +208,15 @@ async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Part
   });
   if (saved.error !== null) return { data: null, error: `It is in the bank folder as ${added.data.entry.id}, but the queue did not save that: ${saved.error}` };
   readied.delete(p.id);
+  forget(p.id);
   return { data: added.data.entry.id, error: null };
 }
 
-const reject = (p: Pending, by: "agent" | "aaron" | "check", reason: string, d: Partial<Decision> = {}) =>
-  api("decide", { id: p.id, video_path: p.video_path, title: p.title, status: "rejected", by, reason, steps: d.steps, findings: d.findings, framesCheck: d.framesCheck });
+async function reject(p: Pending, by: "agent" | "aaron" | "check", reason: string, d: Partial<Decision> = {}): Promise<Result<unknown>> {
+  const saved = await api("decide", { id: p.id, video_path: p.video_path, title: p.title, status: "rejected", by, reason, steps: d.steps, findings: d.findings, framesCheck: d.framesCheck });
+  if (saved.error === null) forget(p.id);
+  return saved;
+}
 
 // ---- Showing the Chamberlain's work ----
 
@@ -240,24 +252,29 @@ function showDecision(d: Decision, outcome: string, title: string | null) {
 // ---- Reviewing the queue ----
 
 async function reviewQueue() {
+  // Taken before the first wait, so two runs (the minute timer, a click, startup) or a run and a hand decision
+  // never overlap.
   if (busy) return;
-  problem(null);
-  const s = await api<Status>("status");
-  if (s.error !== null) return problem(s.error);
-  status = s.data;
-  if (!status.canQueue) return problem(`Put ${status.missing.join(" and ")} in ${ENV_FILE}. No restart needed.`);
-  if (!dir) return problem(`Pick the bank folder${status.bankFolder ? ` "${status.bankFolder}"` : ""} first: approved clips go there.`);
-  const pending = await api<Pending[]>("pending");
-  if (pending.error !== null) return problem(pending.error);
-  renderNeedsYou(pending.data);
-  const fresh = status.canJudge ? pending.data.filter((p) => !p.logged) : [];
-  if (fresh.length === 0) {
-    setStatus(status.canJudge ? `Checked at ${new Date().toLocaleTimeString()}: nothing new.` : "The Chamberlain has no model key, so every clip waits for you below.");
-    return showLog();
-  }
   busy = true;
   $<HTMLButtonElement>("deskReview").disabled = true;
+  let letIn = 0;
   try {
+    problem(null);
+    const s = await api<Status>("status");
+    if (s.error !== null) return problem(s.error);
+    status = s.data;
+    if (!status.canQueue) return problem(`Put ${status.missing.join(" and ")} in ${ENV_FILE}. No restart needed.`);
+    // One folder for the whole run: the folder button is refused while a review runs.
+    const folder = dir;
+    if (!folder) return problem(`Pick the bank folder${status.bankFolder ? ` "${status.bankFolder}"` : ""} first: approved clips go there.`);
+    const pending = await api<Pending[]>("pending");
+    if (pending.error !== null) return problem(pending.error);
+    renderNeedsYou(pending.data);
+    const fresh = status.canJudge ? pending.data.filter((p) => !p.logged) : [];
+    if (fresh.length === 0) {
+      setStatus(status.canJudge ? `Checked at ${new Date().toLocaleTimeString()}: nothing new.` : "The Chamberlain has no model key, so every clip waits for you below.");
+      return;
+    }
     for (const [n, p] of fresh.entries()) {
       setStatus(`Reviewing ${n + 1} of ${fresh.length}...`);
       showWork(p, "reading the clip...");
@@ -274,15 +291,16 @@ async function reviewQueue() {
       }
       // The same video sent twice (Lisa's double send), or one already in the bank: turned away, no model call.
       const fingerprint = ready.data.found.guides[0]!.fingerprint;
-      const twin = await alreadyInBank(fingerprint);
-      const earlier = seenThisRun.get(fingerprint);
+      const twin = await alreadyInBank(fingerprint, folder);
+      const seen = pendingByPrint.get(fingerprint);
+      const earlier = seen && seen.id !== p.id ? seen.label : null;
       if (twin || earlier) {
-        const why = twin ? `Same video as "${twin.title}", already in the bank.` : `Same video as ${earlier}, sent earlier.`;
+        const why = twin ? `Same video as "${twin.title}", already in the bank.` : `Same video as ${earlier}, sent earlier and still waiting.`;
         const saved = await reject(p, "check", why);
         $("workDecision").textContent = saved.error === null ? `Turned away as a copy. ${why}` : saved.error;
         continue;
       }
-      seenThisRun.set(fingerprint, p.title ? `"${p.title}"` : "another clip");
+      pendingByPrint.set(fingerprint, { id: p.id, label: p.title ? `"${p.title}"` : "another clip" });
       const frames = await framesOf(ready.data.found.guides[0]!);
       showFrames(frames);
       $("workTitle").textContent = `${p.title ?? "Untitled clip"}: the Chamberlain is looking at it...`;
@@ -291,7 +309,8 @@ async function reviewQueue() {
       const d = judged.data;
       // The Chamberlain only approves under the submitter's own name (review-agent.ts enforces it).
       if (d.verdict === "approve" && p.title && !pressed("deskAskFirst")) {
-        const added = await approve(p, p.title, "agent", d);
+        const added = await approve(p, p.title, "agent", d, folder);
+        if (added.error === null) letIn++;
         showDecision(d, added.error === null ? `Let in as "${p.title}". ${d.reason}` : added.error, p.title);
       } else if (d.verdict === "reject") {
         const saved = await reject(p, "agent", d.reason, d);
@@ -304,6 +323,8 @@ async function reviewQueue() {
     }
     setStatus(`Reviewed at ${new Date().toLocaleTimeString()}.`);
     void showPublish();
+    const after = await api<Pending[]>("pending");
+    if (after.error === null) renderNeedsYou(after.data);
   } catch (err) {
     problem(`The review stopped: ${(err as Error).message}`);
   } finally {
@@ -311,8 +332,7 @@ async function reviewQueue() {
     bar.hidden = true;
     $<HTMLButtonElement>("deskReview").disabled = false;
   }
-  const after = await api<Pending[]>("pending");
-  if (after.error === null) renderNeedsYou(after.data);
+  if (letIn > 0) await showBank();
   await showLog();
 }
 
