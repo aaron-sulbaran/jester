@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
 import {
-  addUsage, classify, costUsd, deskCase, mayTrace, nameCheckHolds, renderReport, summarize,
+  addUsage, castHolds, classify, costUsd, deskCase, mayTrace, nameCheckHolds, renderReport, summarize,
   type CaseFile, type CaseResult, type Decision, type EvalCase, type LogEntry, type ReviewInput, type Run, type Usage,
 } from "./chamberlainCases.ts";
 
@@ -241,7 +241,8 @@ async function main(): Promise<number> {
     console.log(`[${i + 1}/${cases.length}] ${c.id}: ${decision?.verdict ?? "failed"} (${outcome}), ${Math.round(ms / 1000)} s`);
     return {
       id: c.id, source: c.source, about: c.about, truth: c.truth, truthFrom: c.truthFrom,
-      before: c.before?.verdict ?? null, decision, error, outcome, nameHolds: nameCheckHolds(c.truth, decision), ms, usage,
+      before: c.before?.verdict ?? null, decision, error, outcome, nameHolds: nameCheckHolds(c.truth, decision),
+      castHolds: castHolds(c.truth, c.input.facts, decision), ms, usage,
     };
   });
 

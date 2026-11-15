@@ -16,7 +16,7 @@ const input: ReviewInput = {
 };
 const decision: Decision = {
   verdict: "approve", reason: "Fine.", nameCheck: "fits", nameKind: "describes_clip", nameNote: "", framesCheck: "A person.",
-  contentCheck: "clean", steering: false, playability: "plays well", precedent: "", findings: [], steps: ["Plan"],
+  contentCheck: "clean", steering: false, playability: "plays well", precedent: "", castDrops: [], castNote: "", findings: [], steps: ["Plan"],
 };
 const fresh = () => join(mkdtempSync(join(tmpdir(), "chamberlain-cases-")), "chamberlain-cases");
 const read = (dir: string, id: string) => JSON.parse(readFileSync(join(dir, `${id}.json`), "utf8")) as ChamberlainCase;

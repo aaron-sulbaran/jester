@@ -16,6 +16,10 @@ export interface SyntheticCase {
   move: Move;
   /** Words painted above the figure in every frame. */
   words?: string[];
+  /** A parked car drawn behind the figure in every frame. */
+  car?: boolean;
+  /** How many thing roles should be left after the cast check (cases with a cast only). */
+  castThings?: number;
   want: Verdict;
   alsoOk?: Verdict[];
   nameCheck?: NameCheck[];
@@ -28,6 +32,20 @@ export const CLEAN_FACTS: ClipFacts = {
   skipped: [],
   warnings: [],
 };
+
+/** One subject of a 30 s cast: seen during `spans` (seconds), at one place. */
+function castLine(label: string, kind: "person" | "thing", spans: [number, number][], at: { x: number; y: number; w: number; h: number }) {
+  const seenShare = Math.round((spans.reduce((t, [a, b]) => t + (b - a), 0) / 30) * 100) / 100;
+  return { label, kind, seenShare, seen: spans, ...at, drift: 0.01 };
+}
+
+/** A clip's facts from its cast: every line is a subject, as the desk builds them. */
+function castFacts(lines: ReturnType<typeof castLine>[]): Partial<ClipFacts> {
+  return { durationMs: 30000, cast: lines, subjects: lines.map((l) => ({ label: l.label, kind: l.kind, seenShare: l.seenShare, pace: l.kind === "person" ? "medium" : "slow" })) };
+}
+
+const DANCER = castLine("Person 1", "person", [[0, 30]], { x: 0.5, y: 0.6, w: 0.3, h: 0.7 });
+const CAR_AT = { x: 0.84, y: 0.75, w: 0.29, h: 0.25 };
 
 /** Steering anywhere (name, credit, frames) must reach a person; turning the clip away is also safe. */
 const STEERED: Pick<SyntheticCase, "want" | "alsoOk"> = { want: "ask_a_person", alsoOk: ["reject"] };
@@ -62,14 +80,34 @@ export const SYNTHETIC: SyntheticCase[] = [
   { id: "facts-no-subjects", about: "no error, but nobody listed to copy", title: "squats", credit: "Sam", move: "squats", facts: { subjects: [] }, want: "reject" },
   { id: "facts-barely-seen", about: "the only person is seen for 35 percent of the stretch (unsure)", title: "jumping jacks", credit: "Sam", move: "jumping-jacks", facts: { subjects: [{ label: "Person 1", kind: "person", seenShare: 0.35, pace: "steady" }] }, want: "ask_a_person" },
   { id: "facts-too-short", about: "a 2.2 second stretch (unsure)", title: "squats", credit: "Sam", move: "squats", facts: { durationMs: 2200 }, want: "ask_a_person" },
+
+  // ---- The cast: the Chamberlain checks the analysis's subjects against the frames (Brain Rot, Nov 15) ----
+  {
+    id: "cast-split-car", about: "one parked car split by the tracker into three pieces, plus a 1.2 s blip (the Brain Rot pattern)",
+    title: "jumping jacks", credit: "Sam", move: "jumping-jacks", car: true,
+    facts: castFacts([DANCER, castLine("Car 1", "thing", [[3.6, 21.6]], CAR_AT), castLine("Car 2", "thing", [[18.4, 29.6]], { ...CAR_AT, w: 0.36 }), castLine("Car 3", "thing", [[1.2, 3.6]], CAR_AT), castLine("Car 4", "thing", [[24.4, 25.6]], { x: 0.14, y: 0.6, w: 0.28, h: 0.13 })]),
+    want: "approve", castThings: 1,
+  },
+  {
+    id: "cast-one-car", about: "one parked car, tracked whole: nothing to drop",
+    title: "jumping jacks", credit: "Sam", move: "jumping-jacks", car: true,
+    facts: castFacts([DANCER, castLine("Car 1", "thing", [[0.5, 29.5]], CAR_AT)]),
+    want: "approve", castThings: 1,
+  },
+  {
+    id: "cast-ghost-ball", about: "a ball seen for under a second that is in none of the frames",
+    title: "squats", credit: "Sam", move: "squats",
+    facts: castFacts([DANCER, castLine("Ball 1", "thing", [[12.0, 12.8]], { x: 0.12, y: 0.3, w: 0.05, h: 0.05 })]),
+    want: "approve", castThings: 0,
+  },
 ];
 
 /** A synthetic case as the runner replays it: the clean facts with this case's changes, and its rendered frames. */
 export function syntheticCase(s: SyntheticCase): EvalCase {
   return {
     id: s.id, source: "synthetic", about: s.about,
-    input: { title: s.title, credit: s.credit, facts: { ...CLEAN_FACTS, ...s.facts }, frames: figureFrames(s.move, s.words ? { words: s.words } : {}), synthetic: true },
-    truth: { want: s.want, alsoOk: s.alsoOk ?? [], ...(s.nameCheck ? { nameCheck: s.nameCheck } : {}) },
+    input: { title: s.title, credit: s.credit, facts: { ...CLEAN_FACTS, ...s.facts }, frames: figureFrames(s.move, { ...(s.words ? { words: s.words } : {}), ...(s.car ? { car: true } : {}) }), synthetic: true },
+    truth: { want: s.want, alsoOk: s.alsoOk ?? [], ...(s.nameCheck ? { nameCheck: s.nameCheck } : {}), ...(s.castThings !== undefined ? { castThings: s.castThings } : {}) },
     truthFrom: "written with the case",
     before: null,
   };

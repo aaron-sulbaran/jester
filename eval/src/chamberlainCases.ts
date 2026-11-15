@@ -18,6 +18,8 @@ export interface ClipFacts {
   subjects: { label: string; kind: "person" | "thing"; seenShare: number; pace: string }[];
   skipped: { label?: string; reason: string }[];
   warnings: string[];
+  /** When, where and how big each subject is seen (app/src/castSummary.ts), for the cast check. */
+  cast?: { label: string; kind: "person" | "thing"; seenShare: number; seen: [number, number][]; x: number; y: number; w: number; h: number; drift: number }[];
 }
 
 export interface ReviewInput {
@@ -44,6 +46,9 @@ export interface Decision {
   steering?: boolean;
   playability?: "plays well" | "does not play" | "unsure";
   precedent?: string;
+  /** The cast check: things it found to be pieces of another subject or not really there, and what it saw. */
+  castDrops?: { label: string; why: string }[];
+  castNote?: string;
 }
 
 /** A desk case file, as app/review-cases.ts writes it. */
@@ -62,8 +67,11 @@ export interface CaseFile {
   label?: { want: Verdict; alsoOk?: Verdict[]; note?: string };
 }
 
-/** What a case should get: `want`, or one of `alsoOk`; and, when given, one of these name checks. */
-export interface Truth { want: Verdict; alsoOk: Verdict[]; nameCheck?: NameCheck[] }
+/**
+ * What a case should get: `want`, or one of `alsoOk`; when given, one of these name checks; and when given,
+ * this many thing roles left after the cast check's drops.
+ */
+export interface Truth { want: Verdict; alsoOk: Verdict[]; nameCheck?: NameCheck[]; castThings?: number }
 
 export interface EvalCase {
   id: string;
@@ -149,6 +157,13 @@ export function classify(truth: Truth | null, decision: Decision | null): Outcom
   return "escalated";
 }
 
+/** False when the case says how many thing roles should be left and this decision's drops leave another number. */
+export function castHolds(truth: Truth | null, facts: ClipFacts, decision: Decision | null): boolean {
+  if (truth?.castThings === undefined || !decision) return true;
+  const things = facts.subjects.filter((s) => s.kind === "thing").length;
+  return things - (decision.castDrops ?? []).length === truth.castThings;
+}
+
 /** False when the case names the name checks it allows and this decision's is not one of them. */
 export const nameCheckHolds = (truth: Truth | null, decision: Decision | null) =>
   !truth?.nameCheck || !decision || truth.nameCheck.includes(decision.nameCheck);
@@ -167,6 +182,8 @@ export interface CaseResult {
   error: string | null;
   outcome: Outcome;
   nameHolds: boolean;
+  /** Absent in runs from before the cast check. */
+  castHolds?: boolean;
   ms: number;
   usage: Usage;
   traceUrl?: string | null;
@@ -182,6 +199,7 @@ export interface Summary {
   falseRejections: number;
   escalatedWhenClear: number;
   nameMisses: number;
+  castMisses: number;
   /** Share of judged cases that came back ask_a_person. */
   escalationRate: number | null;
   /** agree / withTruth. */
@@ -204,6 +222,7 @@ export function summarize(results: CaseResult[]): Summary {
     falseRejections: count("false_rejection"),
     escalatedWhenClear: count("escalated"),
     nameMisses: results.filter((r) => !r.nameHolds).length,
+    castMisses: results.filter((r) => r.castHolds === false).length,
     escalationRate: judged.length ? judged.filter((r) => r.decision!.verdict === "ask_a_person").length / judged.length : null,
     agreement: scored.length ? count("agree") / scored.length : null,
     changedSinceCapture: results.filter((r) => r.before && r.decision && r.before !== r.decision.verdict).length,
@@ -265,6 +284,7 @@ function summaryRows(results: CaseResult[]): string[] {
     row("asked a person when it was clear", (x) => String(x.escalatedWhenClear)),
     row("escalation rate (ask a person)", (x) => pct(x.escalationRate)),
     row("name check off", (x) => String(x.nameMisses)),
+    row("cast check off", (x) => String(x.castMisses)),
     row("verdict changed since captured", (x) => String(x.changedSinceCapture)),
     row("failed to run (not scored; the run fails)", (x) => String(x.failed)),
   ];
@@ -292,7 +312,7 @@ export function renderReport(run: Run, previous: Run | null): string {
   for (const r of run.results) {
     lines.push(`| ${r.id} | ${truthText(r.truth)} | ${r.before ? VERDICT[r.before] : ""} | ${r.decision ? VERDICT[r.decision.verdict] : "failed"} | ${r.decision ? `${r.decision.nameCheck}${r.nameHolds ? "" : " (off)"}` : ""} | ${OUTCOME[r.outcome]} |`);
   }
-  const notable = run.results.filter((r) => r.outcome !== "agree" || !r.nameHolds || (r.before && r.decision && r.before !== r.decision.verdict));
+  const notable = run.results.filter((r) => r.outcome !== "agree" || !r.nameHolds || r.castHolds === false || (r.before && r.decision && r.before !== r.decision.verdict));
   lines.push("", "## Differences", "");
   if (!notable.length) lines.push("Every case got a verdict its truth allows.");
   for (const r of notable) {
@@ -305,6 +325,7 @@ export function renderReport(run: Run, previous: Run | null): string {
       const checks = [d.contentCheck && `content ${d.contentCheck}`, d.steering !== undefined && `steering ${d.steering ? "yes" : "no"}`, d.playability && `playability ${d.playability}`].filter(Boolean);
       if (checks.length) lines.push(`- Checks: ${checks.join(", ")}`);
       if (d.precedent) lines.push(`- Precedent: ${cell(d.precedent)}`);
+      if (d.castNote || d.castDrops?.length) lines.push(`- Cast: ${cell(d.castNote ?? "")}${d.castDrops?.length ? ` Dropped ${d.castDrops.map((x) => `${x.label} (${cell(x.why)})`).join(", ")}.` : " Dropped none."}${r.castHolds === false ? ` Should leave ${r.truth?.castThings} thing role${r.truth?.castThings === 1 ? "" : "s"}.` : ""}`);
       for (const f of d.findings) lines.push(`- ${f.from}: ${cell(f.text)}`);
     }
     if (r.traceUrl) lines.push(`- Trace: ${r.traceUrl}`);
