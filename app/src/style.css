@@ -479,3 +479,7 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 
 /* Reveal: fast forward and skip. */
 .reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+
+/* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
+.lost { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
+.place-who .aside { text-align: left; }

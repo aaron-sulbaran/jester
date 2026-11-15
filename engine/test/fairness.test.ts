@@ -105,9 +105,9 @@ test("fair: standing still stays low, even with tracker noise or fidgeting", () 
   };
   for (const [name, player] of Object.entries(cases)) {
     const r = scorePoseRound(ref, player);
-    // The moving credit stays shut, so a still body keeps only the gain over standing still it had before
-    // 0.9.0. The synthetic STAND holds its arms 10 degrees out, a little closer to this clip than the
-    // engine's still pose, which earns it a small gain over still (26 here, the same as under 0.8.0).
+    // The moving credit stays shut. Before 0.10.0 a still body kept the gain over standing still (the
+    // synthetic STAND holds its arms 10 degrees out, closer to this clip than the engine's still pose: 26
+    // here); the 0.10.0 still gate now takes that away unless the player moved.
     assert.ok(r.motion.share < 0.2, `${name}: share ${r.motion.share}`);
     assert.ok(r.motion.gate < 0.1, `${name}: gate ${r.motion.gate}`);
     assert.ok(r.motion.gain - r.motion.gainOverStill < 0.03, `${name}: moving credit ${r.motion.gain - r.motion.gainOverStill}`);
@@ -123,10 +123,11 @@ test("fair: moving, but not like the clip, does not open the moving credit", () 
   assert.ok(r.score !== null && r.score < 35, `score ${r.score}`);
 });
 
-test("fair: the gain is never below the gain over standing still", () => {
-  for (const p of [copy(), withNoise(copy(), 0.02), still(), withWobble(copy(), 0.07)]) {
+test("fair: a player who moves keeps the full gain over standing still (0.10.0 still gate open)", () => {
+  for (const p of [copy(), withNoise(copy(), 0.02), withWobble(copy(), 0.07)]) {
     const r = scorePoseRound(ref, p);
+    assert.equal(r.motion.stillGate, 1);
     assert.ok(r.motion.gain >= r.motion.gainOverStill);
-    assert.ok(r.motion.gain === Math.max(r.motion.gainOverStill, r.motion.gate * r.motion.credit));
+    assert.ok(r.motion.gain === Math.max(r.motion.stillGate * r.motion.gainOverStill, r.motion.gate * r.motion.credit));
   }
 });
