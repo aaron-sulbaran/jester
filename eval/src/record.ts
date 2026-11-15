@@ -103,9 +103,11 @@ export interface RoundRecord {
   player: AnyPackedPose;
   result: PoseRoundResult | TrajectoryRoundResult;
   scorerVersion: string;
+  /** Frozen cases keep only width, height, frame rate and playerFps; the rest is blanked (see withoutDeviceDetails). */
   device: {
     userAgent: string;
-    cores: number | null;
+    /** Left out of frozen cases. */
+    cores?: number | null;
     gpu: string | null;
     camera: { label: string; width: number | null; height: number | null; frameRate: number | null } | null;
     /** Frames with a body found per second of the round, from the player's timeline. */
