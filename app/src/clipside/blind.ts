@@ -3,6 +3,7 @@
 // Placement comes from `placeSubject` in ../../../clip.
 
 import { steadyFps, typicalMs } from "./guideRate.ts";
+import { shownArea, type ShownArea } from "./shownArea.ts";
 import { boneLengths, boxFromLandmarks, bodyTurns, growLimit, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
 import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
@@ -272,7 +273,7 @@ const MIN_FRAMES = 20;
 
 /** What the guide draws this turn: the 3D jester, the flat sticker, or the stick figure on the plain background. */
 type GuideMode = "3d" | "flat" | "stick";
-const guard = { mode: "3d" as GuideMode, from: 0, draws: [] as number[], said: false, decided: false, first: true, turn: 0 };
+const guard = { mode: "3d" as GuideMode, draws: [] as number[], said: false, decided: false, first: true, turn: 0 };
 
 function giveWay(to: GuideMode, why: string) {
   guard.mode = to;
@@ -287,7 +288,7 @@ function giveWay(to: GuideMode, why: string) {
  */
 export function startGuideTurn(puppet: Construction | null) {
   const turn = ++guard.turn;
-  Object.assign(guard, { from: 0, draws: [], said: false, decided: false, mode: "3d" });
+  Object.assign(guard, { draws: [], said: false, decided: false, mode: "3d" });
   if (!puppet) return;
   if (puppet === "d") {
     want3d();
@@ -358,20 +359,25 @@ function drawKeyJoints(ctx: CanvasRenderingContext2D, landmarks: readonly (reado
 /** On screen, the corner card is never narrower than this (CSS pixels): a readable label and a tap target. */
 const CARD_MIN_CSS = 64;
 
-/** Canvas pixels per CSS pixel, as the canvas is shown (1 before it is laid out). */
-const perCss = (canvas: { width: number; clientWidth?: number }) => (canvas.clientWidth ? canvas.width / canvas.clientWidth : 1);
+/** The part of the canvas on screen (object-fit: cover crops it on the part screen), and its CSS scale. */
+function onScreen(canvas: HTMLCanvasElement): ShownArea {
+  const r = canvas.getBoundingClientRect();
+  return shownArea(canvas.width, canvas.height, r.width, r.height, r.width > 0 ? getComputedStyle(canvas).objectFit : "fill");
+}
 
 /**
- * Where the corner card sits on a canvas: the top right, about a quarter of the width and the canvas's own shape.
- * On a small screen, where that would be under CARD_MIN_CSS, an upright card at least that wide (at most half the canvas).
+ * Where the corner card sits: the top right of the part of the canvas on screen, about a quarter of its width and
+ * its shape. Where that would be under CARD_MIN_CSS across, an upright card at least that wide (at most half the
+ * shown width). `perCss` is canvas pixels per CSS pixel.
  */
-export function followCard(canvas: { width: number; height: number; clientWidth?: number }) {
-  const m = Math.round(canvas.width * 0.03);
-  let w = canvas.width * 0.26, h = (w * canvas.height) / canvas.width;
-  const least = CARD_MIN_CSS * perCss(canvas);
-  if (Math.min(w, h) < least) { w = Math.min(Math.max(w, least), canvas.width * 0.5); h = w * 1.35; }
+export function followCard(canvas: HTMLCanvasElement) {
+  const a = onScreen(canvas);
+  const m = Math.round(a.w * 0.03);
+  let w = a.w * 0.26, h = (w * a.h) / a.w;
+  const least = CARD_MIN_CSS * a.sx;
+  if (Math.min(w / a.sx, h / a.sy) < CARD_MIN_CSS) { w = Math.min(Math.max(w, least), a.w * 0.5); h = w * 1.35; }
   w = Math.round(w); h = Math.round(h);
-  return { x: canvas.width - w - m, y: m, w, h };
+  return { x: Math.round(a.x + a.w - w - m), y: Math.round(a.y + m), w, h, perCss: a.sx };
 }
 
 /** The guide's whole range of movement in canvas pixels (the puppet's room: hat and shoes included). */
@@ -400,7 +406,7 @@ export function drawFollowCard(canvas: HTMLCanvasElement, guide: Guide, index: n
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   const ctx = canvas.getContext("2d")!;
   const card = followCard(canvas);
-  const perCssPx = perCss(canvas);
+  const perCssPx = card.perCss;
   const ink = Math.max(2, 2.5 * perCssPx);
   ctx.save();
   // A paper card with the look's hard shadow.
@@ -458,7 +464,9 @@ export function enableFollowSwap(canvas: HTMLCanvasElement, redraw: () => void) 
   const inCard = (e: MouseEvent) => {
     const r = canvas.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return false;
-    const x = ((e.clientX - r.left) * canvas.width) / r.width, y = ((e.clientY - r.top) * canvas.height) / r.height;
+    // The tap in canvas pixels, through the same object-fit the card was placed with.
+    const a = onScreen(canvas);
+    const x = a.offX + (e.clientX - r.left) * a.sx, y = a.offY + (e.clientY - r.top) * a.sy;
     const c = followCard(canvas);
     return x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h;
   };
@@ -468,6 +476,8 @@ export function enableFollowSwap(canvas: HTMLCanvasElement, redraw: () => void) 
     swappers.get(canvas)?.();
   });
   canvas.addEventListener("mousemove", (e) => { canvas.style.cursor = inCard(e) && guard.mode !== "stick" ? "pointer" : ""; });
+  // A canvas drawn before it was laid out (the part screen) drew its card at the wrong size: draw again once it has one.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => swappers.get(canvas)?.()).observe(canvas);
 }
 
 /** True when the guard has handed this turn to the stick figure. */
@@ -475,18 +485,21 @@ export function guideGaveWay(): boolean {
   return guard.mode === "stick";
 }
 
+/** Real 3D draws the draw check decides on. */
+const MIN_DRAWS = 10;
+
 /**
- * Adds one 3D draw's time. The very first 3D draw on the page (three.js compiling its shaders) is left out of the
- * average. The decision comes at the end of the first second, or sooner after 30 draws, from at least 3 draws.
+ * Adds one real 3D draw's time. The very first 3D draw on the page (three.js compiling its shaders) is left out.
+ * The decision waits for MIN_DRAWS real draws: a pose already drawn is reused, so the countdown's still pose gives
+ * only a few, and the first ones after the canvas is resized are slow (3 of them read 5.5 ms on the M4 at 1440,
+ * where the typical draw is under 2).
  */
 function measure3d(ms: number) {
   if (guard.first) { guard.first = false; return; }
   if (guard.decided) return;
-  const now = performance.now();
-  if (!guard.from) guard.from = now;
   guard.draws.push(ms);
   const n = guard.draws.length;
-  if (n < 3 || (now - guard.from < MEASURE_MS && n < 30)) return;
+  if (n < MIN_DRAWS) return;
   guard.decided = true;
   const typical = typicalMs(guard.draws);
   if (document.body.classList.contains("dev")) console.info(`Guide check: the 3D jester took ${typical.toFixed(2)} ms a typical draw over ${n} draws.`);
