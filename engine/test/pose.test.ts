@@ -11,14 +11,19 @@ test("limb credit: dead zone, falloff, zero", () => {
   assert.equal(limbCredit(120), 0);
 });
 
-test("comparePoses: a mirror copy scores 1, the same unmirrored pose does not", () => {
+test("comparePoses: a mirror copy and a same-side copy both score 1 (0.11.0); one reading alone tells them apart", () => {
   // Clearly one-sided: left arm up, right arm down, one knee raised.
   const p = { ...STAND, lUpper: 170, lFore: 175, rUpper: -10, rFore: -5, lThigh: 80, lShin: 0 };
   const ref = landmarks(p);
   const copy = comparePoses(ref, landmarks(mirrorCopy(p)));
   assert.ok(copy.credit !== null && copy.credit > 0.999, `got ${copy.credit}`);
-  const wrongSide = comparePoses(ref, landmarks(p));
-  assert.ok(wrongSide.credit !== null && wrongSide.credit < 0.8, `got ${wrongSide.credit}`);
+  assert.equal(copy.orientation, "mirror");
+  // On an unmirrored camera, a player raising their own left arm looks exactly like the clip.
+  const sameSide = comparePoses(ref, landmarks(p));
+  assert.ok(sameSide.credit !== null && sameSide.credit > 0.999, `got ${sameSide.credit}`);
+  assert.equal(sameSide.orientation, "same-side");
+  const mirrorOnly = comparePoses(ref, landmarks(p), { eitherSide: false });
+  assert.ok(mirrorOnly.credit !== null && mirrorOnly.credit < 0.8, `got ${mirrorOnly.credit}`);
 });
 
 test("comparePoses: size, position and aspect do not matter", () => {
@@ -96,10 +101,16 @@ test("round: an already-mirrored camera feed is not flipped twice", () => {
   // Pixels flipped before tracking: the tracker sees the mirror image directly.
   const player = timeline(dance, { durationS: 20, transform: mirrorCopy, mirrored: true });
   const flippedBack = { ...player, frames: player.frames.map((f) => ({ ...f, landmarks: f.landmarks })) };
-  const r = scorePoseRound(ref, flippedBack);
   // Data that is already a mirror image of the copy must not be mirrored again: it then reads as wrong-sided.
-  const notFlipped = scorePoseRound(ref, timeline(dance, { durationS: 20, transform: mirrorCopy }));
+  // Checked with one reading only, since with either side (0.11.0) the other reading would rescue it.
+  const one = { eitherSide: false };
+  const r = scorePoseRound(ref, flippedBack, one);
+  const notFlipped = scorePoseRound(ref, timeline(dance, { durationS: 20, transform: mirrorCopy }), one);
   assert.ok(r.score !== null && notFlipped.score !== null && r.score < notFlipped.score);
+  // With both readings, the wrongly flagged feed reads as a same-side copy and scores like the copy.
+  const both = scorePoseRound(ref, flippedBack);
+  assert.equal(both.score, notFlipped.score);
+  assert.equal(both.orientation, "same-side");
 });
 
 test("round: a player out of frame most of the time fails as low tracking", () => {

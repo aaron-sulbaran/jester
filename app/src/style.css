@@ -48,6 +48,10 @@ body {
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 3px dashed var(--pen); outline-offset: 6px; }
 [hidden] { display: none !important; }
+/* Read by screen readers, not shown. */
+.vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Team tools: only on a local dev server or with ?dev=1 (game.ts sets body.dev). */
+body:not(.dev) .dev-only { display: none; }
 .media { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
@@ -150,11 +154,18 @@ body:not(.solo) #solo { display: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
 /* ---------- Start ---------- */
-.masthead { display: grid; gap: 16px; justify-items: center; }
+/* Everything up to the Play ticket fits one laptop screen (1440 by 900, 1024 by 768), so it is kept tight. */
+#screen-start { position: relative; gap: 18px; }
+#screen-start .wordmark { font-size: clamp(60px, 7.5vw, 104px); padding-bottom: 12px; }
+.masthead { display: grid; gap: 10px; justify-items: center; }
+.masthead .note-wrap { max-width: min(700px, 100%); }
+/* How to play: a paper tag in the top right corner, where the Home tab sits on the left once a game starts. */
+.start-nav { position: absolute; z-index: 5; top: clamp(14px, 2.4vh, 24px); right: var(--gutter); }
+.start-nav .btn-quiet { rotate: 2deg; }
 .clips { display: flex; flex-wrap: wrap; gap: 34px; justify-content: center; }
 /* Nobody sees the clip in blind mode, so each starter is a taped photo hidden under a question mark. */
 .clip {
-  position: relative; width: min(290px, 80vw); padding: 12px 12px 14px; cursor: pointer; text-align: left;
+  position: relative; width: min(260px, 80vw); padding: 12px 12px 14px; cursor: pointer; text-align: left;
   display: grid; gap: 4px; background: var(--photo); border: 0; box-shadow: var(--lift); rotate: -1.5deg;
   transition: box-shadow .18s var(--ease), translate .18s var(--ease);
 }
@@ -170,7 +181,7 @@ body:not(.solo) #solo { display: none; }
 .clip[aria-pressed="true"] .clip-star { display: block; }
 .start-actions { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; align-items: center; }
 
-/* Two ways to play, as two paper cards; the picked one is taped down in yellow. */
+/* Choices as paper cards; the picked one is taped down in yellow (the online room's clip pick uses these). */
 .modes-pick { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
 .mode {
   width: min(300px, 100%); min-height: 44px; padding: 14px 18px 16px; cursor: pointer; text-align: left;
@@ -182,9 +193,21 @@ body:not(.solo) #solo { display: none; }
 .mode span { font-size: 15px; line-height: 1.35; }
 .mode:hover { transform: translateY(-2px); box-shadow: 7px 9px 0 var(--shade); }
 .mode[aria-checked="true"] { background: var(--ticket); box-shadow: 7px 9px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+.mode:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; }
+
+/* On the start screen the two ways to play are one paper switch with two halves; the picked half is yellow.
+   It reads as a setting, so it never looks like two more clips. The picked mode's line shows once, under it
+   (#modeSays); each half keeps its line for screen readers. */
+#screen-start .modes-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg; }
+#screen-start .mode { width: auto; min-width: 150px; min-height: 52px; padding: 8px 22px 10px; place-items: center; text-align: center; background: none; box-shadow: none; rotate: 0deg; transition: background-color .18s var(--ease); }
+#screen-start .mode b { font-size: 28px; }
+#screen-start .mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#screen-start .mode:hover { transform: none; background: #F4EBDD; }
+#screen-start .mode[aria-checked="true"] { background: var(--ticket); box-shadow: inset 0 0 0 2px var(--ink); }
+.mode-says { margin-top: -6px; font-size: 16px; min-height: 1.4em; }
 
 /* The bank: taped photos. Posters show in Watch first; in Blind they stay under the question mark. */
-.bank { display: flex; flex-wrap: wrap; gap: 34px; justify-content: center; max-width: 1100px; }
+.bank { display: flex; flex-wrap: wrap; gap: 28px 34px; justify-content: center; max-width: 1100px; }
 .clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 body[data-mode="blind"] .clip-pic img { display: none; }
 body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
@@ -214,10 +237,10 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 
 /* ---------- Cast ---------- */
 .cast { display: grid; gap: 14px; width: min(480px, 100%); }
-.who { display: grid; grid-template-columns: 30px auto 1fr; align-items: center; gap: 12px; text-align: left; }
+.who { display: grid; grid-template-columns: 30px auto minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; }
 .who-dot { width: 30px; height: 30px; border-radius: 50%; background: var(--who); filter: url(#sticker); }
-.who-label { font-size: 15px; }
-.who input { min-height: 52px; padding: 8px 14px; background: var(--photo); border: 0; box-shadow: 3px 4px 0 var(--shade); font: 700 26px var(--hand); letter-spacing: -.03em; color: var(--pen); }
+.who-label { font-size: 15px; white-space: nowrap; }
+.who input { min-width: 0; width: 100%; min-height: 52px; padding: 8px 14px; background: var(--photo); border: 0; box-shadow: 3px 4px 0 var(--shade); font: 700 26px var(--hand); letter-spacing: -.03em; color: var(--pen); }
 .who input::placeholder { color: #9A8B7A; }
 .cast-count { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
 .speed { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; }
@@ -229,7 +252,9 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 .name { margin: 0; font: 400 clamp(72px, 12vw, 160px)/1 var(--sticker); }
 
 /* ---------- The shoebox stage ---------- */
-.stage-wrap { width: min(100%, 1060px, calc((100vh - 330px) * 16 / 9 + 140px)); width: min(100%, 1060px, calc((100dvh - 330px) * 16 / 9 + 140px)); }
+/* Each stage is sized from the screen height left over once its heading and controls are in, so the controls
+   under it stay on screen (100dvh minus that budget is the picture's height). */
+.stage-wrap { width: min(100%, 1060px, calc((100vh - 360px) * 16 / 9 + 140px)); width: min(100%, 1060px, calc((100dvh - 360px) * 16 / 9 + 140px)); }
 .box { --rim: 20px; --band: 7px; --edge: calc(var(--rim) + var(--band)); --ceil: 26px; --side: 34px; --floor: 46px; position: relative; padding: var(--edge); }
 .board-wrap { position: absolute; inset: 0; filter: drop-shadow(7px 9px 0 var(--shade)); pointer-events: none; }
 .board { position: absolute; inset: 0; background: var(--card) var(--grain); clip-path: polygon(0 .6%, 22% 0, 51% .5%, 78% 0, 100% .4%, 99.6% 30%, 100% 62%, 99.5% 100%, 70% 99.4%, 38% 100%, .4% 99.5%, 0 64%, .5% 31%); }
@@ -238,7 +263,8 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 .walls { position: absolute; inset: 0; pointer-events: none; border-style: solid; border-width: var(--ceil) var(--side) var(--floor); border-color: var(--ceil-c) var(--side-c) var(--floor-c); }
 .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #16161d; box-shadow: 0 0 0 2px rgba(30, 27, 24, .4); }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.valance { position: absolute; z-index: 3; top: 0; left: 0; right: 0; height: 42px; filter: drop-shadow(0 5px 0 var(--shade)); pointer-events: none; }
+/* The valance hangs from the box's top edge and ends where the picture starts, so it never covers a head. */
+.valance { --val: 42px; position: absolute; z-index: 3; top: calc(var(--ceil) - var(--val)); left: 0; right: 0; height: var(--val); filter: drop-shadow(0 5px 0 var(--shade)); pointer-events: none; }
 .valance i {
   display: block; height: 100%;
   background: #4F7BF0 radial-gradient(circle, #FFFFFF 3.2px, transparent 3.8px) 0 0 / 17px 17px;
@@ -268,7 +294,7 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 #screen-turn[data-state="play"] #guideCanvas { inset: 0 50% 0 0; width: 50%; }
 #screen-turn[data-state="play"] #youCanvas { inset: 0 0 0 50%; width: 50%; }
 #screen-turn[data-state="play"] .stage::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; background: rgba(255, 255, 255, .25); }
-#screen-turn[data-state="part"] .stage-wrap { width: min(100%, 760px, calc((100vh - 420px) * 16 / 9 + 140px)); width: min(100%, 760px, calc((100dvh - 420px) * 16 / 9 + 140px)); }
+#screen-turn[data-state="part"] .stage-wrap { width: min(100%, 760px, calc((100vh - 500px) * 16 / 9 + 140px)); width: min(100%, 760px, calc((100dvh - 500px) * 16 / 9 + 140px)); }
 .count {
   position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none;
   font: 400 clamp(110px, 18vw, 240px)/1 var(--sticker); color: var(--stamp);
@@ -291,7 +317,7 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 
 /* ---------- Reveal and results ---------- */
 #screen-reveal { gap: 18px; }
-.reveal-wrap { width: min(100%, 1240px, calc((100vh - 260px) * 16 / 9 + 140px)); width: min(100%, 1240px, calc((100dvh - 260px) * 16 / 9 + 140px)); }
+.reveal-wrap { width: min(100%, 1240px, calc((100vh - 460px) * 16 / 9 + 140px)); width: min(100%, 1240px, calc((100dvh - 460px) * 16 / 9 + 140px)); }
 #revealStage { object-fit: contain; }
 progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
 .results-head { display: flex; align-items: center; gap: 18px; justify-content: center; }
@@ -330,10 +356,11 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
 .crown-head .drum { width: 120px; height: 110px; }
 .crown-head .drum i { height: 70px; }
 .crown-head .drum b { height: 70px; }
-.crown-wrap { width: min(100%, 1180px, calc((100vh - 330px) * 16 / 9 + 140px)); width: min(100%, 1180px, calc((100dvh - 330px) * 16 / 9 + 140px)); }
+/* max(320px, ...): in a short window the calc went to nothing and the jesters piled up on one spot. */
+.crown-wrap { width: min(100%, 1180px, max(320px, calc((100vh - 460px) * 16 / 9 + 140px))); width: min(100%, 1180px, max(320px, calc((100dvh - 460px) * 16 / 9 + 140px))); }
 .crown-stage { background: #2E4593 linear-gradient(transparent 82%, #93613A 82%); }
 .cast-row { position: absolute; inset: 2% 6% 3%; display: flex; align-items: flex-end; justify-content: space-evenly; gap: 2%; }
-.cast-slot { margin: 0; flex: 1 1 0; max-width: min(40%, 72vh); display: grid; justify-items: center; gap: 2px; transition: transform .5s var(--ease), opacity .5s var(--ease); }
+.cast-slot { margin: 0; flex: 1 1 0; min-width: 110px; max-width: min(40%, 72vh); display: grid; justify-items: center; gap: 2px; transition: transform .5s var(--ease), opacity .5s var(--ease); }
 .crown-stage .cast-slot .face-jester { position: static; inset: auto; width: 100%; height: auto; aspect-ratio: 1; filter: url(#sticker); }
 .cast-slot .tape { font-size: clamp(18px, 2.2vw, 28px); padding: 4px 16px 6px 12px; background-color: color-mix(in srgb, var(--who) 50%, #EADDB9); }
 /* The spotlight: the stage goes dark except one soft circle of light that moves. */
@@ -371,9 +398,10 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .leave { border: 0; padding: 0; background: none; overflow: visible; }
 .leave::backdrop { background: rgba(30, 27, 24, .45); }
 .leave[open] { display: grid; gap: 18px; justify-items: center; }
-/* Start over: shown only in the first seconds of a turn, big and on the stage, with a bar running out. */
+/* Start over: shown only in the first seconds of a turn, big, with a bar running out. It is pinned to the
+   box's top right corner, over the curtain, so it never covers the player or the shape. */
 #screen-turn .stage-wrap { position: relative; }
-.restart { position: absolute; z-index: 8; left: 50%; top: 16%; translate: -50% 0; display: grid; gap: 6px; justify-items: center; }
+.restart { position: absolute; z-index: 8; right: 0; top: 0; translate: 14px -42%; display: grid; gap: 6px; justify-items: end; }
 .restart .btn-quiet { min-height: 60px; font-size: 22px; padding: 12px 26px 12px 46px; box-shadow: 6px 7px 0 var(--shade); rotate: -1.5deg; }
 .restart-bar { width: 240px; height: 8px; background: rgba(255, 254, 250, .6); box-shadow: 2px 3px 0 var(--shade); overflow: hidden; }
 .restart-bar i { display: block; height: 100%; background: var(--stamp); transform-origin: left; }
@@ -426,26 +454,35 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .results-grid { grid-template-columns: minmax(0, 1fr); }
   .box { --rim: 12px; --band: 5px; --ceil: 16px; --side: 18px; --floor: 26px; }
   .curtain { width: calc(var(--side) + 22px); }
-  .valance { height: 26px; }
+  .valance { --val: 26px; }
   .stage { aspect-ratio: 3 / 4; }
   .stage-wrap, .reveal-wrap { width: 100%; }
   #screen-turn[data-state="part"] .stage-wrap { width: min(100%, calc(32vh * 3 / 4 + 70px)); }
   .reveal-wrap .stage { aspect-ratio: 16 / 9; }
   .btn-main { width: 100%; }
   .btn-main .ticket { width: 100%; justify-content: center; }
-  .part-panel .row-actions { position: sticky; bottom: 0; padding: 10px 0 14px; width: 100%; background: var(--kraft) var(--grain); }
-  /* First play in one tap: on a phone the Play ticket stays at the bottom of the screen. */
-  #screen-start .start-actions { position: sticky; bottom: 0; z-index: 6; width: 100%; padding: 12px 0 16px; background: var(--kraft) var(--grain); }
+  /* No sticky bars: on a phone a pinned ticket covered the first clip and the part chips. */
+  .start-nav { position: static; }
   .modes-pick { gap: 12px; }
   .mode b { font-size: 26px; }
+  #screen-start .modes-pick { width: 100%; }
+  #screen-start .mode { min-width: 0; padding: 8px 10px 10px; }
+  #screen-start .mode b { font-size: 24px; }
+  .restart { right: 50%; top: auto; bottom: 0; translate: 50% 60%; justify-items: center; }
   .place { grid-template-columns: 84px 1fr auto; }
-  .place-score { font-size: 40px; }
+  .place-score, .place.won .place-score { font-size: 40px; }
+  .place.won .place-score { font-size: 48px; }
+  /* The jester stays inside its column (plus the gap), clear of the name and the part. */
+  .badge { width: 84px; height: 84px; }
+  .badge .face-jester { width: 92px; height: 92px; }
+  .place.won .badge .face-jester { width: 104px; height: 104px; }
   .crown-head { min-height: 90px; }
   .steps { grid-template-columns: minmax(0, 1fr); gap: 22px; }
   .step-pic { aspect-ratio: 16 / 7; }
   .game-nav { top: 8px; left: 8px; }
   /* Room for the Home tab, so it never sits on the first line of a screen. */
-  body:not([data-screen="start"]):not([data-screen="howto"]) .screen { padding-top: 64px; }
+  /* Lisa's circus tent Home stands about 90 px tall from the top on a phone. */
+  body:not([data-screen="start"]):not([data-screen="howto"]) .screen { padding-top: 100px; }
   .crown-wrap .stage { aspect-ratio: 4 / 5; }
   .cast-row { flex-wrap: wrap; align-content: flex-end; }
   .cast-slot { flex: 1 1 40%; max-width: 48%; }
@@ -478,3 +515,7 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 
 /* Reveal: fast forward and skip. */
 .reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+
+/* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
+.lost { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
+.place-who .aside { text-align: left; }

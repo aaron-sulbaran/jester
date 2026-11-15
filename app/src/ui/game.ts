@@ -3,7 +3,6 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
-import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
 import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
@@ -11,10 +10,15 @@ import { submitClip } from "../submit.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
+import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
+import { awardsFor, motionOf, rankFor } from "../feelText.ts";
+import { say } from "../host.ts";
+import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
-import { playMyRole } from "../onlineBlind.ts";
+import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
+import { unpackCutouts, unpackFace } from "../packMedia.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -97,7 +101,11 @@ const BOB = [4, -4, 2, -3, 3, -2];
 
 /** Writes `text` into `el` as alphabet stickers: each letter its own colour (or all `color`), one white backing. */
 function letters(el: HTMLElement, text: string, color?: string) {
-  el.setAttribute("aria-label", text);
+  // Screen readers get the whole word from hidden text; an aria-label on a heading is not read everywhere,
+  // and the letter stickers on their own were read one letter at a time.
+  const said = document.createElement("span");
+  said.className = "vh";
+  said.textContent = text;
   const wrap = document.createElement("span");
   wrap.className = "letters";
   wrap.setAttribute("aria-hidden", "true");
@@ -110,7 +118,8 @@ function letters(el: HTMLElement, text: string, color?: string) {
     span.style.setProperty("--n", String(i));
     wrap.appendChild(span);
   });
-  el.replaceChildren(wrap);
+  el.removeAttribute("aria-label");
+  el.replaceChildren(said, wrap);
 }
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
@@ -127,6 +136,9 @@ export function initGame(deps: GameDeps) {
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
   let videoUrl: string | null = null;
+  // The camera for the game's turns: a loading card, a card when it fails, the simulated player (?demo=1).
+  const camera = guardCamera(deps, () => goHome());
+  installFeel();
 
   const guideCanvas = $<HTMLCanvasElement>("guideCanvas");
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
@@ -142,6 +154,10 @@ export function initGame(deps: GameDeps) {
 
   const bankBox = $("bank");
   document.body.dataset.mode = mode;
+  // Team tools (the testing upload, the practice area, the empty bank note) show only on a local dev server
+  // or with ?dev=1, never to visitors on the live site. ?dev=0 shows the visitor's page on a dev server.
+  const devParam = new URLSearchParams(location.search).get("dev");
+  document.body.classList.toggle("dev", devParam !== null ? devParam !== "0" : ["localhost", "127.0.0.1"].includes(location.hostname));
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
@@ -175,8 +191,9 @@ export function initGame(deps: GameDeps) {
       ? [...(mode === "blind" && bank.length > 1 ? [{ kind: "surprise" } as Pick] : []), ...bank.map((clip): Pick => ({ kind: "bank", clip }))]
       : STARTERS.map((starter): Pick => ({ kind: "starter", starter }));
     bankBox.replaceChildren(...picks.map(card));
+    // A note for the team only: visitors just see the starter clips.
     const note = $("bankNote");
-    note.hidden = bank.length > 0;
+    note.hidden = bank.length > 0 || !document.body.classList.contains("dev");
     note.textContent = "The bank is empty. Add clips with the bank tool. Until then, here are the starter clips.";
     // Keep the pick if it is still on screen, else the first card.
     const keep = pick && picks.find((p) => keyOf(p) === keyOf(pick!));
@@ -190,14 +207,21 @@ export function initGame(deps: GameDeps) {
     $<HTMLButtonElement>("play").disabled = !p;
   }
 
-  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode")) {
+  // The two modes are one switch; the picked mode's line shows once, under it.
+  const sayMode = () => {
+    const picked = document.querySelector<HTMLButtonElement>(`.mode[data-mode="${mode}"] span`);
+    $("modeSays").textContent = picked?.textContent ?? "";
+  };
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
       document.body.dataset.mode = mode;
-      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode")) o.setAttribute("aria-checked", String(o === b));
+      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) o.setAttribute("aria-checked", String(o === b));
+      sayMode();
       renderBank();
     });
   }
+  sayMode();
 
   void listBank().then((r) => {
     bank = r.data ?? [];
@@ -257,8 +281,6 @@ export function initGame(deps: GameDeps) {
       startProblem(`I could not read that clip: ${(err as Error).message}`);
     }
   });
-
-  installLinkGrab((s) => { scene = s; openCast(); }, startProblem); // LINK REVEAL (remove with linkReveal.ts)
 
   function startProblem(text: string) {
     $("startProblem").textContent = text;
@@ -336,7 +358,7 @@ export function initGame(deps: GameDeps) {
     running = true;
     try {
       if (mode === "watch") await watchFirst(scene);
-      await runBlindGame(scene, cast, ui, deps, { speed, colors: playerColors(), theme: revealTheme() });
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme() });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -371,15 +393,24 @@ export function initGame(deps: GameDeps) {
     const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
     const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
     try {
-      await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
+      await whenMediaIn(room as never); // their pictures, so the recap and the crowning show real people
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
-      const results: RemoteResult[] = standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map((s) => ({
+      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
         name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
-      }));
+        // My own pictures are already here at full size; the others' arrive packed.
+        cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
+        face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
+      })));
+      // What this device got from each player, for finding out why someone is missing from a recap.
+      const summary = results.map((r) => ({ name: r.name, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
+      console.info("[online] recap inputs", summary);
+      (window as unknown as { __jesterRecap?: unknown }).__jesterRecap = summary;
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
       await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });
@@ -427,7 +458,8 @@ export function initGame(deps: GameDeps) {
   const leaveDialog = $<HTMLDialogElement>("leaveDialog");
   $("home").addEventListener("click", () => {
     const screen = document.body.dataset.screen as ScreenName;
-    if (running && MID_GAME.includes(screen)) leaveDialog.showModal();
+    // The crowning runs after the game itself has finished, so it is checked by name.
+    if ((running && MID_GAME.includes(screen)) || screen === "crown") leaveDialog.showModal();
     else goHome();
   });
   $("leaveStay").addEventListener("click", () => leaveDialog.close());
@@ -485,6 +517,7 @@ export function initGame(deps: GameDeps) {
   const ui: BlindUi = {
     async handover(player, previous) {
       live();
+      camera.newTurn();
       activeRestart = null;
       hideRestart();
       show("handover");
@@ -514,7 +547,7 @@ export function initGame(deps: GameDeps) {
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       if (!startingOver || role.problem) {
-        $("partProblem").textContent = role.problem ?? "";
+        $("partProblem").textContent = role.problem ? camera.partNote() ?? role.problem : "";
         $("partProblem").hidden = !role.problem;
       }
       const chips = $("partChips");
@@ -558,9 +591,11 @@ export function initGame(deps: GameDeps) {
         el.classList.remove("tick");
         void el.offsetWidth; // restart the tick animation
         el.classList.add("tick");
+        sfx.tick(s);
         try { await wait(1000, sig()); } catch (err) { el.hidden = true; throw err; }
       }
       el.hidden = true;
+      sfx.go();
     },
 
     turnStarted(restart) {
@@ -582,7 +617,9 @@ export function initGame(deps: GameDeps) {
       activeRestart = null;
       hideRestart();
       show("drumroll");
-      await wait(1500, sig());
+      say("beat");
+      const roll = sfx.drumRoll();
+      try { await waitOrSkip(1500, sig()); } finally { roll(); }
     },
 
     revealCanvas: () => revealCanvas,
@@ -598,7 +635,6 @@ export function initGame(deps: GameDeps) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
-      linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
     },
 
@@ -646,9 +682,16 @@ export function initGame(deps: GameDeps) {
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
+    // The drum roll plays while the spotlight sweeps; only the latest run may land the crash.
+    let roll = () => {};
+    let runs = 0;
 
     const run = async () => {
       cancel = false;
+      const mine = ++runs;
+      roll();
+      roll = sfx.drumRoll();
+      say("roll");
       $("crownWinner").hidden = true;
       $("crownAsk").hidden = false;
       $("crownDrum").hidden = false;
@@ -673,6 +716,11 @@ export function initGame(deps: GameDeps) {
         await wait(350);
       }
       if (cancel) return;
+      if (mine === runs) {
+        roll();
+        sfx.crown();
+        say(winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: winners.map((w) => w.name).join(" and ") });
+      }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
       $("screen-crown").dataset.phase = "won";
@@ -693,6 +741,7 @@ export function initGame(deps: GameDeps) {
     try { await clicked($("crownGo"), sig()); }
     finally {
       cancel = true;
+      roll();
       $("crownAgain").removeEventListener("click", again);
       for (const x of jesters) x.j.stop();
     }
@@ -741,6 +790,8 @@ export function initGame(deps: GameDeps) {
     letters($("resultsHeadline"), headline);
     const list = $("podium");
     list.innerHTML = "";
+    // Everyone leaves with something: the crown, or an award from how they played.
+    const awards = awardsFor(rows.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })));
     rows.forEach((r, i) => {
       // Tied scores share a place.
       const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
@@ -748,7 +799,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
@@ -758,9 +809,16 @@ export function initGame(deps: GameDeps) {
       podiumJesters.push(j);
       li.querySelector("b")!.textContent = r.name;
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
-      li.querySelector(".place-score")!.textContent = r.score == null ? "no score" : String(r.score);
+      li.querySelector(".place-award")!.textContent = awards[i]!;
+      const score = li.querySelector<HTMLElement>(".place-score")!;
+      if (r.score == null) score.textContent = "no score";
+      else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
     });
+    sfx.fanfare();
+    // The host speaks once the fanfare has played.
+    const top = winners[0];
+    if (top) window.setTimeout(() => { if (document.body.dataset.screen === "results") say("results", { winner: winners.map((w) => w.name).join(" and "), title: rankFor(top.score).title }); }, 1800);
     const video = $<HTMLVideoElement>("resultsVideo");
     const save = $<HTMLAnchorElement>("resultsSave");
     if (videoUrl) {

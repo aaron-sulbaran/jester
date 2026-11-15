@@ -210,7 +210,7 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
   // It loads at the same time as the body model.
   const wantHands = new URLSearchParams(globalThis.location?.search ?? "").get("hands") !== "0";
   const makeHands = async (d) => mp.HandLandmarker.createFromOptions(vision, { baseOptions: { ...(await cachedModelOptions(HAND_MODEL_URL)), delegate: d }, runningMode: "VIDEO", numHands: 2 });
-  const handsPromise = wantHands ? makeHands("GPU").catch(() => null) : Promise.resolve(null);
+  const handsPromise = wantHands ? makeHands("GPU").catch(() => makeHands("CPU")).catch(() => null) : Promise.resolve(null);
   try { landmarker = await make(modelName, "GPU"); } catch { delegate = "CPU"; landmarker = await make(modelName, "CPU"); }
   let handLandmarker = await handsPromise;
 
@@ -218,6 +218,7 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
   const handSmoother = new HandSmoother(filter);
   const stats = { fps: 0, model: modelName, delegate, hands: !!handLandmarker };
   let running = false, busy = false, last = -1, startPerf = 0, lastTs = 0, frames = 0, windowStart = 0, slowWindows = 0;
+  let onCpuAfterFailure = false;
 
   function tick() {
     if (!running) return;
@@ -244,6 +245,15 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
       }
       onFrame(buildFrame({ t, landmarks: smoother.smooth(raw, t), aspect, maskValues, maskWidth: mw, maskHeight: mh, hands }));
       if (m) m.close();
+    } catch (err) {
+      // The GPU can fail after tracking started (a lost WebGL context). Rebuild once on the CPU, without fingers, and carry on.
+      if (delegate === "GPU" && !onCpuAfterFailure) {
+        onCpuAfterFailure = true; delegate = "CPU"; stats.delegate = "CPU";
+        if (handLandmarker) { handLandmarker.close(); handLandmarker = null; stats.hands = false; }
+        console.warn("Pose tracking failed on the GPU; trying once more on the CPU.", err);
+        make(modelName, "CPU").then((next) => { const old = landmarker; landmarker = next; try { old.close(); } catch { /* already broken */ } }).catch(() => {});
+      }
+      return;
     } finally { busy = false; }
     frames++;
     const now = performance.now();

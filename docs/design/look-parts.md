@@ -9,15 +9,17 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **The Jester's lines:** `<div class="note-wrap"><p class="note">` (blue ballpoint on a torn scrap).
 - **Small print:** `.typed` (typewriter). A quiet line under a block: `.aside`.
 - **Errors:** `<p class="problem" role="alert" hidden>`.
-- **Big moments:** `.wins`, filled by `letters(el, text, color?)` in `ui/game.ts` (cut-out letters).
+- **Big moments:** `.wins`, filled by `letters(el, text, color?)` in `ui/game.ts` (cut-out letters). The whole word is also carried in hidden text for screen readers.
+- **Read aloud but not shown:** `.vh`.
+- **For the team only:** `.dev-only` shows only when `body.dev` is set, which is on a dev server or with `?dev=1`. `?dev=0` shows what a visitor sees.
 
 ## Buttons and choices
 
 - **Main action:** `.btn.btn-main > .ticket > .ticket-text` (the yellow ticket). One per screen.
 - **Secondary:** `.btn-quiet` (the paper tag). A text button: `.link`.
 - **Small label:** `.chip`.
-- **A choice card:** `.mode` with `role=radio`, inside `.modes-pick`.
-- **Top bar:** `.tab-btn` inside `#gameNav`. Home is the tent.
+- **A choice card:** `.mode` with `role=radio`, inside `.modes-pick`. On the start screen only (`#screen-start`), `.mode` is one paper switch with two halves, and the picked mode's line shows under it in `#modeSays`.
+- **Top bar:** `.tab-btn` inside `#gameNav`. Home is the tent, top left in the game. On the start screen, `.start-nav` holds the How to play paper tag in the top right corner; a Sound switch will join it there.
 
 ## Pictures and cards
 
@@ -26,6 +28,7 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **An illustrated step:** `.step` with `.step-pic`, as on How to play.
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
 - **The stage:** `.box`, the shoebox around any canvas or video. Copy the block from `screen-turn` or `screen-crown`.
+- **Stage size:** each `*-wrap` is `(100dvh - budget) * 16 / 9 + 140px` wide, where the budget is the height of the heading and controls around it, so the main button stays on screen on a laptop. Budgets today: part 500, turn 360, reveal 460, crown 460.
 
 ## Forms
 
@@ -53,4 +56,4 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - Hotlinked fonts or images: everything is bundled in `app/public`.
 - A glossy app look: rounded cards, glass or blur. Things are paper, tape, stamps and tickets.
 - A cartoon placeholder face; use a grey head and shoulders silhouette.
-- Face photos never leave the device.
+- A face picture or cutout leaves the laptop only when players choose it: live to the others in their online room (never saved), or in the results video they send. The room screen says so before anything is sent.

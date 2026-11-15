@@ -82,11 +82,22 @@ export interface PlacementResult {
   outlineHints: { distance: "closer" | "back" | null; side: "left" | "right" | null };
 }
 
+/**
+ * How the player copied (0.11.0): "mirror" (the clip raises its right arm, the player their left, as in a
+ * mirror) or "same-side" (the player raises their own right arm). Both score the same; this says which reading won.
+ */
+export type Orientation = "mirror" | "same-side";
+
 export interface PoseRoundResult {
   channel: "pose";
   scorerVersion: string;
   /** 0..100 integer, or null if tracking was too poor to score. */
   score: number | null;
+  /**
+   * 0.11.0: which reading of the player gave this score. Per-limb keys use the clip performer's sides either
+   * way; worstLimb.label is named from the player's own side for the winning reading.
+   */
+  orientation: Orientation;
   tier: Tier | null;
   failure: "low-tracking" | "no-reference" | null;
   /** Mean per-frame pose credit over scorable frames, 0..1. */
@@ -96,9 +107,13 @@ export interface PoseRoundResult {
   /**
    * 0.9.0: how much the player moved like the clip, and the absolute accuracy credit that motion unlocks.
    * share: capped player limb motion over the clip's limb motion, 0..1. gate: 0..1 from share (MOTION.gateLow
-   * to gateHigh). credit: absolute accuracy credit 0..1. gain: the gain used, max(gain over still, gate * credit).
+   * to gateHigh). credit: absolute accuracy credit 0..1.
+   * 0.10.0: moved: whether the player moved at all, in or out of time (raw limb turns less a noise floor,
+   * capped per limb at the clip's, over the clip's), 0..1. stillGate: 0..1 from moved (MOTION.movedLow to
+   * movedHigh). gainOverStill: accuracy above the still baseline, before the still gate.
+   * gain: the gain used, max(stillGate * gainOverStill, gate * credit).
    */
-  motion: { share: number; gate: number; credit: number; gainOverStill: number; gain: number };
+  motion: { share: number; gate: number; credit: number; moved: number; stillGate: number; gainOverStill: number; gain: number };
   /** Timing credit 0..1 from the global lag. */
   timing: number;
   /** Player lag in ms; positive means the player was behind the clip. */
@@ -152,4 +167,6 @@ export interface TrajectoryRoundResult {
   matches: EventMatch[];
   extraPlayerEvents: MotionEvent[];
   axes: { x: boolean; y: boolean; h: boolean };
+  /** 0.11.0: which left/right reading of the player gave this score ("same-side" only with options.eitherSide). */
+  orientation?: Orientation;
 }

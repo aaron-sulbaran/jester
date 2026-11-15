@@ -130,7 +130,7 @@ test("someone silent for 10 s is dropped, the round stops waiting for them, and 
   assert.equal(b.allDone, false);                         // Ana has not finished
   // Ana's tab closes without saying goodbye (no leave message, she just stops hearing and talking): only Cy keeps pinging
   a.transport.close();
-  cb.t += 11000; cc.t += 11000;
+  cb.t += 21000; cc.t += 21000;                           // mid-round players get 20 s before being dropped
   c.tick(); await tick();                                 // Cy's ping reaches Ben, so Ben knows Cy is alive
   b.tick();                                               // Ben prunes: Ana has been silent for 11 s
   assert.deepEqual(b.roster().map((p) => p.id), ["ben", "cy"]);
@@ -173,4 +173,101 @@ test("leaving stops the heartbeat", () => {
   assert.ok(r.timer);
   r.leave();
   assert.equal(r.timer, null);
+});
+
+// ---- media (pictures sent in chunks) ----
+
+const rawMedia = (room, from, over) => ({ room: "ABCD", from, sentAt: 0, type: "media", kind: "face", mid: "m1", i: 0, n: 1, data: "x", ...over });
+
+test("a 100 KB string sent in chunks is fully reassembled on the other room", async () => {
+  const [a, b] = makeRooms(["ana", "ben"]);
+  a.join(); b.join(); await tick();
+  const text = "abc".repeat(35000);
+  await a.sendMedia("face", text, { delayMs: 0 });
+  await tick();
+  assert.equal(b.media.get("ana").face, text);
+  assert.equal(a.media.get("ana").face, text);
+  assert.equal(b.standings().find((r) => r.id === "ana").media.face, text);
+  assert.deepEqual(b.standings().find((r) => r.id === "ben").media, {});
+});
+
+test("chunks arriving out of order still reassemble", async () => {
+  const bus = new MemoryBus();
+  const raw = bus.transport();
+  const r = new Room({ transport: bus.transport(), code: "abcd", playerId: "ben", now: () => 1000 });
+  raw.send(rawMedia(r, "ana", { i: 2, n: 3, data: "C" }));
+  raw.send(rawMedia(r, "ana", { i: 0, n: 3, data: "A" }));
+  await tick();
+  assert.equal(r.media.has("ana"), false);
+  raw.send(rawMedia(r, "ana", { i: 1, n: 3, data: "B" }));
+  await tick();
+  assert.equal(r.media.get("ana").face, "ABC");
+});
+
+test("two players sending different kinds do not mix", async () => {
+  const [a, b, c] = makeRooms(["ana", "ben", "cy"]);
+  a.join(); b.join(); c.join(); await tick();
+  await Promise.all([a.sendMedia("face", "F".repeat(90000), { delayMs: 0 }), b.sendMedia("cutouts", "C".repeat(90000), { delayMs: 0 })]);
+  await tick();
+  assert.deepEqual(Object.keys(c.media.get("ana")), ["face"]);
+  assert.deepEqual(Object.keys(c.media.get("ben")), ["cutouts"]);
+  assert.equal(c.media.get("ana").face, "F".repeat(90000));
+  assert.equal(c.media.get("ben").cutouts, "C".repeat(90000));
+});
+
+test("a newer send of the same kind replaces the older one", async () => {
+  const [a, b] = makeRooms(["ana", "ben"]);
+  a.join(); b.join(); await tick();
+  await a.sendMedia("face", "old", { delayMs: 0 }); await tick();
+  await a.sendMedia("face", "new", { delayMs: 0 }); await tick();
+  assert.equal(b.media.get("ana").face, "new");
+});
+
+test("a new round clears media on the host and on guests", async () => {
+  const [a, b] = makeRooms(["ana", "ben"]);
+  a.join(); b.join(); await tick();
+  await a.sendMedia("face", "hello", { delayMs: 0 }); await tick();
+  assert.equal(b.media.size, 1);
+  a.start("clip"); await tick();
+  assert.equal(a.media.size, 0);
+  assert.equal(b.media.size, 0);
+});
+
+test("hostile media messages are ignored", async () => {
+  const bus = new MemoryBus();
+  const raw = bus.transport();
+  const r = new Room({ transport: bus.transport(), code: "abcd", playerId: "ben", now: () => 1000 });
+  const bad = [
+    { kind: "bad kind!" }, { kind: "x".repeat(21) }, { kind: 5 }, { kind: "" },
+    { mid: 7 }, { i: 1, n: 1 }, { i: -1, n: 2 }, { i: 0, n: 201 }, { i: 0, n: 0 }, { i: 0.5, n: 2 }, { i: "0" },
+    { data: 42 }, { data: null }, { data: "x".repeat(60001) },
+  ];
+  for (const over of bad) raw.send(rawMedia(r, "evil", over));
+  await tick();
+  assert.equal(r.media.size, 0);
+  assert.equal(r.pendingMedia.size, 0);
+});
+
+test("text over 3,000,000 chars or a bad kind throws", async () => {
+  const [a] = makeRooms(["ana"]);
+  await assert.rejects(() => a.sendMedia("face", "x".repeat(3_000_001), { delayMs: 0 }), /large/);
+  await assert.rejects(() => a.sendMedia("bad kind", "x", { delayMs: 0 }), /kind/);
+  await assert.rejects(() => a.sendMedia("k".repeat(21), "x", { delayMs: 0 }), /kind/);
+  await a.sendMedia("face", "x".repeat(3_000_000), { delayMs: 0 }); // exactly the limit is fine
+});
+
+test("a player who leaves or goes silent disappears from media", async () => {
+  const bus = new MemoryBus();
+  const clock = { t: 1000 };
+  const a = clockRoom(bus, "ana", clock, 1), b = clockRoom(bus, "ben", clock, 2), c = clockRoom(bus, "cy", clock, 3);
+  a.join(); b.join(); c.join(); await tick();
+  await b.sendMedia("face", "BEN", { delayMs: 0 });
+  await c.sendMedia("face", "CY", { delayMs: 0 });
+  await tick();
+  assert.equal(a.media.size, 2);
+  b.leave(); await tick();
+  assert.equal(a.media.has("ben"), false);
+  clock.t += 20000; // cy goes silent
+  a.prune();
+  assert.equal(a.media.has("cy"), false);
 });

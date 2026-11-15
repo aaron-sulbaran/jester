@@ -60,6 +60,22 @@
         <button type="button" class="btn btn-main" id="leaveGo"><span class="ticket"><span class="ticket-text">Leave</span></span></button>
       </div>
     </dialog>
+    <!-- The camera and tracker are starting (ui/feel.ts). Shown only if it takes a moment. -->
+    <dialog class="leave" id="cameraWait" aria-labelledby="cameraWaitText">
+      <div class="note-wrap"><p class="note" id="cameraWaitText">Starting the camera...</p></div>
+      <progress id="cameraWaitBar" value="0" max="1"></progress>
+      <button type="button" class="btn btn-quiet" id="cameraWaitCancel">Cancel</button>
+    </dialog>
+    <!-- The camera was refused, is missing, or the tracker did not start: three ways out (ui/feel.ts). -->
+    <dialog class="leave" id="cameraDialog" aria-labelledby="cameraTitle" aria-describedby="cameraText">
+      <div class="masking"><h2 class="tape" id="cameraTitle">The camera is blocked</h2></div>
+      <div class="note-wrap"><p class="note" id="cameraText"></p></div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="cameraHome">Go home</button>
+        <button type="button" class="btn btn-quiet" id="cameraUnderstudy">Let the computer play this turn</button>
+        <button type="button" class="btn btn-main" id="cameraRetry"><span class="ticket"><span class="ticket-text">Try the camera again</span></span></button>
+      </div>
+    </dialog>
 
     <!-- How to play: opens on a first visit, and from the start screen. -->
     <section class="screen" id="screen-howto" hidden>
@@ -81,11 +97,12 @@
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
-      <p class="aside"><button type="button" class="link" id="howtoLink">How to play</button></p>
+      <nav class="start-nav" aria-label="Help"><button type="button" class="btn btn-quiet" id="howtoLink">How to play</button></nav>
       <div class="modes-pick" role="radiogroup" aria-label="Game mode">
         <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
         <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
       </div>
+      <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
 
       <div class="bank" id="bank" role="group" aria-label="Clips"></div>
       <p class="typed bank-note" id="bankNote" hidden></p>
@@ -119,7 +136,8 @@
         </div>
       </details>
 
-      <p class="aside">
+      <!-- Team tools: shown on a local dev server or with ?dev=1, never to visitors (game.ts sets body.dev). -->
+      <p class="aside dev-only">
         <label class="link upload">Play a file from this computer (testing)<input id="upload" type="file" accept="video/*" /></label>
         <button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button>
       </p>
@@ -140,13 +158,16 @@
         <div id="roomLobby" hidden>
           <p class="note">Room code <b id="roomCodeText"></b> <span id="roomWhere"></span>. Tell your friends.</p>
           <ul id="roomRoster" class="how"></ul>
+          <p class="aside">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
           <div id="roomHostRow" hidden>
-            <label class="field"><span>Clip</span>
-              <select id="roomScene">
-                <option value="dribble">Pickup game: someone, and something they keep bouncing</option>
-                <option value="demo">Dance break: someone dancing, and something flying around</option>
-              </select>
-            </label>
+            <div class="field"><span>Pick what you will play (the host chooses for everyone)</span>
+              <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick what you will play">
+                <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              </div>
+            </div>
             <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
             <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
           </div>
@@ -199,6 +220,8 @@
         <button type="button" class="chip" data-speed="0.75" aria-pressed="false">A bit slower</button>
         <button type="button" class="chip" data-speed="0.5" aria-pressed="false">Half speed</button>
       </div>
+      <!-- Only with ?demo=1 (ui/feel.ts): the simulated player plays every turn, so no camera is needed. -->
+      <label class="consent" id="demoRow" hidden><input type="checkbox" id="demoUnderstudy" checked /><span>Demo: the computer plays every turn, so no camera is needed.</span></label>
       <div class="row-actions">
         <button type="button" class="btn btn-quiet" id="castBack">Back</button>
         <button type="button" class="btn btn-main" id="deal"><span class="ticket"><span class="ticket-text">Deal the secret parts</span></span></button>
@@ -230,6 +253,8 @@
               <canvas id="youCanvas" width="640" height="480" aria-label="You, in a mirror"></canvas>
               <canvas id="guideCanvas" width="640" height="360" aria-label="Your shape to copy"></canvas>
               <div class="count" id="count" aria-live="assertive" hidden></div>
+              <!-- No pose for 1.5 s while the moves count (ui/feel.ts). A notice only; the turn carries on. -->
+              <p class="problem lost" id="lostNotice" role="status" hidden>The camera can't see you. Step back into the picture.</p>
             </div>
             <div class="valance" aria-hidden="true"><i></i></div>
             <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
@@ -277,7 +302,7 @@
       </div>
       <progress id="revealBar" value="0" max="1"></progress>
       <div class="reveal-pace" role="group" aria-label="Reveal speed">
-        <button type="button" id="revealFast" class="btn btn-quiet">Speed: <span id="revealFastLabel">1x</span></button>
+        <button type="button" id="revealFast" class="btn btn-quiet"><span>Speed: <span id="revealFastLabel">1x</span></span></button>
         <button type="button" id="revealSkip" class="btn btn-quiet">Skip to results</button>
       </div>
     </section>
