@@ -2,7 +2,7 @@
 // effect on the score is known (late, frozen, seated, walked out, jittered, mirrored), so the suite grows without
 // anyone playing more rounds. Deterministic: no randomness, no AI. The thresholds live in ../expectations.ts.
 
-import type { PoseFrame, PoseTimeline, PoseRoundResult } from "../../engine/src/index.ts";
+import { constants, type PoseFrame, type PoseTimeline, type PoseRoundResult } from "../../engine/src/index.ts";
 import { EXPECT } from "../expectations.ts";
 import { legSwingDeg, rescore, type Rescored, type Verdict } from "./judge.ts";
 import { packPose, unpackPose, type AnyPackedPose, type RoundRecord } from "./record.ts";
@@ -94,6 +94,11 @@ export function judgeDerived(transform: Transform, source: Rescored, record: Rou
   switch (transform) {
     case "late": {
       if (src === null) return { expectation: "lag moves by 500 ms", holds: null, detail: "source has no score" };
+      // A player already far behind, pushed 500 ms later, lands past the lags the engine looks for: no answer is right.
+      const searchEnd = constants.LAG.maxMs - D.lateLagToleranceMs;
+      if (source.now.lagMs + D.lateShiftMs > searchEnd) {
+        return { expectation: "lag moves by 500 ms", holds: null, detail: `${show(s)}; source lag ${Math.round(source.now.lagMs)} ms plus ${D.lateShiftMs} is past the engine's lag search (up to ${constants.LAG.maxMs} ms)` };
+      }
       const lagMove = now.lagMs - source.now.lagMs;
       const holds = s !== null && Math.abs(lagMove - D.lateShiftMs) <= D.lateLagToleranceMs && src - s <= D.lateMaxBelowSource;
       return { expectation: `lag moves by ${D.lateShiftMs} +- ${D.lateLagToleranceMs} ms, at most ${D.lateMaxBelowSource} below source`, holds, detail: `${show(s)}, lag ${Math.round(source.now.lagMs)} -> ${Math.round(now.lagMs)} ms` };
