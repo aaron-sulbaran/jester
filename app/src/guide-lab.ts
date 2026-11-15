@@ -3,7 +3,7 @@
 // built here, with the tracker's depth or without it. Dev only.
 
 import { boxFromLandmarks, type Guide } from "../../clip/src/index.ts";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideGaveWay, guidePoseAt, guideSliceAt, startGuideTurn, steadyGuide, type BlindStyle } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, drawFollowCard, enableFollowSwap, guideGaveWay, guidePoseAt, guideSliceAt, startGuideTurn, steadyGuide, type BlindStyle } from "./clipside/blind.ts";
 import { CONSTRUCTIONS, JESTER_COLOURS, type Construction, type StageLook } from "./clipside/puppet.ts";
 
 const W = 1280, H = 720, HZ = 15, DURATION_S = 12, ASPECT = W / H, SCALE = 0.45;
@@ -178,6 +178,8 @@ function tick(now: number) {
     const style: BlindStyle = { background: "#16161d", color: colorPick.value, stage: panel.stage(), puppet: panel.puppet() };
     drawBlindBackground(panel.canvas, guide, view, style, pose);
     drawBlindSubject(panel.canvas, slice, 0, "puppet", view, style, pose);
+    drawFollowCard(panel.canvas, slice, 0, view, style);
+    enableFollowSwap(panel.canvas, () => {});
   }
 }
 timeSlider.addEventListener("input", () => { pauseBox.checked = true; });

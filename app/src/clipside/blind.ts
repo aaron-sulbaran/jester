@@ -3,6 +3,7 @@
 // Placement comes from `placeSubject` in ../../../clip.
 
 import { steadyFps, typicalMs } from "./guideRate.ts";
+import { shownArea, type ShownArea } from "./shownArea.ts";
 import { boneLengths, boxFromLandmarks, bodyTurns, growLimit, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
 import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
@@ -272,7 +273,7 @@ const MIN_FRAMES = 20;
 
 /** What the guide draws this turn: the 3D jester, the flat sticker, or the stick figure on the plain background. */
 type GuideMode = "3d" | "flat" | "stick";
-const guard = { mode: "3d" as GuideMode, from: 0, draws: [] as number[], said: false, decided: false, first: true, turn: 0 };
+const guard = { mode: "3d" as GuideMode, draws: [] as number[], said: false, decided: false, first: true, turn: 0 };
 
 function giveWay(to: GuideMode, why: string) {
   guard.mode = to;
@@ -287,7 +288,7 @@ function giveWay(to: GuideMode, why: string) {
  */
 export function startGuideTurn(puppet: Construction | null) {
   const turn = ++guard.turn;
-  Object.assign(guard, { from: 0, draws: [], said: false, decided: false, mode: "3d" });
+  Object.assign(guard, { draws: [], said: false, decided: false, mode: "3d" });
   if (!puppet) return;
   if (puppet === "d") {
     want3d();
@@ -309,23 +310,196 @@ export function startGuideTurn(puppet: Construction | null) {
   requestAnimationFrame(count);
 }
 
+// ---- Following the jester or the key joints ----
+
+/**
+ * Which view a player follows. "jester" (the default): the 3D jester big, with the same pose's key joints on a
+ * card in the top corner. "joints": the key joints big, the card offering the jester back. Tapping the card swaps
+ * them; the choice is remembered in this browser. The key joints are the ones drawn on the player's own body.
+ */
+export type Follow = "jester" | "joints";
+const FOLLOW_KEY = "jester.follow";
+let follow: Follow = (() => { try { return localStorage.getItem(FOLLOW_KEY) === "joints" ? "joints" : "jester"; } catch { return "jester"; } })();
+export const getFollow = (): Follow => follow;
+export function setFollow(f: Follow) {
+  follow = f;
+  try { localStorage.setItem(FOLLOW_KEY, f); } catch { /* private mode: it just will not be remembered */ }
+}
+
+/** Shoulders, elbows, wrists, hips, knees and ankles, and the lines between them. */
+const KEY_BONES: [number, number][] = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
+const KEY_JOINTS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+
+/** The key joints figure: thick lines and dots in the player's colour, outlined in ink, `unit` (a torso length) setting the size. */
+function drawKeyJoints(ctx: CanvasRenderingContext2D, landmarks: readonly (readonly [number, number, number])[], map: (x: number, y: number) => [number, number], unit: number, color: string) {
+  const at = (i: number) => { const l = landmarks[i]; return l && l[2] >= MIN_VISIBILITY ? map(l[0], l[1]) : null; };
+  const line = Math.max(3, unit * 0.12), dot = Math.max(4, unit * 0.11), ink = Math.max(2, unit * 0.04);
+  ctx.save();
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const [width, colour] of [[line + ink * 2, "#1E1B18"], [line, color]] as const) {
+    ctx.strokeStyle = colour; ctx.lineWidth = width;
+    for (const [a, b] of KEY_BONES) {
+      const p = at(a), q = at(b);
+      if (!p || !q) continue;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    }
+  }
+  for (const j of KEY_JOINTS) {
+    const p = at(j);
+    if (!p) continue;
+    ctx.beginPath(); ctx.arc(p[0], p[1], dot, 0, Math.PI * 2);
+    ctx.fillStyle = "#FFFFFF"; ctx.fill(); ctx.lineWidth = ink; ctx.strokeStyle = "#1E1B18"; ctx.stroke();
+  }
+  // The head as a ring at the nose, so the figure reads as a body.
+  const nose = at(0);
+  if (nose) { ctx.beginPath(); ctx.arc(nose[0], nose[1], unit * 0.28, 0, Math.PI * 2); ctx.lineWidth = line * 0.8; ctx.strokeStyle = color; ctx.stroke(); }
+  ctx.restore();
+}
+
+/** On screen, the corner card is never narrower than this (CSS pixels): a readable label and a tap target. */
+const CARD_MIN_CSS = 64;
+
+/** The part of the canvas on screen (object-fit: cover crops it on the part screen), and its CSS scale. */
+function onScreen(canvas: HTMLCanvasElement): ShownArea {
+  const r = canvas.getBoundingClientRect();
+  return shownArea(canvas.width, canvas.height, r.width, r.height, r.width > 0 ? getComputedStyle(canvas).objectFit : "fill");
+}
+
+/**
+ * Where the corner card sits: the top right of the part of the canvas on screen, about a quarter of its width and
+ * its shape. Where that would be under CARD_MIN_CSS across, an upright card at least that wide (at most half the
+ * shown width). `perCss` is canvas pixels per CSS pixel.
+ */
+export function followCard(canvas: HTMLCanvasElement) {
+  const a = onScreen(canvas);
+  const m = Math.round(a.w * 0.03);
+  let w = a.w * 0.26, h = (w * a.h) / a.w;
+  const least = CARD_MIN_CSS * a.sx;
+  if (Math.min(w / a.sx, h / a.sy) < CARD_MIN_CSS) { w = Math.min(Math.max(w, least), a.w * 0.5); h = w * 1.35; }
+  w = Math.round(w); h = Math.round(h);
+  return { x: Math.round(a.x + a.w - w - m), y: Math.round(a.y + m), w, h, perCss: a.sx };
+}
+
+/** The guide's whole range of movement in canvas pixels (the puppet's room: hat and shoes included). */
+function roomOnCanvas(guide: Guide, view: View) {
+  let room = rooms.get(guide);
+  if (!room) { room = puppetRoom(guide); rooms.set(guide, room); }
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (const f of room.boxTrack.frames) {
+    const b = f.box;
+    if (!b) continue;
+    left = Math.min(left, b.cx - b.w / 2); right = Math.max(right, b.cx + b.w / 2);
+    top = Math.min(top, b.cy - b.h / 2); bottom = Math.max(bottom, b.cy + b.h / 2);
+  }
+  if (!(right > left && bottom > top)) return null;
+  const [l, t] = toCanvas(view, guide, left, top), [r, b] = toCanvas(view, guide, right, bottom);
+  return { left: l, top: t, right: r, bottom: b };
+}
+
+/**
+ * The corner card over a drawn puppet guide: the same pose's key joints (following the jester), or the jester to
+ * tap back to (following the joints). Nothing when the guard has handed the turn to the stick figure, which is
+ * the key joints already.
+ */
+export function drawFollowCard(canvas: HTMLCanvasElement, guide: Guide, index: number, view: View, style: BlindStyle) {
+  if (guard.mode === "stick") return;
+  const landmarks = guide.timeline?.frames[index]?.landmarks;
+  const ctx = canvas.getContext("2d")!;
+  const card = followCard(canvas);
+  const perCssPx = card.perCss;
+  const ink = Math.max(2, 2.5 * perCssPx);
+  ctx.save();
+  // A paper card with the look's hard shadow.
+  ctx.fillStyle = "rgba(30,27,24,0.34)";
+  ctx.fillRect(card.x + 4 * perCssPx, card.y + 5 * perCssPx, card.w, card.h);
+  ctx.fillStyle = "#FFFFFF"; ctx.fillRect(card.x, card.y, card.w, card.h);
+  ctx.lineWidth = ink; ctx.strokeStyle = "#1E1B18"; ctx.strokeRect(card.x, card.y, card.w, card.h);
+  // The label: one line when it fits the card at a readable size (12 CSS pixels or more), else "Tap to" over "follow".
+  const words = follow === "jester" ? ["Tap to follow"] : ["Tap to follow", "the jester"];
+  const least = 12 * perCssPx;
+  const sizeFor = (lines: string[], size: number) => {
+    ctx.font = `700 ${size}px Gaegu, "Comic Sans MS", cursive`;
+    const wide = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    return wide > card.w * 0.88 ? (size * card.w * 0.88) / wide : size;
+  };
+  let lines = words;
+  let labelPx = sizeFor(lines, Math.max(least, card.h * 0.11));
+  if (labelPx < least) { lines = words.flatMap((l) => (l === "Tap to follow" ? ["Tap to", "follow"] : [l])); labelPx = sizeFor(lines, least); }
+  labelPx = Math.floor(labelPx);
+  ctx.font = `700 ${labelPx}px Gaegu, "Comic Sans MS", cursive`;
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillStyle = "#1E1B18";
+  const lineH = labelPx * 1.05;
+  if (follow === "jester" && landmarks) {
+    const band = lines.length * lineH + labelPx * 0.35;
+    const room = roomOnCanvas(guide, view);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h - band); ctx.clip();
+    // The guide's whole range of movement fitted into the card above the label, so the figure never leaves it.
+    const pad = card.w * 0.08, pw = card.w - pad * 2, ph = card.h - band - pad;
+    const k = room ? Math.min(pw / (room.right - room.left), ph / (room.bottom - room.top)) : card.w / canvas.width;
+    const cx = room ? (room.left + room.right) / 2 : canvas.width / 2, cy = room ? (room.top + room.bottom) / 2 : canvas.height / 2;
+    const map = (x: number, y: number): [number, number] => {
+      const [px, py] = toCanvas(view, guide, x, y);
+      return [card.x + card.w / 2 + (px - cx) * k, card.y + pad + ph / 2 + (py - cy) * k];
+    };
+    const torso = puppetClip(guide).torso;
+    const unit = (torso !== null ? torso * view.scale : canvas.height * 0.15) * k;
+    drawKeyJoints(ctx, landmarks, map, unit, style.color);
+    ctx.restore();
+    lines.forEach((l, i) => ctx.fillText(l, card.x + card.w / 2, card.y + card.h - labelPx * 0.3 - (lines.length - 1 - i) * lineH));
+  } else {
+    const top = card.y + card.h / 2 - ((lines.length - 1) * lineH) / 2 + labelPx * 0.4;
+    lines.forEach((l, i) => ctx.fillText(l, card.x + card.w / 2, top + i * lineH));
+  }
+  ctx.restore();
+}
+
+const swappers = new WeakMap<HTMLCanvasElement, () => void>();
+
+/** Lets a tap on the corner card swap what the player follows; `redraw` repaints the canvas after a swap. */
+export function enableFollowSwap(canvas: HTMLCanvasElement, redraw: () => void) {
+  const known = swappers.has(canvas);
+  swappers.set(canvas, redraw);
+  if (known) return;
+  const inCard = (e: MouseEvent) => {
+    const r = canvas.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    // The tap in canvas pixels, through the same object-fit the card was placed with.
+    const a = onScreen(canvas);
+    const x = a.offX + (e.clientX - r.left) * a.sx, y = a.offY + (e.clientY - r.top) * a.sy;
+    const c = followCard(canvas);
+    return x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h;
+  };
+  canvas.addEventListener("click", (e) => {
+    if (!inCard(e) || guard.mode === "stick") return;
+    setFollow(follow === "jester" ? "joints" : "jester");
+    swappers.get(canvas)?.();
+  });
+  canvas.addEventListener("mousemove", (e) => { canvas.style.cursor = inCard(e) && guard.mode !== "stick" ? "pointer" : ""; });
+  // A canvas drawn before it was laid out (the part screen) drew its card at the wrong size: draw again once it has one.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => swappers.get(canvas)?.()).observe(canvas);
+}
+
 /** True when the guard has handed this turn to the stick figure. */
 export function guideGaveWay(): boolean {
   return guard.mode === "stick";
 }
 
+/** Real 3D draws the draw check decides on. */
+const MIN_DRAWS = 10;
+
 /**
- * Adds one 3D draw's time. The very first 3D draw on the page (three.js compiling its shaders) is left out of the
- * average. The decision comes at the end of the first second, or sooner after 30 draws, from at least 3 draws.
+ * Adds one real 3D draw's time. The very first 3D draw on the page (three.js compiling its shaders) is left out.
+ * The decision waits for MIN_DRAWS real draws: a pose already drawn is reused, so the countdown's still pose gives
+ * only a few, and the first ones after the canvas is resized are slow (3 of them read 5.5 ms on the M4 at 1440,
+ * where the typical draw is under 2).
  */
 function measure3d(ms: number) {
   if (guard.first) { guard.first = false; return; }
   if (guard.decided) return;
-  const now = performance.now();
-  if (!guard.from) guard.from = now;
   guard.draws.push(ms);
   const n = guard.draws.length;
-  if (n < 3 || (now - guard.from < MEASURE_MS && n < 30)) return;
+  if (n < MIN_DRAWS) return;
   guard.decided = true;
   const typical = typicalMs(guard.draws);
   if (document.body.classList.contains("dev")) console.info(`Guide check: the 3D jester took ${typical.toFixed(2)} ms a typical draw over ${n} draws.`);
@@ -404,6 +578,14 @@ export function drawBlindSubject(
 
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   if (!landmarks) return;
+
+  if (look === "puppet" && guard.mode !== "stick" && follow === "joints") {
+    // Following the joints: the key joints big, at the stick figure's places, sized like the puppet.
+    const clipFacts = (pose ?? guidePoseAt(guide, index)).clip;
+    const unit = clipFacts.torso !== null ? clipFacts.torso * view.scale : sizePx * 0.3;
+    drawKeyJoints(ctx, landmarks, map, unit, style.color);
+    return;
+  }
 
   if (look === "puppet" && guard.mode !== "stick") {
     const at = pose ?? guidePoseAt(guide, index);
