@@ -389,6 +389,177 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .aside { display: flex; flex-wrap: wrap; gap: 6px 22px; justify-content: center; }
 .aside .upload { position: relative; overflow: hidden; display: inline-flex; align-items: center; min-height: 44px; }
 
+/* ---------- Play with friends online (#screen-room, ui/room.ts) ---------- */
+/* Before a room: your name, the Make a room ticket, and a paper strip to join with a friend's code. From a join
+   link (#roomJoin[data-invite]) the room's code shows as stickers and Join is the ticket. In a room: the code as
+   alphabet stickers with a QR print beside it, everyone's jester, the host's choices or the guest's ready ticket,
+   and a chat page torn from the Jester's notebook. Everything new is on #room ids or room- classes. */
+.room-box { display: grid; justify-items: center; gap: 20px; width: 100%; }
+#roomBack { min-height: 44px; }
+#roomJoin { display: grid; justify-items: center; gap: 22px; width: min(100%, 460px); }
+.room-name { width: 100%; text-align: left; }
+#roomName { min-height: 52px; font-size: 28px; }
+.room-have-code {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 12px 16px;
+  width: 100%; padding: 16px 20px 18px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
+}
+.room-have-code .field { flex: 1 1 200px; min-width: 0; text-align: left; }
+#roomCode { width: 100%; min-width: 0; font: 400 30px var(--sticker); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+#roomCode::placeholder { color: #C9B497; }
+/* From a join link: the code on top, then your name, then the Join ticket; Make a room steps back to a tag. */
+.room-invite { display: grid; justify-items: center; gap: 4px; }
+#roomJoin[data-invite] #roomHaveCode { width: auto; padding: 0; background: none; box-shadow: none; rotate: 0deg; }
+#roomJoin[data-invite] #roomHaveCode .field { display: none; }
+#roomJoin[data-invite] #roomCreateRow { order: 1; }
+
+/* The room code: alphabet stickers like the wordmark, as big as the space allows, under a strip of tape. */
+.room-code-label { margin: 0; font-size: 16px; }
+.room-code-tape .tape { font-size: 30px; padding: 5px 20px 7px 16px; }
+.room-code { margin: 0; padding: 2px 6px 10px; font: 400 clamp(80px, 8.2vw, 120px)/1 var(--sticker); }
+/* A code is one word: it never breaks across lines. */
+.room-code .letters { flex-wrap: nowrap; }
+.room-code .letters span { margin-right: .05em; }
+
+/* In a room: two columns on a laptop, each stacked on its own. Left: the code, the QR and the lineup. Right: the
+   host's choices or the guest's ready ticket. The chat goes under the shorter side (room.ts moves it). */
+#screen-room:has(#roomLobby:not([hidden])) { justify-content: flex-start; padding-top: 96px; }
+#roomLobby { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 26px 52px; width: min(100%, 1240px); align-items: start; text-align: left; }
+.room-side { display: grid; gap: 26px; align-content: start; min-width: 0; }
+.room-door { display: flex; align-items: center; gap: 34px; }
+.room-code-card { flex: 1 1 auto; display: grid; justify-items: start; gap: 4px; min-width: 0; }
+.room-link-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.room-link { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+#roomCopy { min-height: 44px; padding: 8px 18px 8px 36px; font-size: 16px; }
+#roomCopy::before { left: 13px; width: 10px; height: 10px; }
+/* The QR on a taped photo print, captioned in pen. */
+.room-qr { flex: none; width: clamp(132px, 10.5vw, 156px); margin: 0; padding: 10px 10px 4px; rotate: 2.5deg; }
+.room-qr .washi { top: -13px; left: 50%; translate: -50% 0; width: 84px; height: 24px; rotate: -4deg; }
+.room-qr-code { display: block; aspect-ratio: 1; }
+.room-qr-code svg { display: block; width: 100%; height: auto; }
+.room-qr-code rect { fill: var(--photo); }
+.room-qr-code path { fill: var(--ink); }
+.room-qr figcaption { font: 700 22px/1.2 var(--hand); letter-spacing: -.03em; text-align: center; white-space: nowrap; }
+
+/* Everyone in the room: their jester in their colour over a tape name tag. Ready players dance. */
+.room-cast-wrap { display: grid; gap: 14px; }
+.room-cast { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: flex-end; }
+.room-seat { display: grid; justify-items: center; width: 136px; }
+.room-seat .face-jester { width: 136px; height: 136px; margin-bottom: -16px; filter: url(#sticker); }
+.room-seat-name {
+  position: relative; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 24px; padding: 3px 14px 5px 12px; rotate: -2deg; background-color: color-mix(in srgb, var(--who) 50%, #EADDB9);
+}
+.room-seat:nth-child(even) .room-seat-name { rotate: 2deg; }
+.room-seat-says { margin-top: 4px; font-size: 13px; }
+.room-seat[data-ready="false"] .room-seat-says { color: #6B5A48; }
+.room-table .room-privacy { max-width: 62ch; margin-top: 4px; font-size: 13px; line-height: 1.45; color: #6B5A48; }
+
+/* The host's choices: the clip cards, small, two to a row; Blind or Normal as one paper switch; the Deal ticket. */
+.room-table { display: grid; gap: 18px; }
+#roomHostRow, #roomGuestRow { display: grid; gap: 16px; justify-items: start; }
+.room-table .aside { display: block; text-align: left; }
+.room-pick { width: 100%; gap: 10px; }
+.room-step { font: 700 30px/1 var(--hand); letter-spacing: -.045em; }
+#roomModes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+#roomModes .mode { width: auto; padding: 10px 14px 12px; }
+#roomModes .mode b { font-size: 25px; }
+#roomModes .mode span { font-size: 13px; }
+.room-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+#roomPlayMode { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg; }
+#roomPlayMode .mode { width: auto; min-width: 120px; min-height: 48px; padding: 6px 20px 8px; place-items: center; text-align: center; background: none; box-shadow: none; rotate: 0deg; transition: background-color .18s var(--ease); }
+#roomPlayMode .mode b { font-size: 26px; }
+#roomPlayMode .mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#roomPlayMode .mode:hover { transform: none; background: #F4EBDD; }
+#roomPlayMode .mode[aria-checked="true"] { background: var(--ticket); box-shadow: inset 0 0 0 2px var(--ink); }
+.room-play-says { margin: 0; flex: 1 1 180px; font-size: 15px; }
+#roomDeal { margin-top: 4px; }
+
+/* A guest's one action: the ready ticket. Tapping it brings down a red rubber stamp. */
+#roomGuestRow .note-wrap { max-width: min(520px, 100%); }
+#roomReady { margin-top: 6px; }
+/* It lands on the ticket's tear-off stub, the way an usher stamps a ticket. */
+.room-stamp {
+  position: absolute; z-index: 2; top: 50%; right: -40px; translate: 0 -50%; padding: 2px 10px 5px; pointer-events: none;
+  font: 400 24px/1 var(--sticker); color: var(--stamp); background: var(--photo); border: 3px solid var(--stamp); border-radius: 5px;
+  box-shadow: 3px 4px 0 var(--shade); rotate: -14deg; opacity: 0; scale: 1.5;
+}
+#roomReady[aria-pressed="true"] .room-stamp { opacity: 1; scale: 1; }
+
+/* Chat: a page torn from the Jester's notebook, in ballpoint. Lines live on each device until it leaves. */
+.room-chat { filter: drop-shadow(4px 5px 0 var(--shade)); min-width: 0; }
+.room-chat-page {
+  --lh: 32px;
+  display: grid; padding: 22px 20px 16px 54px; rotate: .5deg;
+  background-color: #FFFEFA;
+  background-image:
+    linear-gradient(90deg, transparent 38px, #EE9C9C 38px 40px, transparent 40px),
+    repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh));
+  background-position: 0 0, 0 22px;
+  clip-path: polygon(0 7px, 5% 1px, 10% 6px, 16% 0, 23% 5px, 29% 1px, 36% 7px, 42% 2px, 49% 5px, 56% 0, 62% 6px, 69% 2px, 75% 6px, 82% 0, 88% 5px, 94% 1px, 100% 6px, 100% 100%, 0 100%);
+}
+.room-chat-head { margin: 0; font: 700 30px/var(--lh) var(--hand); letter-spacing: -.045em; color: var(--ink); }
+.room-chat-lines { height: calc(var(--lh) * 3); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #C3D2F1 transparent; }
+.room-chat-log { list-style: none; margin: 0; padding: 0; }
+.room-chat-log li, .room-chat-empty { margin: 0; font: 700 22px/var(--lh) var(--hand); letter-spacing: -.02em; color: var(--pen); overflow-wrap: anywhere; }
+.room-chat-log b { color: var(--ink); }
+.room-chat-empty { color: #6B5A48; }
+.room-chat-form { display: flex; gap: 10px; align-items: center; padding-top: 6px; }
+#roomChatText {
+  flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 4px 2px; border: 0; border-bottom: 2px dashed #C9B497; background: transparent;
+  font: 700 22px var(--hand); letter-spacing: -.02em; color: var(--pen);
+}
+#roomChatText::placeholder { color: #9A8B7A; }
+#roomChatSend { min-height: 44px; padding: 8px 18px 8px 36px; font-size: 16px; }
+#roomChatSend::before { left: 13px; width: 10px; height: 10px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The one moment: the code's stickers slap down one after another when the room opens. */
+  /* Each sticker follows a little sooner than the last (room.ts sets --d). */
+  #roomLobby:not([hidden]) .room-code .letters span, #roomInvite:not([hidden]) .room-code .letters span { animation: slap .42s var(--ease) both; animation-delay: var(--d, 0s); }
+  /* The QR prints in when its library arrives, instead of popping onto a blank photo. */
+  .room-qr-code svg { animation: room-qr-in .3s var(--ease) both; }
+  @keyframes room-qr-in { from { opacity: 0; } }
+  .room-seat { animation: room-seat-in .45s var(--ease) both; }
+  @keyframes room-seat-in { from { opacity: 0; transform: translateY(16px) scale(.92); } }
+  .room-stamp { transition: opacity .1s linear, scale .2s cubic-bezier(.3, 1.4, .5, 1); }
+  .room-chat-log li:last-child { animation: room-line-in .25s var(--ease) both; }
+  @keyframes room-line-in { from { opacity: 0; transform: translateY(6px); } }
+}
+
+/* One column on a tablet or a phone: the code, the lineup, the choices or the ready ticket, then the chat. */
+@media (max-width: 900px) {
+  #roomLobby { grid-template-columns: minmax(0, 1fr); }
+  .room-side { display: contents; }
+  .room-door { order: 1; justify-content: center; }
+  .room-cast-wrap { order: 2; }
+  .room-table { order: 3; }
+  .room-chat { order: 4; }
+}
+@media (max-width: 760px) {
+  /* The code across the top, then the QR print beside the link and Copy link. */
+  .room-door { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "tape tape" "code code" "qr link"; gap: 6px 18px; align-items: center; justify-items: center; }
+  .room-code-card { display: contents; }
+  .room-door .room-code-tape { grid-area: tape; }
+  .room-door .room-code { grid-area: code; }
+  .room-code { font-size: clamp(64px, 20vw, 100px); }
+  .room-qr { grid-area: qr; width: 132px; margin-top: 8px; }
+  .room-qr figcaption { font-size: 20px; }
+  .room-link-row { grid-area: link; flex-direction: column; align-items: flex-start; justify-self: start; }
+  .room-cast { justify-content: center; gap: 6px 14px; }
+  .room-seat { width: 100px; }
+  .room-seat .face-jester { width: 100px; height: 100px; margin-bottom: -10px; }
+  .room-seat-name { font-size: 21px; }
+  #roomModes { gap: 10px; }
+  #roomModes .mode { padding: 8px 10px 10px; }
+  #roomModes .mode b { font-size: 21px; }
+  #roomModes .mode span { font-size: 13px; }
+  #roomHostRow, #roomGuestRow { justify-items: stretch; }
+  .room-chat-lines { height: calc(var(--lh) * 4); }
+  /* The ticket spans the phone, so the stamp lands on its stub inside the edge. */
+  .room-stamp { right: 6px; }
+  .room-chat-page { padding: 20px 14px 14px 48px; background-image: linear-gradient(90deg, transparent 34px, #EE9C9C 34px 36px, transparent 36px), repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh)); background-position: 0 0, 0 20px; }
+}
+
 /* ---------- Cast ---------- */
 .cast { display: grid; gap: 14px; width: min(480px, 100%); }
 .who { display: grid; grid-template-columns: 30px auto minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; }
