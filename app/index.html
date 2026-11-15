@@ -37,6 +37,11 @@
 
   <main id="game">
     <!-- Home: on every screen once you leave the start. Mid-game it asks first. -->
+    <!-- Top right on every screen: How to play (start screen only) and Sound (game.ts). -->
+    <nav class="side-nav" id="sideNav" aria-label="Help and sound">
+      <button type="button" class="btn btn-quiet" id="howtoLink">How to play</button>
+      <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true">Sound: on</button>
+    </nav>
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
       <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
         <svg class="tent" viewBox="0 0 120 100" aria-hidden="true" focusable="false">
@@ -97,7 +102,6 @@
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
-      <nav class="start-nav" aria-label="Help"><button type="button" class="btn btn-quiet" id="howtoLink">How to play</button></nav>
       <div class="modes-pick" role="radiogroup" aria-label="Game mode">
         <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
         <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
@@ -304,6 +308,7 @@
             <div class="valance" aria-hidden="true"><i></i></div>
             <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
             <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
+            <div class="drapes" aria-hidden="true"><div class="drape l"><i></i></div><div class="drape r"><i></i></div></div>
           </div>
         </div>
       </div>
@@ -330,6 +335,7 @@
             <div class="valance" aria-hidden="true"><i></i></div>
             <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
             <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
+            <div class="drapes" aria-hidden="true"><div class="drape l"><i></i></div><div class="drape r"><i></i></div></div>
           </div>
         </div>
       </div>
@@ -373,7 +379,7 @@
       <button id="modeBlind" class="tab">Blind mode (pass the laptop)</button>
     </nav>
     <div class="row simrow">
-      <label><input id="simPlayer" type="checkbox" /> Simulated player (no camera)</label>
+      <label><input id="simPlayer" type="checkbox" /> The computer plays (no camera)</label>
       <label id="noiseWrap" class="hidden">Wobble <input id="noise" type="range" min="0" max="40" value="10" /> <span id="noiseVal">10</span> deg</label>
     </div>
     <section id="setup" class="panel">

@@ -1,7 +1,8 @@
 // A player's own face on the 3D jester. The Blender render (art/jester/jester.py --faces) leaves the jester's
 // face as a hole and writes, for every frame, where the hole is: centre, radius, sideways squash from turning,
 // and tilt. Each frame draws the player's photo into the hole first, then the jester on top, so the cap and
-// collar sit over the edges like a mask. The photo never leaves the device.
+// collar sit over the edges like a mask. Nothing here sends the photo anywhere; in an online room the room code
+// shares it live with the other players (packMedia.ts), and it is never saved.
 
 export type JesterAnim = "idle" | "dance" | "win" | "lose";
 
