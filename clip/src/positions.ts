@@ -1,22 +1,24 @@
+import { BODY_PARTS, type BodyPart } from "../../engine/src/index.ts";
+import { thingObjectName } from "./things.ts";
 import type { Guide } from "./types.ts";
 
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth"];
 const ordinal = (n: number): string => ORDINALS[n - 1] ?? `number ${n}`;
 
 /**
- * The names for `count` people standing in a row, left to right as seen on screen: "the dancer" for one;
- * "the dancer on the left" and "on the right" at the ends, "in the middle" for the one in the centre of an
- * odd row, and "second from the left" (or right) in between. Lower case, so they read inside a sentence
- * ("was the dancer on the left").
+ * The names for `count` people standing in a row, left to right as seen on screen: "the person in the clip"
+ * for one; "the person on the left" and "on the right" at the ends, "in the middle" for the one in the
+ * centre of an odd row, and "second from the left" (or right) in between. Person, not dancer: clips are
+ * squats and boxing too. Lower case, so they read inside a sentence ("was the person on the left").
  */
 export function positionNames(count: number): string[] {
   if (count <= 0) return [];
-  if (count === 1) return ["the dancer"];
+  if (count === 1) return ["the person in the clip"];
   return Array.from({ length: count }, (_, k) => {
-    if (k === 0) return "the dancer on the left";
-    if (k === count - 1) return "the dancer on the right";
-    if (count % 2 === 1 && k === (count - 1) / 2) return "the dancer in the middle";
-    return k < count / 2 ? `the dancer ${ordinal(k + 1)} from the left` : `the dancer ${ordinal(count - k)} from the right`;
+    if (k === 0) return "the person on the left";
+    if (k === count - 1) return "the person on the right";
+    if (count % 2 === 1 && k === (count - 1) / 2) return "the person in the middle";
+    return k < count / 2 ? `the person ${ordinal(k + 1)} from the left` : `the person ${ordinal(count - k)} from the right`;
   });
 }
 
@@ -34,7 +36,7 @@ export function meanCentreX(guide: Guide): number | null {
 
 /**
  * Where a guide's subject stands for most of the clip: the median centre x of its box over the frames
- * it is seen in, or null if never seen. Unlike the mean, a dancer who steps across for a moment, or
+ * it is seen in, or null if never seen. Unlike the mean, someone who steps across for a moment, or
  * swaps sides late in the clip, keeps the side they stand on most of the time.
  */
 export function medianCentreX(guide: Guide): number | null {
@@ -46,7 +48,7 @@ export function medianCentreX(guide: Guide): number | null {
 
 /**
  * Copies of the guides with every person named by where they stand on screen (see `positionNames`),
- * from where each one stands for most of the clip (`medianCentreX`). Two dancers who swap sides are
+ * from where each one stands for most of the clip (`medianCentreX`). Two people who swap sides are
  * named by the side each holds for longer. Ties, and anyone never seen, keep
  * their order in `guides` (unseen people go after the seen ones). Things keep their labels, and the
  * order of the guides does not change. Run it on guides that share one stretch of the clip.
@@ -62,4 +64,18 @@ export function nameByPosition(guides: readonly Guide[]): Guide[] {
     const name = nameOf.get(index);
     return name === undefined ? guide : { ...guide, subject: { ...guide.subject, label: name } };
   });
+}
+
+/**
+ * What a part is called inside a sentence, played with `part`: the subject's name for the whole body
+ * ("the person on the left"); with a body part, the part first, so two "left"s do not collide ("the left
+ * hand of the person on the left"). A thing is "the ball" (its label without the number, lower case), and
+ * with a body part "the ball, with the left hand". Built here once; every screen that names a part uses it.
+ */
+export function partName(subject: Guide["subject"], part: BodyPart = "body"): string {
+  const thing = thingObjectName(subject.label);
+  const name = subject.kind === "person" ? subject.label : thing.startsWith("the ") ? thing : `the ${thing}`;
+  if (part === "body") return name;
+  const bodyPart = BODY_PARTS[part].label.toLowerCase();
+  return subject.kind === "thing" ? `${name}, with the ${bodyPart}` : `the ${bodyPart} of ${name}`;
 }
