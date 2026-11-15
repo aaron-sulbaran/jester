@@ -1,7 +1,6 @@
--- Jester: the shared round log for the eval suite (eval/README.md).
--- One row per scored round from a dev server: pose data only (no video, no images, no masks).
--- `npm run upload` adds rows and `npm run pull` reads them, both with the page's public key.
--- Rows are never changed or deleted with that key: an upload skips ids already there.
+-- Jester: the round log for the eval suite. This is development data and is public on purpose (Aaron's call for
+-- the hackathon): anyone with the page's key may add rounds and read them. Nobody may change or delete a round
+-- with that key. Pose data only: no video and no photos.
 
 create table public.rounds (
   id text primary key check (id ~ '^r-[a-z0-9]{6,12}-[a-z0-9]{6}$'),
@@ -11,21 +10,17 @@ create table public.rounds (
   tag text,
   clip_key text,
   score int,
-  -- The whole round record (eval/src/record.ts), about 0.5 MB for a 20 second round.
   record jsonb not null
 );
 
 alter table public.rounds enable row level security;
 
--- New tables no longer get grants automatically: the page's key may read and add rows, nothing else.
+-- New tables no longer get these grants automatically.
+revoke all on public.rounds from anon, authenticated;
 grant select, insert on public.rounds to anon, authenticated;
+grant select, insert, update, delete on public.rounds to service_role;
 
-create policy "anyone adds rounds"
-  on public.rounds for insert
-  to anon, authenticated
-  with check (true);
+create policy "anyone adds rounds" on public.rounds for insert to anon, authenticated with check (true);
+create policy "anyone reads rounds" on public.rounds for select to anon, authenticated using (true);
 
-create policy "anyone reads rounds"
-  on public.rounds for select
-  to anon, authenticated
-  using (true);
+-- No update or delete policy: a saved round cannot be altered or removed with the page's key.

@@ -62,6 +62,12 @@ export function loadCases(): { rounds: RoundRecord[]; skipped: string[] } {
   return { rounds: rounds.sort(byId), skipped };
 }
 
+/** Ids of the rounds already in eval/data/rounds, from the file names. */
+export function localRoundIds(): Set<string> {
+  if (!existsSync(DATA_DIR)) return new Set();
+  return new Set(readdirSync(DATA_DIR).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -".json".length)));
+}
+
 export function isFrozen(id: string): boolean {
   return existsSync(join(CASES_DIR, id + ".json.gz"));
 }

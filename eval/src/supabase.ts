@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { looksLikeRecord, type RoundRecord } from "./record.ts";
+import { ROUND_ID, looksLikeRecord, type RoundRecord } from "./record.ts";
 import { REPO_DIR } from "./store.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
@@ -61,22 +61,40 @@ async function fetchPatiently(url: string, init: RequestInit): Promise<Response>
   }
 }
 
-/** Every round in the shared table, oldest first. */
-export async function fetchRounds(s: Settings): Promise<Result<RoundRecord[]>> {
-  const out: RoundRecord[] = [];
-  const page = 200;
-  for (let offset = 0; ; offset += page) {
-    let response: Response;
-    try {
-      response = await fetchPatiently(`${s.url}/rest/v1/rounds?select=record&order=created_at.asc&limit=${page}&offset=${offset}`, { headers: headers(s) });
-    } catch {
-      return { data: null, error: "Supabase did not answer. Check the connection." };
-    }
-    if (!response.ok) return { data: null, error: await problem(response) };
-    const rows = (await response.json()) as { record: unknown }[];
-    for (const row of rows) if (looksLikeRecord(row.record)) out.push(row.record);
-    if (rows.length < page) return { data: out, error: null };
+async function getJson<T>(s: Settings, query: string): Promise<Result<T>> {
+  let response: Response;
+  try {
+    response = await fetchPatiently(`${s.url}/rest/v1/rounds?${query}`, { headers: headers(s) });
+  } catch {
+    return { data: null, error: "Supabase did not answer. Check the connection." };
   }
+  if (!response.ok) return { data: null, error: await problem(response) };
+  return { data: (await response.json()) as T, error: null };
+}
+
+/** Every round id in the shared table, without the big record column (the page's key has a 3 s statement limit). */
+export async function listRoundIds(s: Settings): Promise<Result<string[]>> {
+  const ids: string[] = [];
+  const page = 1000;
+  for (let offset = 0; ; offset += page) {
+    const rows = await getJson<{ id: string }[]>(s, `select=id&order=id.asc&limit=${page}&offset=${offset}`);
+    if (rows.error !== null) return rows;
+    ids.push(...rows.data.map((r) => r.id));
+    if (rows.data.length < page) return { data: ids, error: null };
+  }
+}
+
+/** The records for these ids, ten per request (a record is about 0.5 MB). Calls `onRound` as each arrives. */
+export async function fetchRecords(s: Settings, ids: readonly string[], onRound: (r: RoundRecord) => void): Promise<Result<number>> {
+  let got = 0;
+  for (let i = 0; i < ids.length; i += 10) {
+    // Round ids are only letters, digits and dashes (checked by the table), so they are safe in the address.
+    const chunk = ids.slice(i, i + 10).filter((id) => ROUND_ID.test(id));
+    const rows = await getJson<{ record: unknown }[]>(s, `select=record&id=in.(${chunk.join(",")})&order=id.asc`);
+    if (rows.error !== null) return { data: null, error: `${rows.error} (after ${got} rounds)` };
+    for (const row of rows.data) if (looksLikeRecord(row.record)) { onRound(row.record); got++; }
+  }
+  return { data: got, error: null };
 }
 
 /** Adds rounds to the shared table; ones already there are left as they are. */
