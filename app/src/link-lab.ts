@@ -9,7 +9,7 @@ import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./c
 import { canCaptureTab, captureTab, NO_TAB_CAPTURE } from "./clipside/capture.ts";
 import {
   grabFromOtherTab, grabFromPlayer, lastGrab, loadPrepared, MAX_GRAB_MS, MIN_GRAB_MS, rememberGrab, TOO_SHORT,
-  type GrabResult, type OtherTabGrab,
+  type GrabResult, type GrabStats, type OtherTabGrab,
 } from "./clipside/grab.ts";
 import { grabKey, parseLink, type ParsedLink } from "./clipside/link.ts";
 import { createPlayer, EMBED_OFF, STATE, type YtPlayer } from "./clipside/youtube.ts";
@@ -48,6 +48,11 @@ const grabButton = $<HTMLButtonElement>("grab");
 const openTab = $<HTMLAnchorElement>("open-tab");
 const useSavedButton = $<HTMLButtonElement>("use-saved");
 const grabOtherButton = $<HTMLButtonElement>("grab-other");
+const embedSection = $("embed");
+const embedBox = $("embed-box");
+const embedFrame = $<HTMLIFrameElement>("embed-frame");
+const grabEmbedButton = $<HTMLButtonElement>("grab-embed");
+const recRow = $("rec");
 const startOtherButton = $<HTMLButtonElement>("start-other");
 const stopOtherButton = $<HTMLButtonElement>("stop-other");
 const timer = $("timer");
@@ -263,7 +268,19 @@ function choose(number: number) {
   startPreview(guide);
 }
 
-function showPrepared(p: Prepared, from: Flow, seconds: number | null) {
+function statsRows(stats: GrabStats | null): [string, string][] {
+  if (!stats) return [];
+  return [
+    ["Clip seconds grabbed", String(stats.seconds)],
+    ["Frames the tracker read", `${stats.read} (${stats.seconds ? (stats.read / stats.seconds).toFixed(1) : "0"} a second; 15 is the aim)`],
+    ["Tracker ms per frame", String(stats.trackerMs)],
+    ["This page hidden while grabbing", `${stats.hiddenSeconds} s`],
+    ["Slots filled from a far frame", String(stats.stretched)],
+    ["Tracks before and after joining", `${stats.tracksBeforeJoining} then ${stats.tracksAfterJoining}`],
+  ];
+}
+
+function showPrepared(p: Prepared, from: Flow, seconds: number | null, stats: GrabStats | null = null) {
   prepared = p;
   flow = from;
   const roles = subjectGuides(p);
@@ -284,6 +301,7 @@ function showPrepared(p: Prepared, from: Flow, seconds: number | null) {
     ["Blind mode roles", [`${roles.guides.length}`, ...roles.skipped.map((s) => `Person ${s.number} skipped: ${s.reason}`)].join("; ")],
     ["Seconds taken", seconds === null ? "not timed" : String(seconds)],
     ["Result", summary.saved],
+    ...statsRows(stats),
   ]);
   const top = p.candidates[0]!.number;
   show($("choose"), true);
@@ -302,10 +320,11 @@ function handleResult(result: GrabResult, from: Flow, linkKey: string | null, be
   progress.value = 0;
   if (result.error !== null) {
     setStatus(result.error);
+    showFacts(statsRows(result.stats));
     return;
   }
   if (linkKey) rememberGrab(linkKey, result.data.fingerprint);
-  showPrepared(result.data, from, Math.round((performance.now() - began) / 100) / 10);
+  showPrepared(result.data, from, Math.round((performance.now() - began) / 100) / 10, result.stats);
 }
 
 function clearResult() {
@@ -407,28 +426,34 @@ function resetOther() {
   other = null;
   busy = false;
   grabOtherButton.disabled = !canCaptureTab();
+  grabEmbedButton.disabled = !canCaptureTab();
   startOtherButton.disabled = true;
   stopOtherButton.disabled = true;
   show(live, false);
+  show(recRow, false);
   timer.textContent = "";
 }
 
-async function grabFromAnotherTab() {
+/** Flow B (another tab), or the same timed by the clock from an embed on this page, cropped to it. */
+async function grabWithClock(where: "other" | "embed") {
   if (busy) return;
   if (!canCaptureTab()) return setStatus(NO_TAB_CAPTURE);
   busy = true;
   clearResult();
-  const capture = await captureTab("other");
+  if (where === "embed") embedBox.scrollIntoView({ block: "nearest" });
+  const capture = where === "embed" ? await captureTab("this", embedBox) : await captureTab("other");
   if (capture.error !== null) {
     resetOther();
     setStatus(capture.error);
     return;
   }
   grabOtherButton.disabled = true;
+  grabEmbedButton.disabled = true;
   stopOtherButton.disabled = false;
+  show(recRow, true);
   setStatus("Loading the pose tracker...");
   const linkKey = link?.key ?? null;
-  const baseKey = `${linkKey ?? `tab:${Date.now()}`}:tab`;
+  const baseKey = `${linkKey ?? `tab:${Date.now()}`}:${where === "embed" ? "page" : "tab"}`;
   const made = await grabFromOtherTab(capture.data, live, (lengthMs) => grabKey(baseKey, 0, lengthMs), (seconds) => {
     timer.textContent = seconds === null ? "" : `${seconds.toFixed(1)} s of ${MAX_GRAB_MS / 1000}`;
     if (seconds !== null) progress.value = seconds / (MAX_GRAB_MS / 1000);
@@ -439,9 +464,11 @@ async function grabFromAnotherTab() {
     return;
   }
   other = made.data;
-  show(live, true);
+  show(live, where === "other");
   startOtherButton.disabled = false;
-  setStatus("Sharing that tab. Press play there, then press Start here. Press Stop when the moves end (30 seconds at most).");
+  setStatus(where === "embed"
+    ? "Press play on the clip, then press Start. Press Stop when the moves end (30 seconds at most)."
+    : "Sharing that tab. Press play there, then press Start here. Press Stop when the moves end (30 seconds at most).");
   const began = performance.now();
   const result = await made.data.done;
   resetOther();
@@ -454,6 +481,8 @@ async function openLink() {
   if (busy) return;
   clearResult();
   show(useSavedButton, false);
+  show(embedSection, false);
+  embedFrame.removeAttribute("src");
   const result = parseLink(linkInput.value);
   if (result.error !== null) {
     link = null;
@@ -473,7 +502,13 @@ async function openLink() {
     player = null;
     show(ytSection, false);
     const site = link.site === "tiktok" ? "TikTok" : "Instagram";
-    setStatus(`${site} clips play in their own tab. Open it, then press Grab from another tab.`);
+    if (link.embedUrl) {
+      embedFrame.src = link.embedUrl;
+      show(embedSection, true);
+      setStatus(`The ${site} clip is below. Press Grab from this page, or open it in its own tab and use Grab from another tab.`);
+    } else {
+      setStatus(`${site} clips play in their own tab. Open it, then press Grab from another tab.`);
+    }
   }
   if (!canCaptureTab()) setStatus(NO_TAB_CAPTURE);
 }
@@ -483,7 +518,7 @@ async function useSaved() {
   const saved = await lastGrab(link.key);
   if (!saved) return setStatus("Nothing was grabbed from this link before.");
   clearResult();
-  const fromPlayer = link.site === "youtube" && player !== null && !saved.fingerprint.includes(":tab:");
+  const fromPlayer = link.site === "youtube" && player !== null && !/:(tab|page):/.test(saved.fingerprint);
   showPrepared(saved, fromPlayer ? "player" : "tab", 0);
 }
 
@@ -504,7 +539,8 @@ $("use-now").addEventListener("click", () => {
   updateLabels();
 });
 grabButton.addEventListener("click", () => void grabFromThisTab());
-grabOtherButton.addEventListener("click", () => void grabFromAnotherTab());
+grabOtherButton.addEventListener("click", () => void grabWithClock("other"));
+grabEmbedButton.addEventListener("click", () => void grabWithClock("embed"));
 startOtherButton.addEventListener("click", () => {
   if (!other) return;
   other.start();

@@ -9,7 +9,7 @@ import type { ClipSource, FrameDetections } from "../../../clip/src/index.ts";
 import type { Prepared } from "./analyze.ts";
 import { drawTabFrame, type TabCapture } from "./capture.ts";
 import { createPeopleDetector, type PeopleDetector } from "./detect.ts";
-import { evenFrames } from "./link.ts";
+import { evenFrames, stitchTracks } from "./link.ts";
 import { loadPrepared, savePrepared } from "./store.ts";
 import { STATE, type YtPlayer } from "./youtube.ts";
 
@@ -29,7 +29,45 @@ const JUMPY = "Some frames were missed while grabbing, so the moves may look a l
 const CUT_SHORT = "Sharing stopped early, so only part of the range was grabbed.";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
-export type GrabResult = Result<Prepared>;
+
+/** How the grab went, for the lab's table: what was read, how fast, and whether this page was hidden. */
+export interface GrabStats {
+  /** Frames the tracker looked at, before evening out to 15 a second. */
+  read: number;
+  /** Seconds of clip covered. */
+  seconds: number;
+  /** Average tracker time per frame. */
+  trackerMs: number;
+  /** Seconds this page was hidden while grabbing. */
+  hiddenSeconds: number;
+  /** Slots filled from a frame more than one slot away. */
+  stretched: number;
+  tracksBeforeJoining: number;
+  tracksAfterJoining: number;
+}
+
+export type GrabResult = ({ data: Prepared; error: null } | { data: null; error: string }) & { stats: GrabStats | null };
+
+/** Collects the numbers for GrabStats as frames are read. */
+class StatsCounter {
+  read = 0;
+  private trackerTotal = 0;
+  private hiddenMs = 0;
+  private lastAt: number | null = null;
+  count(trackerMs: number) {
+    const now = performance.now();
+    if (this.lastAt !== null && document.visibilityState === "hidden") this.hiddenMs += now - this.lastAt;
+    this.lastAt = now;
+    this.read++;
+    this.trackerTotal += trackerMs;
+  }
+  finish(seconds: number, stretched: number, before: number, after: number): GrabStats {
+    return {
+      read: this.read, seconds, trackerMs: this.read ? Math.round(this.trackerTotal / this.read) : 0,
+      hiddenSeconds: Math.round(this.hiddenMs / 100) / 10, stretched, tracksBeforeJoining: before, tracksAfterJoining: after,
+    };
+  }
+}
 
 /** Prepared's decoder field names how frames were read; a grab reads them from tab capture. */
 const TAB_CAPTURE = "tab-capture" as unknown as Prepared["decoder"];
@@ -47,31 +85,38 @@ function signatureOf(canvas: HTMLCanvasElement, scratch: HTMLCanvasElement): num
 class FrameReader {
   private readonly work = document.createElement("canvas");
   private readonly scratch = document.createElement("canvas");
+  readonly stats = new StatsCounter();
   width = 0;
   height = 0;
   constructor(private readonly detector: PeopleDetector) {}
   read(frame: VideoFrame, tMs: number): FrameDetections {
     if (!this.width) { this.width = frame.displayWidth; this.height = frame.displayHeight; }
     drawTabFrame(frame, this.work, MAX_SIDE);
-    return { tMs, people: this.detector.detect(this.work, tMs), signature: signatureOf(this.work, this.scratch) };
+    const began = performance.now();
+    const people = this.detector.detect(this.work, tMs);
+    this.stats.count(performance.now() - began);
+    return { tMs, people, signature: signatureOf(this.work, this.scratch) };
   }
 }
 
 /** Evens the grabbed frames to 15 a second and runs the clip side on them, as prepareClip does for a file. */
 async function finishGrab(
-  grabbed: FrameDetections[], startMs: number, endMs: number, size: { width: number; height: number },
+  grabbed: FrameDetections[], startMs: number, endMs: number, reader: FrameReader,
   key: string, warnings: string[],
 ): Promise<GrabResult> {
-  if (endMs - startMs < MIN_GRAB_MS || grabbed.length === 0) return { data: null, error: TOO_SHORT };
+  if (endMs - startMs < MIN_GRAB_MS || grabbed.length === 0) return { data: null, error: TOO_SHORT, stats: null };
   const { frames, stretched } = evenFrames(grabbed, startMs, endMs, SAMPLE_HZ);
-  const source: ClipSource = { width: size.width, height: size.height, durationMs: endMs - startMs, sampleHz: SAMPLE_HZ };
+  const source: ClipSource = { width: reader.width, height: reader.height, durationMs: endMs - startMs, sampleHz: SAMPLE_HZ };
   const cuts = findCuts(frames.map((f) => f.signature));
-  const tracks = linkTracks(frames, cuts);
+  // Live grabs split one fast mover into pieces more often than files do; join them back.
+  const linked = linkTracks(frames, cuts);
+  const tracks = stitchTracks(linked);
+  const stats = reader.stats.finish(Math.round((endMs - startMs) / 100) / 10, stretched, linked.length, tracks.length);
   const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
   const confirmFrame = pickConfirmFrame(ranked, tracks);
   const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
   const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
-  if (verdict.refuse !== null) return { data: null, error: verdict.refuse };
+  if (verdict.refuse !== null) return { data: null, error: verdict.refuse, stats };
   const prepared: Prepared = {
     fingerprint: key, source, frames, cuts, tracks, candidates, confirmFrame,
     confirmTMs: frames[confirmFrame]?.tMs ?? startMs,
@@ -79,7 +124,7 @@ async function finishGrab(
     decoder: TAB_CAPTURE, fromSaved: false,
   };
   await savePrepared(prepared);
-  return { data: prepared, error: null };
+  return { data: prepared, error: null, stats };
 }
 
 async function makeDetector(): Promise<Result<PeopleDetector>> {
@@ -98,7 +143,7 @@ export async function grabFromPlayer(
   onProgress: (share: number) => void,
 ): Promise<GrabResult> {
   const detector = await makeDetector();
-  if (detector.error !== null) { capture.stop(); return { data: null, error: detector.error }; }
+  if (detector.error !== null) { capture.stop(); return { data: null, error: detector.error, stats: null }; }
   const reader = new FrameReader(detector.data);
   const { startMs, endMs } = range;
   const grabbed: FrameDetections[] = [];
@@ -108,7 +153,7 @@ export async function grabFromPlayer(
     player.playVideo();
     const startedWaiting = performance.now();
     while (!(player.getPlayerState() === STATE.PLAYING && Math.abs(player.getCurrentTime() * 1000 - startMs) < 1500)) {
-      if (performance.now() - startedWaiting > 15000) { capture.stop(); return { data: null, error: NOT_PLAYING }; }
+      if (performance.now() - startedWaiting > 15000) { capture.stop(); return { data: null, error: NOT_PLAYING, stats: null }; }
       await pause(100);
     }
 
@@ -134,7 +179,7 @@ export async function grabFromPlayer(
     }
     capture.stop();
     player.pauseVideo();
-    if (grabbed.length === 0) return { data: null, error: NOTHING_GRABBED };
+    if (grabbed.length === 0) return { data: null, error: NOTHING_GRABBED, stats: null };
     const lastMs = reachedEnd ? endMs : Math.min(endMs, lastT + STEP_MS);
     onProgress(1);
     return await finishGrab(grabbed, startMs, lastMs, reader, key, reachedEnd ? [] : [CUT_SHORT]);
@@ -196,7 +241,7 @@ export async function grabFromOtherTab(
       capture.stop();
       detector.data.close();
     }
-    if (startedAt === null || grabbed.length === 0) return { data: null, error: NOTHING_GRABBED };
+    if (startedAt === null || grabbed.length === 0) return { data: null, error: NOTHING_GRABBED, stats: null };
     const lengthMs = Math.min(MAX_GRAB_MS, Math.round(lastT + STEP_MS));
     return finishGrab(grabbed, 0, lengthMs, reader, keyFor(lengthMs), []);
   })();

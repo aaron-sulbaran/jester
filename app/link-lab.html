@@ -17,6 +17,8 @@
     #player-box { position: relative; width: 640px; max-width: 100%; aspect-ratio: 16 / 9; background: #000; }
     #player-box.tall { width: 320px; aspect-ratio: 9 / 16; }
     #player-host, #player-host > iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    #embed-box { width: 340px; max-width: 100%; aspect-ratio: 9 / 16; background: #000; }
+    #embed-box iframe { width: 100%; height: 100%; border: 0; display: block; }
     #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     canvas.view { display: block; max-width: 100%; height: auto; background: #16161d; margin-top: 8px; }
     #people { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
@@ -56,6 +58,13 @@
     <p class="note">The browser asks to share this tab: pick This tab and press Allow. Keep the tab open until the grab ends.</p>
   </section>
 
+  <section id="embed" class="hidden">
+    <h2>Grab from this page</h2>
+    <p class="note">Press Grab from this page and pick This tab. Then press play on the clip and press Start. Press Stop when the moves end (30 seconds at most). If the clip will not play here, use Grab from another tab below.</p>
+    <div id="embed-box"><iframe id="embed-frame" title="The clip" allow="autoplay; encrypted-media; fullscreen" scrolling="no"></iframe></div>
+    <div class="row"><button id="grab-embed" class="primary">Grab from this page</button></div>
+  </section>
+
   <section id="other">
     <h2>Any site: grab from another tab</h2>
     <p class="note">For TikTok, Reels, or a video that cannot be shown here. Open the clip in its own tab, press Grab from another tab and pick that tab. Press play there, then press Start here. Tip: drag that tab into its own window beside this one.</p>
@@ -63,14 +72,15 @@
       <a id="open-tab" class="hidden" target="_blank" rel="noopener noreferrer">Open the clip in a new tab</a>
       <button id="use-saved" class="hidden">Use the moves grabbed before</button>
     </div>
-    <div class="row">
-      <button id="grab-other">Grab from another tab</button>
-      <button id="start-other" class="primary" disabled>Start</button>
-      <button id="stop-other" disabled>Stop</button>
-      <span id="timer"></span>
-    </div>
+    <div class="row"><button id="grab-other">Grab from another tab</button></div>
     <canvas id="live" class="view hidden" width="640" height="360"></canvas>
   </section>
+
+  <div id="rec" class="row hidden">
+    <button id="start-other" class="primary" disabled>Start</button>
+    <button id="stop-other" disabled>Stop</button>
+    <span id="timer"></span>
+  </div>
 
   <progress id="progress" value="0" max="1"></progress>
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { FrameDetections } from "../src/index.ts";
-import { evenFrames, grabKey, NOT_A_LINK, parseLink, readStartTime } from "../../app/src/clipside/link.ts";
+import type { FrameDetections, Track } from "../src/index.ts";
+import { evenFrames, grabKey, NOT_A_LINK, parseLink, readStartTime, stitchTracks } from "../../app/src/clipside/link.ts";
 
 const ok = (text: string) => {
   const result = parseLink(text);
@@ -69,4 +69,31 @@ test("evenFrames: a long gap counts as stretched; nothing grabbed gives nothing"
   assert.equal(frames.length, 15);
   assert.ok(stretched > 0);
   assert.deepEqual(evenFrames([], 0, 1000, 15), { frames: [], stretched: 0 });
+});
+
+const piece = (id: number, from: number, to: number, cx: number, shot = 0): Track => ({
+  id, shot,
+  points: Array.from({ length: to - from + 1 }, (_, i) => ({
+    frame: from + i, tMs: (from + i) * 66, box: { cx, cy: 0.5, w: 0.2, h: 0.6 }, landmarks: [], outline: null,
+  })),
+});
+
+test("stitchTracks: one person split three times becomes one track", () => {
+  const joined = stitchTracks([piece(1, 0, 39, 0.5), piece(2, 40, 79, 0.55), piece(3, 82, 120, 0.5)]);
+  assert.equal(joined.length, 1);
+  assert.equal(joined[0]!.id, 1);
+  assert.equal(joined[0]!.points.length, 40 + 40 + 39);
+});
+
+test("stitchTracks: two people side by side each keep their own pieces", () => {
+  const joined = stitchTracks([piece(1, 0, 30, 0.2), piece(2, 0, 30, 0.8), piece(3, 31, 60, 0.82), piece(4, 32, 60, 0.21)]);
+  assert.equal(joined.length, 2);
+  assert.deepEqual(joined.map((t) => [t.id, t.points.length, t.points.at(-1)!.box.cx]), [[1, 60, 0.21], [2, 61, 0.82]]);
+});
+
+test("stitchTracks: overlapping in time, far apart, long gaps and other shots stay apart", () => {
+  assert.equal(stitchTracks([piece(1, 0, 30, 0.5), piece(2, 20, 50, 0.5)]).length, 2);
+  assert.equal(stitchTracks([piece(1, 0, 30, 0.1), piece(2, 31, 50, 0.9)]).length, 2);
+  assert.equal(stitchTracks([piece(1, 0, 30, 0.5), piece(2, 45, 60, 0.5)]).length, 2);
+  assert.equal(stitchTracks([piece(1, 0, 30, 0.5), piece(2, 31, 60, 0.5, 1)]).length, 2);
 });
