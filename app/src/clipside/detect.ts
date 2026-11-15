@@ -1,5 +1,7 @@
-// The people detector: MediaPipe PoseLandmarker in VIDEO mode, up to 4 people, a fresh
-// instance per clip so its time stamps start over. Each person also gets a segmentation mask
+// The people detector: MediaPipe PoseLandmarker, up to 4 people, a fresh instance per clip.
+// It looks for people on every frame (IMAGE mode) by default. In VIDEO mode MediaPipe only looks
+// again when it loses someone, and in a tight group a new person's region overlaps one it already
+// follows, so it can follow 2 of 4 dancers for the whole clip. Each person also gets a segmentation mask
 // (one per detected pose, same order as the landmarks), turned into an outline of up to 60 points.
 
 import type { Landmark } from "../../../engine/src/index.ts";
@@ -8,6 +10,14 @@ import { binarizeMask, downsampleMask, extractOutline, MP_BUNDLE, MP_WASM, MODEL
 import type { FrameCanvas } from "./frames.ts";
 
 const MAX_PEOPLE = 4;
+
+/** "full" is what the game uses; "lite" and "heavy" are there to time in the clip lab. */
+export type PoseModel = "lite" | "full" | "heavy";
+const HEAVY_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task";
+const MODEL_PATHS: Record<PoseModel, string> = { lite: MODEL_URLS.lite, full: MODEL_URLS.full, heavy: HEAVY_MODEL_URL };
+
+/** "every-frame" looks for people on every frame (the default); "tracking" is MediaPipe's VIDEO mode, kept to compare in the lab. */
+export type PersonSearch = "every-frame" | "tracking";
 const OUTLINE_POINTS = 60;
 /** The outline is traced on a mask shrunk so its long side is about this many cells. */
 const OUTLINE_GRID = 180;
@@ -51,13 +61,13 @@ function loadVision(): Promise<{ mp: any; vision: any }> {
   return visionPromise;
 }
 
-export async function createPeopleDetector(): Promise<{ data: PeopleDetector; error: null } | { data: null; error: string }> {
+export async function createPeopleDetector(model: PoseModel = "full", search: PersonSearch = "every-frame"): Promise<{ data: PeopleDetector; error: null } | { data: null; error: string }> {
   let landmarker: any;
   try {
     const { mp, vision } = await loadVision();
     const make = (delegate: "GPU" | "CPU") => mp.PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_URLS.full, delegate },
-      runningMode: "VIDEO", numPoses: MAX_PEOPLE, outputSegmentationMasks: true,
+      baseOptions: { modelAssetPath: MODEL_PATHS[model], delegate },
+      runningMode: search === "tracking" ? "VIDEO" : "IMAGE", numPoses: MAX_PEOPLE, outputSegmentationMasks: true,
     });
     try { landmarker = await make("GPU"); } catch { landmarker = await make("CPU"); }
   } catch {
@@ -69,10 +79,15 @@ export async function createPeopleDetector(): Promise<{ data: PeopleDetector; er
     error: null,
     data: {
       detect(canvas, tMs) {
-        // Time stamps must increase; equal or earlier ones are raised to one past the last.
-        const stamp = tMs > lastStamp ? tMs : lastStamp + 1;
-        lastStamp = stamp;
-        const result = landmarker.detectForVideo(canvas, stamp);
+        let result;
+        if (search === "tracking") {
+          // Time stamps must increase; equal or earlier ones are raised to one past the last.
+          const stamp = tMs > lastStamp ? tMs : lastStamp + 1;
+          lastStamp = stamp;
+          result = landmarker.detectForVideo(canvas, stamp);
+        } else {
+          result = landmarker.detect(canvas);
+        }
         const masks = (result.segmentationMasks ?? []) as MpMask[];
         const people: Detection[] = [];
         try {

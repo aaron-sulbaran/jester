@@ -3,12 +3,12 @@
 
 import {
   buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkTracks, linkThings, pickConfirmFrame,
-  rankCandidates, rankThings, shotRanges, thingGuides, withConfirmBoxes, withoutPeople,
+  rankCandidates, rankThings, rejoinTracks, shotRanges, thingGuides, withConfirmBoxes, withoutPeople,
 } from "../../../clip/src/index.ts";
 import type {
   Candidate, ClipSource, FrameDetections, Guide, ThingCandidate, ThingFrame, ThingTrack, Track,
 } from "../../../clip/src/index.ts";
-import { createPeopleDetector } from "./detect.ts";
+import { createPeopleDetector, type PersonSearch, type PoseModel } from "./detect.ts";
 import { createThingDetector, type ThingDetector } from "./things.ts";
 import { sha256Hex } from "./fingerprint.ts";
 import { readFrames, type FrameCanvas, type VideoInfo } from "./frames.ts";
@@ -21,6 +21,8 @@ const MAX_MS = 30000;
 const MAX_SIDE = 720;
 const SIGNATURE_WIDTH = 32;
 const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are used.";
+/** A person lost for up to this long (behind someone, at the back) is joined back into one track. */
+const REJOIN_SECONDS = 3;
 /** The object detector looks at every this many analysed frames. */
 const THING_EVERY = 3;
 
@@ -38,6 +40,10 @@ export interface Prepared {
 export interface PrepareOptions {
   /** Analyse again even when a saved analysis exists. The new result is still saved. */
   ignoreSaved?: boolean;
+  /** Pose model to try, for timing in the lab. Anything but the default "full" ignores and does not save the analysis. */
+  model?: PoseModel;
+  /** How to look for people, to compare in the lab. Anything but the default "every-frame" ignores and does not save the analysis. */
+  search?: PersonSearch;
   /**
    * Also find things (animals, balls, cars) with the object detector, for blind mode roles. Off by
    * default: solo play copies people only, and the second detector adds time. With it off, people
@@ -66,6 +72,28 @@ function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] 
   return frameSignature(ctx.getImageData(0, 0, SIGNATURE_WIDTH, height).data, SIGNATURE_WIDTH, height);
 }
 
+/**
+ * Follows each person through the frames, joins people the tracker split into pieces, ranks them
+ * and picks the frame to choose from. Pure and quick, so saved analyses run it again too.
+ */
+function findPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
+  const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
+  const tracks = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect: source.width / source.height });
+  const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
+  const confirmFrame = pickConfirmFrame(ranked, tracks);
+  const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
+  const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
+  return { tracks, candidates, confirmFrame, confirmTMs: frames[confirmFrame]?.tMs ?? 0, verdict };
+}
+
+/** The clip's refusal, except that with no people a moving thing still makes a blind mode role. */
+function refusalWith(refusal: string | null, things: PreparedThings | null, source: ClipSource, cuts: readonly number[]): string | null {
+  if (refusal !== NO_PERSON || !things || !things.candidates.some((c) => c.moves)) return refusal;
+  // No people, but a moving thing is a role for blind mode: check the other clip rules with the things standing in.
+  const standIns: Candidate[] = things.candidates.map((c) => ({ trackId: c.trackId, number: c.number, label: c.label, score: c.score, boxAtConfirm: null }));
+  return checkClip({ durationMs: source.durationMs, cuts, candidates: standIns }).refuse;
+}
+
 let videoUrl: string | null = null;
 
 /** Points `video` at the file, so the fallback decoder and later playback can use it. */
@@ -89,12 +117,20 @@ export async function prepareClip(
   attach(file, video);
   onProgress(0);
   const fingerprint = await sha256Hex(file);
-  if (!options.ignoreSaved) {
+  const model = options.model ?? "full";
+  const search = options.search ?? "every-frame";
+  const usual = model === "full" && search === "every-frame";
+  if (!options.ignoreSaved && usual) {
     const saved = await loadPrepared(fingerprint);
     // A saved analysis from a run without things does not have them; analyse again to find them.
     if (saved && (!options.things || saved.things)) {
+      // The saved frames are kept as read; following the people again picks up the current rules.
+      const { verdict, ...people } = findPeople(saved.frames, saved.cuts, saved.source);
+      const refusal = refusalWith(verdict.refuse, saved.things ?? null, saved.source, saved.cuts);
       onProgress(1);
-      return { data: saved, error: null };
+      if (refusal !== null) return { data: null, error: refusal, facts: { decoder: saved.decoder, frames: saved.frames.length } };
+      const warnings = [...saved.warnings.filter((w) => w === LONG_CLIP), ...verdict.warnings];
+      return { data: { ...saved, ...people, warnings }, error: null };
     }
   }
 
@@ -102,7 +138,7 @@ export async function prepareClip(
   const refuse = (error: string, decoder: PrepareFacts["decoder"] = null): PrepareResult =>
     ({ data: null, error, facts: { decoder, frames: frames.length } });
 
-  const detector = await createPeopleDetector();
+  const detector = await createPeopleDetector(model, search);
   if (detector.error !== null) return refuse(detector.error);
   let thingDetector: ThingDetector | null = null;
   if (options.things) {
@@ -139,28 +175,18 @@ export async function prepareClip(
     sampleHz: SAMPLE_HZ,
   };
   const cuts = findCuts(frames.map((f) => f.signature));
-  const tracks = linkTracks(frames, cuts);
-  const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
-  const confirmFrame = pickConfirmFrame(ranked, tracks);
-  const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
+  const { verdict, ...people } = findPeople(frames, cuts, source);
   const things = thingDetector ? findThings(thingFrames, frames, cuts, source) : null;
-  const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
-  let refusal = verdict.refuse;
-  if (refusal === NO_PERSON && things && things.candidates.some((c) => c.moves)) {
-    // No people, but a moving thing is a role for blind mode: check the other clip rules with the things standing in.
-    const standIns: Candidate[] = things.candidates.map((c) => ({ trackId: c.trackId, number: c.number, label: c.label, score: c.score, boxAtConfirm: null }));
-    refusal = checkClip({ durationMs: source.durationMs, cuts, candidates: standIns }).refuse;
-  }
+  const refusal = refusalWith(verdict.refuse, things, source, cuts);
   if (refusal !== null) return refuse(refusal, info.decoder);
 
   const warnings = [...(info.durationMs > MAX_MS ? [LONG_CLIP] : []), ...verdict.warnings];
   const prepared: Prepared = {
-    fingerprint, source, frames, cuts, tracks, candidates, confirmFrame,
-    confirmTMs: frames[confirmFrame]?.tMs ?? 0,
+    fingerprint, source, frames, cuts, ...people,
     warnings, decoder: info.decoder, fromSaved: false,
     ...(things ? { things } : {}),
   };
-  await savePrepared(prepared);
+  if (usual) await savePrepared(prepared);
   onProgress(1);
   return { data: prepared, error: null };
 }

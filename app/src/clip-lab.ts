@@ -1,12 +1,15 @@
 // Clip lab: run the clip side on one video and check the result by eye.
 // URL options: ?clip=<file in /_clips/> runs that file as if picked, ?pick=<number> chooses that
-// person, ?fresh=1 ignores the saved analysis, ?overlay=skeleton|outline|both, ?look=outline|stick
-// and ?place=fit|exact set the switches. After each run, window.__clipLab holds a summary.
+// person, ?fresh=1 ignores the saved analysis, ?model=lite|heavy times another pose model and
+// ?search=tracking looks for people the old way (MediaPipe VIDEO mode), neither saved,
+// ?overlay=skeleton|outline|both, ?look=outline|stick and ?place=fit|exact set the switches.
+// After each run, window.__clipLab holds a summary.
 
-import type { Box, Guide, Placement, View } from "../../clip/src/index.ts";
+import { linkTracks, pointNearFrame, type Box, type Guide, type Placement, type View } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
 import { finishClip, prepareClip, subjectGuides, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
 import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
+import type { PersonSearch, PoseModel } from "./clipside/detect.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
 interface LabSummary {
@@ -14,6 +17,11 @@ interface LabSummary {
   decoder: Prepared["decoder"] | null;
   frames: number;
   candidates: { number: number; trackId: number; label: string; score: number }[];
+  model: PoseModel;
+  search: PersonSearch;
+  /** Tracks from linking alone, before people split into pieces were joined back. */
+  piecesBeforeJoining: number;
+  tracks: number;
   cuts: number[];
   seconds: number;
   saved: "saved" | "fresh" | null;
@@ -58,6 +66,9 @@ const resetView = () => { view = null; };
 const overlayMode = radioGroup<Overlay>("overlay", ["skeleton", "outline", "both"], "both", () => {});
 const look = radioGroup<Look>("look", ["outline", "stick"], "outline", () => {});
 const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
+const askedModel = params.get("model");
+const poseModel: PoseModel = askedModel === "lite" || askedModel === "heavy" ? askedModel : "full";
+const personSearch: PersonSearch = params.get("search") === "tracking" ? "tracking" : "every-frame";
 
 let prepared: Prepared | null = null;
 let summary: LabSummary | null = null;
@@ -84,12 +95,14 @@ function toObjects(landmarks: readonly (readonly [number, number, number])[] | n
   return landmarks ? landmarks.map(([x, y, visibility]) => ({ x, y, z: 0, visibility })) : null;
 }
 
-function strokeBox(canvas: HTMLCanvasElement, box: Box, label: string, color: string) {
+function strokeBox(canvas: HTMLCanvasElement, box: Box, label: string, color: string, dashed = false) {
   const ctx = canvas.getContext("2d")!;
   const { width: w, height: h } = canvas;
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
+  ctx.setLineDash(dashed ? [10, 8] : []);
   ctx.strokeRect((box.cx - box.w / 2) * w, (box.cy - box.h / 2) * h, box.w * w, box.h * h);
+  ctx.setLineDash([]);
   if (!label) return;
   ctx.fillStyle = color;
   ctx.font = "bold 22px system-ui, sans-serif";
@@ -111,9 +124,19 @@ async function drawConfirm(p: Prepared, chosen: number) {
   await seek(p.confirmTMs / 1000);
   drawFrame(confirmCanvas, video, null);
   for (const c of p.candidates) {
-    if (c.boxAtConfirm) strokeBox(confirmCanvas, c.boxAtConfirm, String(c.number), c.number === chosen ? "#f5c542" : "#4fc3f7");
+    const color = c.number === chosen ? "#f5c542" : "#4fc3f7";
+    if (c.boxAtConfirm) {
+      strokeBox(confirmCanvas, c.boxAtConfirm, String(c.number), color);
+      continue;
+    }
+    // Not in this frame: show them where they are nearest to it, dashed, so nobody is missing from the choice.
+    const track = p.tracks.find((t) => t.id === c.trackId);
+    const near = track ? pointNearFrame(track, p.confirmFrame) : null;
+    if (near) strokeBox(confirmCanvas, near.box, String(c.number), color, true);
   }
 }
+
+const DASHED_NOTE = "A dashed box is someone who is not in this frame, shown where they are closest to it.";
 
 function showPeople(p: Prepared, chosen: number) {
   people.replaceChildren(...p.candidates.map((c) => {
@@ -218,7 +241,7 @@ async function run(file: File) {
   const began = performance.now();
   let result: PrepareResult;
   try {
-    result = await prepareClip(file, video, (share) => { progress.value = share; }, { ignoreSaved: params.get("fresh") === "1" });
+    result = await prepareClip(file, video, (share) => { progress.value = share; }, { ignoreSaved: params.get("fresh") === "1", model: poseModel, search: personSearch });
   } catch (error) {
     result = { data: null, error: `Something went wrong reading the clip: ${(error as Error).message}`, facts: { decoder: null, frames: 0 } };
   }
@@ -229,6 +252,10 @@ async function run(file: File) {
     decoder: result.data ? result.data.decoder : result.facts.decoder,
     frames: result.data ? result.data.frames.length : result.facts.frames,
     candidates: result.data?.candidates.map((c) => ({ number: c.number, trackId: c.trackId, label: c.label, score: Math.round(c.score * 1000) / 1000 })) ?? [],
+    model: poseModel,
+    search: personSearch,
+    piecesBeforeJoining: result.data ? linkTracks(result.data.frames, result.data.cuts, { maxGap: result.data.source.sampleHz }).length : 0,
+    tracks: result.data?.tracks.length ?? 0,
     cuts: result.data?.cuts ?? [],
     seconds,
     saved: result.data ? (result.data.fromSaved ? "saved" : "fresh") : null,
@@ -249,7 +276,10 @@ async function run(file: File) {
     ["File", file.name],
     ["Decoder", summary.decoder ?? "not known"],
     ["Frames analysed", String(summary.frames)],
+    ["Pose model", summary.model],
+    ["Looking for people", summary.search === "tracking" ? "only when someone is lost (old way)" : "on every frame"],
     ["People found", String(summary.candidates.length)],
+    ["Tracks", `${summary.piecesBeforeJoining} pieces joined into ${summary.tracks}`],
     ["Cuts", String(summary.cuts.length)],
     ["Blind mode roles", roleText],
     ["Seconds taken", String(seconds)],
@@ -262,7 +292,8 @@ async function run(file: File) {
     return;
   }
   const p = result.data;
-  setStatus([`Found ${p.candidates.length === 1 ? "1 person" : `${p.candidates.length} people`}. Pick who to follow.`, ...p.warnings]);
+  const dashed = p.candidates.some((c) => c.boxAtConfirm === null);
+  setStatus([`Found ${p.candidates.length === 1 ? "1 person" : `${p.candidates.length} people`}. Pick who to follow.`, ...(dashed ? [DASHED_NOTE] : []), ...p.warnings]);
   show("choose", true);
   const top = p.candidates[0]!.number;
   showPeople(p, top);
