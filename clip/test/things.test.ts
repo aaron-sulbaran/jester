@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { scoreTrajectoryRound } from "../../engine/src/index.ts";
 import { playerCopyingSprite, spritePath, timeline } from "../../engine/test/synth.ts";
 import {
-  boxPolygon, buildThingGuide, linkThings, rankThings, THING_OTHER_SHOT, THING_STILL, thingGuides, thingName, withoutPeople,
+  boxPolygon, boxTrackAt, buildThingGuide, linkThings, rankThings, THING_OTHER_SHOT, THING_STILL, thingGuides, thingHint,
+  thingName, thingObjectName, withoutPeople,
 } from "../src/index.ts";
 import type { Box, ClipSource, ThingFrame } from "../src/index.ts";
 
@@ -126,4 +127,16 @@ test("thingGuides: with a shot given, a thing in another shot is skipped with a 
   const { guides, skipped } = thingGuides({ fingerprint: "f", source, frames, cuts: [30], tracks, candidates, warnings: [], shot: 0 });
   assert.equal(guides.length, 1);
   assert.deepEqual(skipped.map((s) => s.reason), [THING_OTHER_SHOT]);
+});
+
+test("thingHint, thingObjectName and boxTrackAt give what an object round needs", () => {
+  const frames = thingFrames(30, (f) => [{ box: dogAt(f), category: "dog" }]);
+  const track = linkThings(frames, [], { aspect })[0]!;
+  const guide = buildThingGuide({ fingerprint: "f", source, frames, track, shot: { start: 0, end: 30 }, label: "Dog 1", warnings: [] }).data!;
+  assert.equal(thingObjectName("Dog 1"), "dog");
+  assert.equal(thingHint(guide), "Copy the dog: step sideways when it moves sideways.");
+  assert.deepEqual(boxTrackAt(guide.boxTrack, 400), dogAt(6));
+  assert.deepEqual(boxTrackAt(guide.boxTrack, 420), dogAt(6));
+  assert.equal(boxTrackAt(guide.boxTrack, -1), null);
+  assert.equal(boxTrackAt(guide.boxTrack, 5000), null);
 });

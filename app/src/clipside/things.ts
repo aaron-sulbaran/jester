@@ -1,30 +1,16 @@
-// Things in a clip: the MediaPipe object detector (EfficientDet-Lite0) on every third analysed
-// frame, then the pure linking, ranking and guide building in ../../../clip. People are left to
-// the pose tracker, so the "person" category is dropped here.
+// The things detector: MediaPipe ObjectDetector (EfficientDet-Lite0) in VIDEO mode, a fresh
+// instance per clip so its time stamps start over. People are left to the pose tracker, so the
+// "person" category is dropped. prepareClip in ./analyze.ts runs it on every third frame.
 
-import {
-  findCuts, frameSignature, linkThings, rankThings, thingGuides,
-} from "../../../clip/src/index.ts";
-import type {
-  ClipSource, ThingCandidate, ThingDetection, ThingFrame, ThingTrack,
-} from "../../../clip/src/index.ts";
+import type { ThingDetection } from "../../../clip/src/index.ts";
 import { MP_BUNDLE, MP_WASM } from "../../../spikes/pose-match/webcam.mjs";
-import { sha256Hex } from "./fingerprint.ts";
-import { readFrames, type Decoder, type FrameCanvas } from "./frames.ts";
+import type { FrameCanvas } from "./frames.ts";
 
-const SAMPLE_HZ = 15;
-const MAX_MS = 30000;
-const MAX_SIDE = 720;
-/** The object detector looks at every this many analysed frames. */
-const DETECT_EVERY = 3;
 const SCORE_THRESHOLD = 0.5;
 const MAX_RESULTS = 10;
-const SIGNATURE_WIDTH = 32;
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
 
-const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are used.";
 const DETECTOR_DID_NOT_LOAD = "The object finder did not load. Check the connection and try again.";
-const DETECTOR_STOPPED = "The object finder stopped working. Reload the page and try again.";
 
 export interface ThingDetector {
   /** Things in this frame, people left out. `tMs` must increase from call to call. */
@@ -98,96 +84,4 @@ export async function createThingDetector(): Promise<{ data: ThingDetector; erro
       close() { detector.close(); },
     },
   };
-}
-
-export interface PreparedThings {
-  fingerprint: string;
-  source: ClipSource;
-  frames: ThingFrame[];
-  cuts: number[];
-  tracks: ThingTrack[];
-  candidates: ThingCandidate[];
-  warnings: string[];
-  decoder: Decoder;
-  /** How many frames the object detector looked at. */
-  detectedFrames: number;
-}
-
-export type PrepareThingsResult =
-  | { data: PreparedThings; error: null }
-  | { data: null; error: string; facts: { decoder: Decoder | null; frames: number } };
-
-function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] {
-  const height = Math.max(1, Math.round(SIGNATURE_WIDTH * canvas.height / canvas.width));
-  scratch.width = SIGNATURE_WIDTH;
-  scratch.height = height;
-  const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(canvas, 0, 0, SIGNATURE_WIDTH, height);
-  return frameSignature(ctx.getImageData(0, 0, SIGNATURE_WIDTH, height).data, SIGNATURE_WIDTH, height);
-}
-
-/**
- * Reads the first 30 seconds at 15 frames a second, finds things on every third frame, follows
- * each through its shot and ranks them. `video` must already have the file as its source; it is
- * only read from when the browser's decoder cannot open the file. Nothing is saved.
- */
-export async function prepareThings(
-  file: File,
-  video: HTMLVideoElement,
-  onProgress: (share: number) => void,
-): Promise<PrepareThingsResult> {
-  onProgress(0);
-  const fingerprint = await sha256Hex(file);
-  const frames: ThingFrame[] = [];
-  const signatures: number[][] = [];
-  const refuse = (error: string, decoder: Decoder | null = null): PrepareThingsResult =>
-    ({ data: null, error, facts: { decoder, frames: frames.length } });
-
-  const detector = await createThingDetector();
-  if (detector.error !== null) return refuse(detector.error);
-  const scratch = document.createElement("canvas");
-  let read: Awaited<ReturnType<typeof readFrames>>;
-  try {
-    read = await readFrames(file, video, { sampleHz: SAMPLE_HZ, maxMs: MAX_MS, maxSide: MAX_SIDE }, async ({ tMs, canvas, index, count }) => {
-      const things = index % DETECT_EVERY === 0 ? detector.data.detect(canvas, tMs) : null;
-      frames.push({ tMs, things });
-      signatures.push(signatureOf(canvas, scratch));
-      onProgress((index + 1) / count);
-    });
-  } catch {
-    return refuse(DETECTOR_STOPPED);
-  } finally {
-    detector.data.close();
-  }
-  if (read.error !== null) return refuse(read.error);
-
-  const info = read.data;
-  const source: ClipSource = {
-    width: info.width,
-    height: info.height,
-    durationMs: Math.min(info.durationMs, MAX_MS),
-    sampleHz: SAMPLE_HZ,
-  };
-  const aspect = info.width / info.height;
-  const cuts = findCuts(signatures);
-  const tracks = linkThings(frames, cuts, { aspect });
-  const candidates = rankThings(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length, aspect });
-  onProgress(1);
-  return {
-    data: {
-      fingerprint, source, frames, cuts, tracks, candidates,
-      warnings: info.durationMs > MAX_MS ? [LONG_CLIP] : [],
-      decoder: info.decoder,
-      detectedFrames: frames.filter((f) => f.things !== null).length,
-    },
-    error: null,
-  };
-}
-
-/** A guide for every thing found, best first, and why each one left out was left out. */
-export function preparedThingGuides(prepared: PreparedThings): ReturnType<typeof thingGuides> {
-  return thingGuides({
-    fingerprint: prepared.fingerprint, source: prepared.source, frames: prepared.frames, cuts: prepared.cuts,
-    tracks: prepared.tracks, candidates: prepared.candidates, warnings: prepared.warnings,
-  });
 }

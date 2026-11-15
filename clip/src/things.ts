@@ -6,7 +6,7 @@
 // analysed frame between a thing's first and last sighting has a box.
 
 import { constants } from "../../engine/src/index.ts";
-import type { BoxFrame } from "../../engine/src/index.ts";
+import type { BoxFrame, BoxTrack } from "../../engine/src/index.ts";
 import { iou } from "./boxes.ts";
 import type { Box, ClipSource, Guide, Outline, Pace } from "./types.ts";
 
@@ -202,19 +202,23 @@ function percentile(values: readonly number[], share: number): number {
   return sorted[low]! + (sorted[high]! - sorted[low]!) * (at - low);
 }
 
-/**
- * True when the box moves enough for the engine to have something to score: the same test as
- * the trajectory channel (p95 minus p5 of the centre or the height, in median box heights).
- */
-export function thingMoves(track: ThingTrack, aspect = 1): boolean {
-  const boxes = track.points.map((p) => p.box);
+/** Which ways the boxes move enough for the engine to score: the trajectory channel's own test (p95 minus p5, in median box heights). */
+function movingAxes(boxes: readonly Box[], aspect: number): { x: boolean; y: boolean; h: boolean } {
   const scale = median(boxes.map((b) => b.h));
-  if (!(scale > 0)) return false;
+  if (!(scale > 0)) return { x: false, y: false, h: false };
   const range = (values: number[]) => percentile(values, 0.95) - percentile(values, 0.05);
   const { minRangeX, minRangeY } = constants.TRAJECTORY;
-  return range(boxes.map((b) => (b.cx * aspect) / scale)) >= minRangeX
-    || range(boxes.map((b) => b.cy / scale)) >= minRangeY
-    || range(boxes.map((b) => b.h / scale)) >= minRangeY;
+  return {
+    x: range(boxes.map((b) => (b.cx * aspect) / scale)) >= minRangeX,
+    y: range(boxes.map((b) => b.cy / scale)) >= minRangeY,
+    h: range(boxes.map((b) => b.h / scale)) >= minRangeY,
+  };
+}
+
+/** True when the box moves enough for the engine to have something to score. */
+export function thingMoves(track: ThingTrack, aspect = 1): boolean {
+  const axes = movingAxes(track.points.map((p) => p.box), aspect);
+  return axes.x || axes.y || axes.h;
 }
 
 const WEIGHTS = { size: 0.35, central: 0.2, motion: 0.25, onScreen: 0.2 } as const;
@@ -371,4 +375,39 @@ export function thingGuides(input: {
     else guides.push(result.data);
   }
   return { guides, skipped };
+}
+
+/** The name a player reads for a thing: "Dog 1" to "dog", "Ball 2" to "ball". */
+export function thingObjectName(label: string): string {
+  return label.replace(/ \d+$/, "").toLowerCase();
+}
+
+/** One line telling the player how to copy the thing, from the ways its box moves. */
+export function thingHint(guide: Pick<Guide, "boxTrack" | "subject">): string {
+  const boxes = guide.boxTrack.frames.flatMap((f) => (f.box ? [f.box] : []));
+  const axes = movingAxes(boxes, guide.boxTrack.source.width / guide.boxTrack.source.height);
+  const moves = [
+    ...(axes.x ? ["step sideways when it moves sideways"] : []),
+    ...(axes.y ? ["jump or crouch when it rises and falls"] : []),
+    ...(axes.h ? ["step closer when it grows and back when it shrinks"] : []),
+  ];
+  const name = thingObjectName(guide.subject.label);
+  return moves.length ? `Copy the ${name}: ${moves.join(", and ")}.` : `Copy the ${name}.`;
+}
+
+/** The box at time `ms` on the track's own clock (the frame nearest it), or null outside the track or where the thing is not seen. */
+export function boxTrackAt(track: BoxTrack, ms: number): Box | null {
+  const frames = track.frames;
+  const first = frames[0];
+  const last = frames[frames.length - 1];
+  if (!first || !last || ms < first.tMs || ms > last.tMs) return null;
+  let low = 0;
+  let high = frames.length - 1;
+  while (high - low > 1) {
+    const mid = (low + high) >> 1;
+    if (frames[mid]!.tMs <= ms) low = mid;
+    else high = mid;
+  }
+  const nearest = ms - frames[low]!.tMs <= frames[high]!.tMs - ms ? frames[low]! : frames[high]!;
+  return nearest.box;
 }
