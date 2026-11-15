@@ -13,6 +13,7 @@ from mathutils import Vector
 P = argparse.ArgumentParser()
 P.add_argument('--out', default='app/public/look/jester')
 P.add_argument('--test', action='store_true', help='Render one still for art direction')
+P.add_argument('--badge', action='store_true', help='Render the cap and collar with the face left open, for player face badges')
 ARGS = P.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 OUT = Path(ARGS.out).resolve()
 OUT.mkdir(parents=True, exist_ok=True)
@@ -422,6 +423,42 @@ def render(path,size):
     scene.render.filepath=str(path)
     bpy.ops.render.render(write_still=True)
 
+
+if ARGS.badge:
+    # Arcade style face badge: the jester's cap and collar seen straight on, with the face, ears and body hidden,
+    # so the browser can put a player's photographed face in the opening (like Mario Kart arcade results).
+    pose('idle', 0)
+    HIDE = ('Face', 'Oval eye', 'Catchlight', 'Red cheek diamond', 'Ear', 'Button nose', 'Mischievous smile',
+            'Split velvet tunic', 'Center gold braid', 'Round brass button', 'Puffed sleeve', 'Tapered forearm',
+            'Gold cuff', 'Mitten', 'Thumb', 'Puffy trouser', 'Tapered stocking', 'Ankle gold trim',
+            'Round blue shoe', 'Curled toe')
+    for ob in scene.objects:
+        if ob.name.startswith(HIDE):
+            ob.hide_render = True
+    bpy.context.view_layer.update()
+    face_center = head.matrix_world @ Vector((0, 0, .07))
+    SIZE, SPAN = 512, 3.1
+    cam_z = face_center.z + .22
+    camera.location = (face_center.x, face_center.y - 10, cam_z)
+    camera.rotation_euler = (math.pi / 2, 0, 0)
+    camera.data.ortho_scale = SPAN
+    to_px = SIZE / SPAN
+    meta = {'size': SIZE, 'face': {'cx': round(SIZE / 2 + (face_center.x - camera.location.x) * to_px, 1),
+                                   'cy': round(SIZE / 2 - (face_center.z - cam_z) * to_px, 1),
+                                   'rx': round(.77 * to_px, 1), 'ry': round(.77 * to_px, 1)},
+            'variants': {}}
+    for variant, colors in PALETTES.items():
+        palette(colors)
+        render(OUT / f'_{variant}-badge.png', SIZE)
+        subprocess.run(['/usr/bin/env', 'python3', '-c',
+                        "from PIL import Image; from pathlib import Path; import sys; "
+                        "p=Path(sys.argv[1]); im=Image.open(p); "
+                        "im.save(p.with_name(p.name[1:]).with_suffix('.webp'),format='WEBP',quality=85,method=4,alpha_quality=100); "
+                        "im.close(); p.unlink()", str(OUT / f'_{variant}-badge.png')], check=True)
+        meta['variants'][variant] = {'file': f'{variant}-badge.webp', 'colors': ['#' + c for c in colors]}
+    (OUT / 'badge.json').write_text(json.dumps(meta, indent=2))
+    print('BADGE_SECONDS', round(time.monotonic() - START, 2))
+    sys.exit(0)
 
 if ARGS.test:
     pose('idle',0)

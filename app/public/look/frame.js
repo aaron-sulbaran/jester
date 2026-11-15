@@ -9,10 +9,12 @@ const DIRECTIONS = [
   { id: "f", name: "Royal Court", line: "A castle's great hall. You are the jester performing for the throne, and the winner takes the seat." },
   { id: "g", name: "Velvet Stage", line: "Red curtains, footlights and a drum roll. The spotlight finds the best performance." },
   { id: "h", name: "Toy Theater", line: "A paper toy theatre on the table. Your cutouts slide on stage like puppets on sticks." },
+  { id: "i", name: "Doodle Stage", line: "The sketchbook, with a theatre doodled in the margins: marker curtains, a highlighter spotlight, the Jester scribbling notes." },
+  { id: "j", name: "Shoebox Show", line: "The scrapbook as a shoebox theatre: cardboard, patterned paper curtains, craft sticks and googly eyes." },
 ];
 const SCREENS = [
   { s: "start", title: "Start", note: "Pick a starter clip, upload one or record one. Seated switch." },
-  { s: "play", title: "Blind play", note: "Aaron's turn. He got the dog, sees only its outline, never the clip." },
+  { s: "play", title: "Blind play", note: "Aaron's turn. He got the dog, but only sees a shape to copy; nobody learns what it is until the reveal." },
   { s: "reveal", title: "Reveal and results", note: "The clip with each player standing where their part was, the scores, then play again or send it." },
 ];
 
