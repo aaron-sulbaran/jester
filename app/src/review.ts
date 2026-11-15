@@ -18,7 +18,8 @@ interface Decision { verdict: "approve" | "reject" | "ask_a_person"; reason: str
 interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null; publish: { state: string; at: string | null; detail: string } }
 interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
 
-const SUBMITTED_CREDIT = "Sent in with Submit your own";
+/** The name a clip is shown as sent in by when its sender gave none. */
+const SUBMITTED_CREDIT = "Anonymous";
 const FRAME_WIDTH = 384;
 const ENV_FILE = "jester-deploy/.env.review";
 
