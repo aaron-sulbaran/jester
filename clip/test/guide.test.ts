@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { skeletonGate } from "../../engine/src/index.ts";
 import { buildGuide, linkTracks } from "../src/index.ts";
 import type { Box, ClipSource } from "../src/index.ts";
-import { frame, person } from "./synth.ts";
+import { frame, outlineOfBox, person } from "./synth.ts";
 
 const source: ClipSource = { width: 1280, height: 720, durationMs: 4000, sampleHz: 10 };
 const boxAt = (i: number): Box => ({ cx: 0.3 + i * 0.004, cy: 0.5, w: 0.2, h: 0.5 });
@@ -58,4 +58,21 @@ test("buildGuide: sources, schema, subject, channel and pass-through fields", ()
 
 test("buildGuide: the same input twice gives deep-equal results", () => {
   assert.deepEqual(buildGuide(input), buildGuide(input));
+});
+
+test("buildGuide: outlines has one entry per timeline frame", () => {
+  const guide = buildGuide(input);
+  assert.equal(guide.outlines.length, guide.timeline!.frames.length);
+});
+
+test("buildGuide: a frame where the track has no point has a null outline", () => {
+  const gap = { ...input, frames: frames.map((f, i) => (i >= 25 && i < 28 ? { ...f, people: [] } : f)) };
+  const guide = buildGuide({ ...gap, track: linkTracks(gap.frames, [20]).find((t) => t.shot === 1)! });
+  for (const i of [5, 6, 7]) assert.equal(guide.outlines[i], null);
+  assert.notEqual(guide.outlines[4], null);
+});
+
+test("buildGuide: a point's outline is carried through unchanged", () => {
+  const guide = buildGuide(input);
+  assert.deepEqual(guide.outlines[3], outlineOfBox(boxAt(23)));
 });

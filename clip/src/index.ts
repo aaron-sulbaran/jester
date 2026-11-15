@@ -10,3 +10,7 @@ export { checkClip, checkSubject } from "./rules.ts";
 export type { Verdict } from "./rules.ts";
 export { keyMoments, paceOf } from "./moments.ts";
 export { buildGuide } from "./guide.ts";
+export { largestBlobInBox } from "./outline.ts";
+export type { BinaryMask } from "./outline.ts";
+export { placeSubject } from "./view.ts";
+export type { Placement, View } from "./view.ts";

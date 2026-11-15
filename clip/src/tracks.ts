@@ -83,7 +83,7 @@ export function linkTracks(
       chosen.live.vx = (person.box.cx - previous.box.cx) / elapsed;
       chosen.live.vy = (person.box.cy - previous.box.cy) / elapsed;
       chosen.live.lastFrame = frame;
-      chosen.live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks });
+      chosen.live.track.points.push({ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline });
     }
 
     frameDetections.people.forEach((person, detection) => {
@@ -91,7 +91,7 @@ export function linkTracks(
       const track: Track = {
         id: all.length,
         shot: cuts.filter((c) => c <= frame).length,
-        points: [{ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks }],
+        points: [{ frame, tMs: frameDetections.tMs, box: person.box, landmarks: person.landmarks, outline: person.outline }],
       };
       all.push(track);
       live.push({ track, lastFrame: frame, vx: 0, vy: 0 });

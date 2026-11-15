@@ -14,8 +14,14 @@ export function landmarksInBox(box: Box): Landmark[] {
   ]);
 }
 
+/** The box's four corners as an outline, clockwise from top left. */
+export function outlineOfBox(box: Box): [number, number][] {
+  const left = box.cx - box.w / 2, right = box.cx + box.w / 2, top = box.cy - box.h / 2, bottom = box.cy + box.h / 2;
+  return [[left, top], [right, top], [right, bottom], [left, bottom]];
+}
+
 export function person(box: Box): Detection {
-  return { box, landmarks: landmarksInBox(box) };
+  return { box, landmarks: landmarksInBox(box), outline: outlineOfBox(box) };
 }
 
 export function frame(index: number, people: Detection[]): FrameDetections {
@@ -29,7 +35,7 @@ export function trackOf(id: number, frames: readonly number[], boxAt: (frame: nu
     shot,
     points: frames.map((f) => {
       const box = boxAt(f);
-      return { frame: f, tMs: f * 100, box, landmarks: landmarksInBox(box) };
+      return { frame: f, tMs: f * 100, box, landmarks: landmarksInBox(box), outline: outlineOfBox(box) };
     }),
   };
 }

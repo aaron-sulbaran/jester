@@ -5,7 +5,7 @@ import type { Prepared } from "./analyze.ts";
 
 const DB_NAME = "jester";
 const STORE = "prepared";
-const SCHEMA = "prepared/1";
+const SCHEMA = "prepared/2";
 
 interface PreparedRecord { schema: typeof SCHEMA; fingerprint: string; savedAt: number; prepared: Prepared }
 
