@@ -14,6 +14,7 @@ import { buildInfo, type BuildInfo } from "./build-info.ts";
 const CHECK_EVERY_MS = 60_000;
 
 const STYLE = `
+body[data-screen]:not(.dev) .jester-build-stamp, body[data-screen]:not(.dev) .jester-update-notice { display: none !important; }
 .jester-build-stamp { position: fixed; right: 8px; bottom: 6px; z-index: 2147483000; pointer-events: none; user-select: none;
   font: 11px/1.2 ui-monospace, "Courier New", monospace; color: rgba(30, 27, 24, .5); text-shadow: 0 0 2px rgba(255, 255, 255, .7); }
 .jester-update-notice { position: fixed; right: 8px; bottom: 24px; z-index: 2147483000; display: flex; gap: 8px; align-items: center;

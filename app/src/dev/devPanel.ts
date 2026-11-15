@@ -3,6 +3,7 @@
 // It sits in its own shadow root, outside the game's screens, so no page style reaches it or is reached.
 
 import { DEV_TAGS, isDevTag, type DevTag } from "../../../eval/src/record.ts";
+import { getSettings } from "../settings.ts";
 
 const DEV_KEY = "jester.dev";
 export const TAG_HINTS: Record<DevTag, string> = {
@@ -35,8 +36,9 @@ export function devMode(): boolean {
   try {
     const on = new URLSearchParams(location.search).get("dev");
     if (on === "1") sessionStorage.setItem(DEV_KEY, "1");
-    if (on === "0") sessionStorage.removeItem(DEV_KEY);
-    return sessionStorage.getItem(DEV_KEY) === "1";
+    if (on === "0") { sessionStorage.removeItem(DEV_KEY); return false; }
+    // Developer mode in the settings (settings.ts) turns the panel on too.
+    return sessionStorage.getItem(DEV_KEY) === "1" || getSettings().developer;
   } catch {
     return false;
   }
