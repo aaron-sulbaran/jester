@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CAST_ROW_GAP_MS, castRowShare, keepFinished, overlap, packTier, sameDancer } from "../src/recapRules.ts";
+import { CAST_ROW_GAP_MS, castRowShare, dropShrunkCrops, keepFinished, overlap, packTier, sameDancer } from "../src/recapRules.ts";
 
 test("the cast card's first row is there from the first frame, the rest come in one after another", () => {
   assert.equal(castRowShare(0, 0), 1);                       // never a card with only its title
@@ -34,4 +34,15 @@ test("two roles following the same dancer are found from their boxes", () => {
   const b = [right, right, right, right, right];             // b stays right; a slips onto b halfway through
   assert.equal(sameDancer(a, b), 0.5);
   assert.equal(sameDancer([left, null], [null, right]), 0);
+});
+
+test("frames whose crop shrank onto the body (the head lost for a moment) are left out of a player's cutouts", () => {
+  // Sides from a real two-tab round with a drawn webcam: the headless frames were 0.36 to 0.76 of the usual size.
+  const at = (t: number, side: number) => ({ t, anchor: { region: { cx: 0.5, cy: 0.5, side } } });
+  const usual = 0.465;
+  const frames = [at(0, usual), at(1, usual * 1.06), at(2, usual * 0.36), at(3, usual * 0.9), at(4, usual * 0.73), at(5, usual * 1.24), at(6, usual * 0.76), at(7, usual * 0.98)];
+  assert.deepEqual(dropShrunkCrops(frames).map((f) => f.t), [0, 1, 3, 5, 7]);
+  assert.deepEqual(dropShrunkCrops(frames.slice(0, 4)).map((f) => f.t), [0, 1, 2, 3]);   // too few to know the usual size
+  const noAnchor = [{ t: 9, anchor: null }, ...frames];
+  assert.equal(dropShrunkCrops(noAnchor)[0]!.t, 9);                                          // frames with no anchor stay
 });
