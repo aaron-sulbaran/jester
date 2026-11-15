@@ -11,6 +11,9 @@ import { submitClip } from "../submit.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
+import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
+import { rankFor } from "../feelText.ts";
+import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
@@ -128,6 +131,9 @@ export function initGame(deps: GameDeps) {
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
   let videoUrl: string | null = null;
+  // The camera for the game's turns: a loading card, the jester's card when it fails, the understudy (?demo=1).
+  const camera = guardCamera(deps, () => goHome());
+  installFeel();
 
   const guideCanvas = $<HTMLCanvasElement>("guideCanvas");
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
@@ -337,7 +343,7 @@ export function initGame(deps: GameDeps) {
     running = true;
     try {
       if (mode === "watch") await watchFirst(scene);
-      await runBlindGame(scene, cast, ui, deps, { speed, colors: playerColors(), theme: revealTheme() });
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme() });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -509,6 +515,7 @@ export function initGame(deps: GameDeps) {
   const ui: BlindUi = {
     async handover(player, previous) {
       live();
+      camera.newTurn();
       activeRestart = null;
       hideRestart();
       show("handover");
@@ -538,7 +545,7 @@ export function initGame(deps: GameDeps) {
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       if (!startingOver || role.problem) {
-        $("partProblem").textContent = role.problem ?? "";
+        $("partProblem").textContent = role.problem ? camera.partNote() ?? role.problem : "";
         $("partProblem").hidden = !role.problem;
       }
       const chips = $("partChips");
@@ -582,9 +589,11 @@ export function initGame(deps: GameDeps) {
         el.classList.remove("tick");
         void el.offsetWidth; // restart the tick animation
         el.classList.add("tick");
+        sfx.tick(s);
         try { await wait(1000, sig()); } catch (err) { el.hidden = true; throw err; }
       }
       el.hidden = true;
+      sfx.go();
     },
 
     turnStarted(restart) {
@@ -606,7 +615,8 @@ export function initGame(deps: GameDeps) {
       activeRestart = null;
       hideRestart();
       show("drumroll");
-      await wait(1500, sig());
+      const roll = sfx.drumRoll();
+      try { await waitOrSkip(1500, sig()); } finally { roll(); }
     },
 
     revealCanvas: () => revealCanvas,
@@ -670,9 +680,15 @@ export function initGame(deps: GameDeps) {
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
+    // The drum roll plays while the spotlight sweeps; only the latest run may land the crash.
+    let roll = () => {};
+    let runs = 0;
 
     const run = async () => {
       cancel = false;
+      const mine = ++runs;
+      roll();
+      roll = sfx.drumRoll();
       $("crownWinner").hidden = true;
       $("crownAsk").hidden = false;
       $("crownDrum").hidden = false;
@@ -697,6 +713,7 @@ export function initGame(deps: GameDeps) {
         await wait(350);
       }
       if (cancel) return;
+      if (mine === runs) { roll(); sfx.crown(); }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
       $("screen-crown").dataset.phase = "won";
@@ -717,6 +734,7 @@ export function initGame(deps: GameDeps) {
     try { await clicked($("crownGo"), sig()); }
     finally {
       cancel = true;
+      roll();
       $("crownAgain").removeEventListener("click", again);
       for (const x of jesters) x.j.stop();
     }
@@ -744,7 +762,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="place-title"></span><span class="place-blurb"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
@@ -754,9 +772,15 @@ export function initGame(deps: GameDeps) {
       podiumJesters.push(j);
       li.querySelector("b")!.textContent = r.name;
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
-      li.querySelector(".place-score")!.textContent = r.score == null ? "no score" : String(r.score);
+      const rank = rankFor(r.score);
+      li.querySelector(".place-title")!.textContent = rank.title;
+      li.querySelector(".place-blurb")!.textContent = rank.blurb;
+      const score = li.querySelector<HTMLElement>(".place-score")!;
+      if (r.score == null) score.textContent = "no score";
+      else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
     });
+    sfx.fanfare();
     const video = $<HTMLVideoElement>("resultsVideo");
     const save = $<HTMLAnchorElement>("resultsSave");
     if (videoUrl) {

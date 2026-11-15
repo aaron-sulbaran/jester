@@ -559,7 +559,8 @@ async function previewRole(s: Seat, scene: Scene, ui: BlindUi, leadMs: number) {
 
 async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: BlindUi, leadMs: number): Promise<void> {
   stopPreview?.();
-  const player = deps.simMode() ? simulatedFor(s, scene, deps) : await deps.getCamera();
+  // A refused camera can hand the turn to the simulated player: the look's camera card turns simMode on, then rejects.
+  const player = deps.simMode() ? simulatedFor(s, scene, deps) : await deps.getCamera().catch((err: unknown) => { if (deps.simMode()) return simulatedFor(s, scene, deps); throw err; });
   const g = s.guide;
   const stage = ui.playStage();
   const view = roleView(s, stage.guideCanvas, scene);
