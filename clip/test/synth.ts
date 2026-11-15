@@ -82,3 +82,32 @@ export function sequenceTimeline(
   }
   return { schema: "pose-timeline/1", source: { width: 1000, height: 1000, mirrored: false }, frames };
 }
+
+/** Body proportions as shares of torso length (mid shoulders to mid hips). */
+export interface Build { upperArm: number; forearm: number; thigh: number; shin: number; shoulders: number; hips: number }
+
+export const AVERAGE_BUILD: Build = { upperArm: 0.45, forearm: 0.4, thigh: 0.6, shin: 0.55, shoulders: 0.5, hips: 0.36 };
+
+/**
+ * A front-facing skeleton of the given build: hips centred at (cx, cy), torso `torso` tall, arms
+ * swinging by `swing` degrees (so consecutive frames move a little). Face and hand points sit on
+ * the nose and wrists. Every landmark has visibility `visibility`.
+ */
+export function bodyLandmarks(cx: number, cy: number, torso: number, build: Build, swing = 0, visibility = 1): Landmark[] {
+  const pts: [number, number][] = Array.from({ length: 33 }, () => [cx, cy - 1.35 * torso]);
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const limb = (from: [number, number], angle: number, len: number): [number, number] =>
+    [from[0] + Math.sin(rad(angle)) * len * torso, from[1] + Math.cos(rad(angle)) * len * torso];
+  const lSh: [number, number] = [cx + (build.shoulders / 2) * torso, cy - torso];
+  const rSh: [number, number] = [cx - (build.shoulders / 2) * torso, cy - torso];
+  const lHip: [number, number] = [cx + (build.hips / 2) * torso, cy];
+  const rHip: [number, number] = [cx - (build.hips / 2) * torso, cy];
+  const lEl = limb(lSh, 20 + swing, build.upperArm), lWr = limb(lEl, 10 + swing, build.forearm);
+  const rEl = limb(rSh, -20 - swing, build.upperArm), rWr = limb(rEl, -10 - swing, build.forearm);
+  const lKn = limb(lHip, 5, build.thigh), lAn = limb(lKn, 0, build.shin);
+  const rKn = limb(rHip, -5, build.thigh), rAn = limb(rKn, 0, build.shin);
+  const set: [number, [number, number]][] = [[11, lSh], [12, rSh], [13, lEl], [14, rEl], [15, lWr], [16, rWr], [17, lWr], [19, lWr], [21, lWr],
+    [18, rWr], [20, rWr], [22, rWr], [23, lHip], [24, rHip], [25, lKn], [26, rKn], [27, lAn], [28, rAn], [29, lAn], [31, lAn], [30, rAn], [32, rAn]];
+  for (const [i, p] of set) pts[i] = p;
+  return pts.map(([x, y]): Landmark => [x, y, visibility]);
+}

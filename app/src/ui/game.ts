@@ -3,7 +3,6 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
-import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
 import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
@@ -17,6 +16,7 @@ import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
+import { BANK_PREFIX, UPLOAD_ID, getHostUpload, sceneFromBank, waitForUploadedScene } from "../onlineClip.ts";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
 import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
 import { unpackCutouts, unpackFace } from "../packMedia.ts";
@@ -102,7 +102,11 @@ const BOB = [4, -4, 2, -3, 3, -2];
 
 /** Writes `text` into `el` as alphabet stickers: each letter its own colour (or all `color`), one white backing. */
 function letters(el: HTMLElement, text: string, color?: string) {
-  el.setAttribute("aria-label", text);
+  // Screen readers get the whole word from hidden text; an aria-label on a heading is not read everywhere,
+  // and the letter stickers on their own were read one letter at a time.
+  const said = document.createElement("span");
+  said.className = "vh";
+  said.textContent = text;
   const wrap = document.createElement("span");
   wrap.className = "letters";
   wrap.setAttribute("aria-hidden", "true");
@@ -115,7 +119,8 @@ function letters(el: HTMLElement, text: string, color?: string) {
     span.style.setProperty("--n", String(i));
     wrap.appendChild(span);
   });
-  el.replaceChildren(wrap);
+  el.removeAttribute("aria-label");
+  el.replaceChildren(said, wrap);
 }
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
@@ -150,6 +155,10 @@ export function initGame(deps: GameDeps) {
 
   const bankBox = $("bank");
   document.body.dataset.mode = mode;
+  // Team tools (the testing upload, the practice area, the empty bank note) show only on a local dev server
+  // or with ?dev=1, never to visitors on the live site. ?dev=0 shows the visitor's page on a dev server.
+  const devParam = new URLSearchParams(location.search).get("dev");
+  document.body.classList.toggle("dev", devParam !== null ? devParam !== "0" : ["localhost", "127.0.0.1"].includes(location.hostname));
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
@@ -183,8 +192,9 @@ export function initGame(deps: GameDeps) {
       ? [...(mode === "blind" && bank.length > 1 ? [{ kind: "surprise" } as Pick] : []), ...bank.map((clip): Pick => ({ kind: "bank", clip }))]
       : STARTERS.map((starter): Pick => ({ kind: "starter", starter }));
     bankBox.replaceChildren(...picks.map(card));
+    // A note for the team only: visitors just see the starter clips.
     const note = $("bankNote");
-    note.hidden = bank.length > 0;
+    note.hidden = bank.length > 0 || !document.body.classList.contains("dev");
     note.textContent = "The bank is empty. Add clips with the bank tool. Until then, here are the starter clips.";
     // Keep the pick if it is still on screen, else the first card.
     const keep = pick && picks.find((p) => keyOf(p) === keyOf(pick!));
@@ -198,14 +208,21 @@ export function initGame(deps: GameDeps) {
     $<HTMLButtonElement>("play").disabled = !p;
   }
 
-  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode")) {
+  // The two modes are one switch; the picked mode's line shows once, under it.
+  const sayMode = () => {
+    const picked = document.querySelector<HTMLButtonElement>(`.mode[data-mode="${mode}"] span`);
+    $("modeSays").textContent = picked?.textContent ?? "";
+  };
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
       document.body.dataset.mode = mode;
-      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode")) o.setAttribute("aria-checked", String(o === b));
+      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) o.setAttribute("aria-checked", String(o === b));
+      sayMode();
       renderBank();
     });
   }
+  sayMode();
 
   void listBank().then((r) => {
     bank = r.data ?? [];
@@ -265,8 +282,6 @@ export function initGame(deps: GameDeps) {
       startProblem(`I could not read that clip: ${(err as Error).message}`);
     }
   });
-
-  installLinkGrab((s) => { scene = s; openCast(); }, startProblem); // LINK REVEAL (remove with linkReveal.ts)
 
   function startProblem(text: string) {
     $("startProblem").textContent = text;
@@ -360,12 +375,25 @@ export function initGame(deps: GameDeps) {
   // Each player plays their own part on their own device, so there is no "pass the laptop" screen: the handover
   // is skipped, nobody's results are shown until everyone is in, then everyone sees the same reveal and results.
 
-  const lobby = initRoomLobby({ show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+  const lobby = initRoomLobby({ clipVideo: deps.clipVideo, show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+
+  /** The scene a round names: built in, from the bank, or the host's upload (the host has it; the others wait for it). */
+  async function sceneForRound(room: LobbyRoom, round: OnlineRound): Promise<{ data: Scene; error: null } | { data: null; error: string }> {
+    const make = ONLINE_SCENES[round.clipId as OnlineSceneId];
+    if (make) return { data: make(), error: null };
+    if (round.clipId.startsWith(BANK_PREFIX)) return sceneFromBank(round.clipId.slice(BANK_PREFIX.length), deps.clipVideo);
+    if (round.clipId === UPLOAD_ID) {
+      const mine = getHostUpload();
+      if (room.isHost && mine) return { data: mine, error: null };
+      return waitForUploadedScene(room as never);
+    }
+    return { data: null, error: "This clip is not one this copy of the game knows." };
+  }
 
   async function runOnline(room: LobbyRoom, round: OnlineRound) {
-    const make = ONLINE_SCENES[round.clipId as OnlineSceneId];
-    if (!make) return;
-    const played = make();
+    const made = await sceneForRound(room, round);
+    if (made.error !== null) { startProblem(made.error); show("room"); return; }
+    const played = made.data;
     scene = played;
     await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
@@ -444,7 +472,8 @@ export function initGame(deps: GameDeps) {
   const leaveDialog = $<HTMLDialogElement>("leaveDialog");
   $("home").addEventListener("click", () => {
     const screen = document.body.dataset.screen as ScreenName;
-    if (running && MID_GAME.includes(screen)) leaveDialog.showModal();
+    // The crowning runs after the game itself has finished, so it is checked by name.
+    if ((running && MID_GAME.includes(screen)) || screen === "crown") leaveDialog.showModal();
     else goHome();
   });
   $("leaveStay").addEventListener("click", () => leaveDialog.close());
@@ -620,7 +649,6 @@ export function initGame(deps: GameDeps) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
-      linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
     },
 

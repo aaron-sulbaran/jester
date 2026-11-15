@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { packPose } from "../../eval/src/record.ts";
 import { deserializeTimeline } from "../../spikes/pose-match/serialize.mjs";
 import {
-  GHOST_LABEL, ghostCandidates, ghostName, ghostNames, ghostScoreAt, ghostStanding, isGhost, makeGhost, pickClip, pickGhosts, withGhosts,
+  GHOST_NOTE, GHOST_TAG, ghostCandidates, ghostName, ghostNames, ghostScoreAt, ghostStanding, isGhost, makeGhost, pickClip, pickGhosts, withGhosts,
   type GhostRecord, type GhostRow,
 } from "../src/ghosts.ts";
 
@@ -33,14 +33,16 @@ test("pickGhosts takes everyone when there are few, else one from each band of s
   assert.deepEqual(pickGhosts(nine, "juggle", 3), []);
 });
 
-test("ghost names are made up, the same for the same round, all different in one match, and labelled", () => {
+test("ghost names are made up, the same for the same round, all different in one match, and shown as they are", () => {
   assert.equal(ghostName("r-abc"), ghostName("r-abc"));
   const names = ghostNames(["r-1", "r-2", "r-3", "r-1"]);
   assert.equal(new Set(names).size, 4);
   const g = makeGhost(record("r-1", 60, [1, 1]), names[0]!);
   const standing = ghostStanding(g, 0, 1000);
-  assert.ok(standing.name.endsWith(GHOST_LABEL));
-  assert.ok(isGhost(standing.id));
+  assert.equal(standing.name, names[0]);                  // "Noodle", not "Noodle (ghost)"
+  assert.ok(isGhost(standing.id));                         // the id says it is a ghost, for the look to draw it as one
+  assert.equal(GHOST_NOTE, "a ghost from an earlier round");
+  assert.equal(GHOST_TAG, "ghost");
 });
 
 function record(id: string, score: number, credits: (number | null)[]): GhostRecord {
@@ -77,7 +79,7 @@ test("ghosts are ranked in with the players", () => {
   const strong = ghostStanding(makeGhost(record("r-a", 90, [1]), "Noodle"), 0, 1000);
   const weak = ghostStanding(makeGhost(record("r-b", 40, [1]), "Biscuit"), 0, 1000);
   const merged = withGhosts(table, [weak, strong]);
-  assert.deepEqual(merged.ranked.map((r) => [r.name, r.place]), [["Noodle (ghost)", 1], ["Ana", 2], ["Biscuit (ghost)", 3]]);
+  assert.deepEqual(merged.ranked.map((r) => [r.name, r.place]), [["Noodle", 1], ["Ana", 2], ["Biscuit", 3]]);
 });
 
 test("the clip: a bank clip over the starter, and one with ghosts for someone alone", () => {

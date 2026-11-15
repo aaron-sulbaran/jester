@@ -202,7 +202,7 @@ function modeOf(file: string, callers: string[], page: string): string {
   if (has("eval-lab") || page.endsWith("/eval-lab.html")) return "eval-lab";
   if (has("onlineDuel") || has("duel-lab") || page.endsWith("/duel-lab.html")) return "duel";
   if (has("onlineBlind")) return "blind-online";
-  if (has("linkReveal") || has("link-lab")) return "link";
+  if (has("link-lab")) return "link";
   if (has("blind")) return "blind";
   if (has("online") || page.endsWith("/room.html")) return "room";
   if (/-lab\.html$/.test(page)) return "lab";

@@ -1,3 +1,4 @@
+import { iou } from "./boxes.ts";
 import type { Box, Candidate, Track } from "./types.ts";
 
 const MIN_VISIBILITY = 0.3;
@@ -12,6 +13,38 @@ export function median(values: readonly number[]): number {
 }
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+/** A frame counts as a crossing when the subject's box overlaps another person's by at least this much. */
+const CROSSING_IOU = 0.2;
+/** Crossings below this share of a track's frames are ordinary passing by and cost nothing. */
+const MIN_CROSSING_SHARE = 0.1;
+/**
+ * A track's score is multiplied by 1 minus this times its crossing share, so a person who is tangled
+ * with someone else for much of the shot is offered after a clean one. Never a refusal: a clip that
+ * is all crossings still ranks its people.
+ */
+const CROSSING_PENALTY = 0.5;
+
+/**
+ * The share of a track's frames where its box overlaps another track's box in the same shot by at
+ * least CROSSING_IOU: where the stick figure is most likely to be confused with someone else.
+ */
+export function crossingShare(track: Track, tracks: readonly Track[]): number {
+  if (track.points.length === 0) return 0;
+  const others = tracks
+    .filter((t) => t.id !== track.id && t.shot === track.shot)
+    .map((t) => new Map(t.points.map((p) => [p.frame, p.box])));
+  let crossed = 0;
+  for (const point of track.points) {
+    if (others.some((o) => { const box = o.get(point.frame); return box !== undefined && iou(point.box, box) >= CROSSING_IOU; })) crossed++;
+  }
+  return crossed / track.points.length;
+}
+
+function crossingFactor(track: Track, tracks: readonly Track[]): number {
+  const share = crossingShare(track, tracks);
+  return share < MIN_CROSSING_SHARE ? 1 : 1 - CROSSING_PENALTY * share;
+}
 
 /**
  * How far a track's landmarks move per frame, in box heights: for each pair of consecutive points,
@@ -48,7 +81,8 @@ function scoreOf(track: Track, frameCount: number): number {
 
 /**
  * Ranks the people worth offering as the subject, best first. A track needs at least one second of
- * points (`sampleHz`) to be offered. `boxAtConfirm` stays null; see `withConfirmBoxes`.
+ * points (`sampleHz`) to be offered. A track that overlaps someone else for a good share of its
+ * frames ranks lower (see `crossingShare`). `boxAtConfirm` stays null; see `withConfirmBoxes`.
  */
 export function rankCandidates(
   tracks: readonly Track[],
@@ -56,7 +90,7 @@ export function rankCandidates(
 ): Candidate[] {
   return tracks
     .filter((track) => track.points.length >= info.sampleHz)
-    .map((track) => ({ trackId: track.id, score: scoreOf(track, info.frameCount) }))
+    .map((track) => ({ trackId: track.id, score: scoreOf(track, info.frameCount) * crossingFactor(track, tracks) }))
     .sort((a, b) => b.score - a.score || a.trackId - b.trackId)
     .map((entry, i) => ({
       trackId: entry.trackId,

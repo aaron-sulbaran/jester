@@ -97,11 +97,12 @@
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
-      <p class="aside"><button type="button" class="link" id="howtoLink">How to play</button></p>
+      <nav class="start-nav" aria-label="Help"><button type="button" class="btn btn-quiet" id="howtoLink">How to play</button></nav>
       <div class="modes-pick" role="radiogroup" aria-label="Game mode">
         <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
         <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
       </div>
+      <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
 
       <div class="bank" id="bank" role="group" aria-label="Clips"></div>
       <p class="typed bank-note" id="bankNote" hidden></p>
@@ -112,14 +113,14 @@
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
 
-      <!-- Submit your own: present but quiet. A person reviews every clip before it joins the bank. -->
+      <!-- Submit your own: present but quiet. An AI reviewer (the Chamberlain, review-agent.ts) checks every clip first; a person decides the unsure ones. -->
       <details class="submit" id="submit">
         <summary>Submit your own clip</summary>
         <div class="submit-body">
           <ul class="how">
             <li>Upload a short clip of people moving. Funny is good.</li>
-            <li>A person on the team watches every submission.</li>
-            <li>Approved clips get their moves read once and join the bank.</li>
+            <li>An AI reviewer, the Chamberlain, looks at every clip first. To do that, a few frames of your clip, what the game measured in it, its title and your credit are sent to Anthropic, the company that makes the AI.</li>
+            <li>If it is unsure about a clip, a person on the team decides.</li>
             <li>Nothing you submit is public until then.</li>
           </ul>
           <form id="submitForm" novalidate>
@@ -131,11 +132,12 @@
             <progress id="submitBar" value="0" max="1" hidden></progress>
             <p class="problem" id="submitProblem" role="alert" hidden></p>
           </form>
-          <div class="note-wrap" id="submitThanks" hidden><p class="note">Thanks. A person reviews every clip before it joins the bank.</p></div>
+          <div class="note-wrap" id="submitThanks" hidden><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides.</p></div>
         </div>
       </details>
 
-      <p class="aside">
+      <!-- Team tools: shown on a local dev server or with ?dev=1, never to visitors (game.ts sets body.dev). -->
+      <p class="aside dev-only">
         <label class="link upload">Play a file from this computer (testing)<input id="upload" type="file" accept="video/*" /></label>
         <button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button>
       </p>
@@ -163,7 +165,14 @@
                 <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
                 <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
                 <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="bank" aria-checked="false" hidden><b>Video bank</b><span>Pick a clip from the bank. Everyone gets the same one.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="upload" aria-checked="false"><b>Upload your own</b><span>Use a video from your laptop. Your friends never get the file.</span></button>
                 <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              </div>
+              <label class="field" id="roomBankRow" hidden><span>Which clip</span><select id="roomBankSelect"></select></label>
+              <div class="field" id="roomUploadRow" hidden>
+                <label><span>Your video (MP4, WebM or MOV, about 15 seconds is best)</span><input id="roomUploadFile" type="file" accept="video/*" /></label>
+                <p class="aside" id="roomUploadStatus" aria-live="polite"></p>
               </div>
             </div>
             <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
@@ -300,7 +309,7 @@
       </div>
       <progress id="revealBar" value="0" max="1"></progress>
       <div class="reveal-pace" role="group" aria-label="Reveal speed">
-        <button type="button" id="revealFast" class="btn btn-quiet">Speed: <span id="revealFastLabel">1x</span></button>
+        <button type="button" id="revealFast" class="btn btn-quiet"><span>Speed: <span id="revealFastLabel">1x</span></span></button>
         <button type="button" id="revealSkip" class="btn btn-quiet">Skip to results</button>
       </div>
     </section>
