@@ -8,7 +8,7 @@
   /* 1600 wide, height from the content. The clip side as it is on main: app/src/clipside/analyze.ts,
      frames.ts, detect.ts, things.ts, store.ts and clip/src (cuts, tracks, rank, rules, guide). */
   body { width: 1600px; }
-  .cards { grid-template-columns: repeat(3, 1fr); gap: 110px 96px; }
+  .cards { grid-template-columns: repeat(3, 1fr); gap: 110px 90px; }
   .ink { color: var(--photo); }
   .sil { position: absolute; color: #F3EEE4; }
   .sil svg, .art svg.full { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -33,7 +33,7 @@
   .rank span.no { color: var(--stamp); text-decoration: line-through; text-decoration-thickness: 2px; rotate: -.5deg; }
   .rank em { font: 400 22px/1 var(--sticker); font-style: normal; width: 22px; }
   .foot { position: relative; margin: 40px 0 0 0; display: flex; justify-content: flex-end; }
-  .foot .note { font-size: 30px; white-space: nowrap; }
+  .foot .note { white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -94,7 +94,7 @@
         <span class="hash">sha-256 9f3c 81ab 0e57...</span>
         <span class="saved">SEEN IT</span>
       </div>
-      <p>The file's SHA-256. A clip seen before loads its saved analysis from the browser, so the same clip always gives the same guide.</p>
+      <p>The file's SHA-256. A clip seen before loads its saved analysis: same clip, same guide.</p>
     </section>
 
     <section class="card" data-n="2" style="grid-row:1;grid-column:2">
@@ -109,7 +109,7 @@
           <i><span class="sil" style="rotate:10deg"><svg><use href="#throw" /></svg></span></i>
         </div>
       </div>
-      <p>15 frames a second, the first 30 seconds, 512 px on the long side. Mediabunny decodes with WebCodecs; if it cannot, we step a video element instead.</p>
+      <p>15 frames a second from the first 30 seconds, decoded by Mediabunny on WebCodecs.</p>
     </section>
 
     <section class="card" data-n="3" style="grid-row:1;grid-column:3">
@@ -122,7 +122,7 @@
         <span class="sil" style="left:50%;top:42%;width:42%;height:46%;color:#7B8BC4"><svg><use href="#dog" /></svg></span>
         <span class="bx" style="--c:var(--p4);left:48%;top:42%;width:46%;height:50%"><b>dog</b></span>
       </div>
-      <p>MediaPipe Pose Landmarker finds up to 4 people in every frame, and its mask becomes an outline. For animals and balls, EfficientDet-Lite0 looks at every 6th frame.</p>
+      <p>MediaPipe finds up to 4 people in every frame. Bank clips also look for animals and balls.</p>
     </section>
 
     <section class="card" data-n="4" style="grid-row:2;grid-column:3">
@@ -138,7 +138,7 @@
         <span class="cut" style="left:76%"><b>cut</b></span>
         <span class="bx" style="--c:var(--p3);left:83%;top:30%;width:13%;height:46%"></span>
       </div>
-      <p>Boxes are linked frame to frame by overlap into tracks. A cut ends every track. A person hidden for up to 3 seconds is joined back up.</p>
+      <p>Boxes link up into tracks. A cut ends them; a person hidden for up to 3&nbsp;seconds rejoins.</p>
     </section>
 
     <section class="card" data-n="5" style="grid-row:2;grid-column:2">
@@ -151,7 +151,7 @@
           <span class="no"><em>3</em>Person 2, too small</span>
         </div>
       </div>
-      <p>Tracks are ranked by size, how central, how much they move and time on screen. A clip that cannot work is refused with a plain reason: too short, too many cuts, no person.</p>
+      <p>Ranked by size, place, motion and time on screen. A clip that cannot work gets a plain reason.</p>
     </section>
 
     <section class="card" data-n="6" style="grid-row:2;grid-column:1">
@@ -161,7 +161,7 @@
         <span class="sil" style="left:12%;top:10%;width:24%;height:82%;color:var(--p1)"><svg><use href="#stick" /></svg></span>
         <span class="sil ring" style="left:48%;top:36%;width:44%;height:50%;color:#000"><svg><use href="#dog" /></svg></span>
       </div>
-      <p>One per subject: 33 body points per frame for a person, plus a box over time and an outline. In blind mode a person plays as a stick figure, a thing as an outline.</p>
+      <p>One per subject. A person plays as a stick figure, a thing as an outline.</p>
     </section>
   </div>
 
