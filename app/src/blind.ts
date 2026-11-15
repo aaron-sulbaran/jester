@@ -27,6 +27,7 @@ import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/po
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
 import { playWithSound } from "./sound.ts";
+import { castRowShare } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
 
@@ -1110,8 +1111,8 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
   ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
   const rowH = Math.min(H * 0.17, (H * 0.78) / Math.max(1, rows.length));
   rows.forEach((r, i) => {
-    // Rows slide in one after another.
-    const t = Math.min(1, Math.max(0, (ms - 300 - i * 450) / 350));
+    // Rows slide in one after another; the first is there at once, so the card never shows only its title.
+    const t = castRowShare(ms, i);
     if (t <= 0) return;
     const y = H * 0.25 + i * rowH + rowH / 2;
     ctx.globalAlpha = t;
