@@ -151,19 +151,15 @@ console.log(`Total about $${total.toFixed(2)} in ${((Date.now() - started) / 100
 // Our own check, after the agent's: every number in the report must have come from a tool.
 const { readFileSync, existsSync } = await import("node:fs");
 const reportFile = `${WORKSPACE}${reportPath}`;
-const checks = {
-  planned: steps.includes("write_todos"),
-  delegated: steps.includes("task"),
-  replayed: (toolCalls.get("replay_with") ?? 0) > 0,
-  wroteReport: existsSync(reportFile),
-  numbersAllFromTools: existsSync(reportFile) ? unsupportedNumbers(readFileSync(reportFile, "utf8")).length === 0 : false,
-};
-if (existsSync(reportFile)) {
-  const loose = unsupportedNumbers(readFileSync(reportFile, "utf8"));
-  if (loose.length) console.log(`Numbers in the report no tool returned: ${loose.join(", ")}`);
-}
+// Required every run: a plan, a report, and every number in it from a tool. Delegating and what-if runs depend on
+// the question (an overlay-only question needs neither), so they are reported, not required.
+const reportText = existsSync(reportFile) ? readFileSync(reportFile, "utf8") : null;
+const loose = reportText === null ? [] : unsupportedNumbers(reportText);
+const checks = { planned: steps.includes("write_todos"), wroteReport: reportText !== null, numbersAllFromTools: reportText !== null && loose.length === 0 };
+if (loose.length) console.log(`Numbers in the report no tool returned: ${loose.join(", ")}`);
 console.log("Tool calls, subagents included:", JSON.stringify(Object.fromEntries(toolCalls)));
-console.log("Checks:", JSON.stringify(checks));
+console.log("Checks:", JSON.stringify(checks), "| also:", JSON.stringify({ delegated: steps.includes("task"), replayed: (toolCalls.get("replay_with") ?? 0) > 0 }));
+if (!Object.values(checks).every(Boolean)) process.exitCode = 1;
 console.log(`Report: agent/workspace${reportPath}. Trace: smith.langchain.com, project "${process.env.LANGSMITH_PROJECT ?? "default"}".`);
 
 // Send the last trace data before the process ends (otherwise the final calls stay "pending" in LangSmith).
