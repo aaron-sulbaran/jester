@@ -8,7 +8,9 @@
   /* 1600 by 256. One section per render: heading.html?s=inspiration and so on (the list is below). */
   body { width: 1600px; height: 256px; }
   .sheet { left: 16px; right: 28px; top: 12px; bottom: 22px; }
-  .row { position: absolute; inset: 0; display: flex; align-items: center; gap: 34px; padding-left: 92px; }
+  .row { position: absolute; inset: 0; display: flex; align-items: center; gap: 34px; padding-left: 64px; }
+  .act { rotate: -5deg; translate: 0 -6px; }
+  .act .tag { font-size: 28px; }
   .masking { translate: 0 4px; }
   .prop { position: absolute; top: 0; bottom: 0; right: 0; width: 640px; }
   .prop .note { white-space: nowrap; }
@@ -23,8 +25,7 @@
   .s-inspiration .scrap .note { font-size: 30px; }
 
   /* What it does: the Jester asks you to copy. */
-  .s-what .puppet { right: 92px; top: -40px; width: 290px; height: 268px; }
-  .s-what .puppet .stick { top: 205px; }
+  .s-what .jester-sticker { left: 330px; top: -46px; width: 286px; }
   .s-what .scrap { position: absolute; right: 360px; top: 58px; }
 
   /* How we built it: three parts, three people. */
@@ -46,9 +47,8 @@
   .s-challenges .stampmark { position: absolute; right: 455px; top: 62px; white-space: nowrap; rotate: -12deg; padding: 6px 16px 6px; border: 5px solid var(--stamp); border-radius: 8px; color: var(--stamp); font: 400 40px/1 var(--sticker); opacity: .9; }
 
   /* Accomplishments: the score sticker everyone chases. */
-  .s-wins .score { position: absolute; right: 110px; top: 44px; rotate: 6deg; font-size: 124px; }
-  .s-wins .star { position: absolute; right: 500px; top: 74px; width: 104px; height: 104px; rotate: -12deg; filter: url(#sticker); }
-  .s-wins .star i { display: block; width: 100%; height: 100%; background: var(--gold); clip-path: polygon(50% 2%, 62% 36%, 98% 38%, 69% 59%, 80% 95%, 50% 74%, 20% 95%, 31% 59%, 2% 38%, 38% 36%); }
+  .s-wins .score { position: absolute; right: 310px; top: 44px; rotate: -4deg; font-size: 124px; }
+  .s-wins .passed { position: absolute; right: 80px; top: 104px; rotate: 4deg; font-size: 30px; }
 
   /* What we learned: a note to self. */
   .s-learned .scrap { position: absolute; right: 70px; top: 46px; }
@@ -65,46 +65,48 @@
 <div class="sheet"><div class="kraft"></div></div>
 <i class="washi w1"></i><i class="washi w2"></i>
 <div class="row">
+  <div class="act"><span class="tag" id="act"></span></div>
   <div class="masking"><h1 class="tape" id="title"></h1></div>
 </div>
 <div class="prop" id="prop"></div>
 <script>
-  // Each section: the heading, a washi pair, and its own prop on the right.
+  // Each section: the act number, the heading, a washi pair, and its own prop on the right.
   const SECTIONS = {
-    inspiration: { title: "Inspiration", tapes: ["w-pink", "w-dots"], prop: `
-      <div class="scrap note-wrap"><p class="note">what if any clip<br>was a level?</p></div>
+    inspiration: { act: "Act 1", title: "Inspiration", tapes: ["w-pink", "w-dots"], prop: `
+      <div class="scrap note-wrap"><p class="note">What if any clip<br>was a level?</p></div>
       <div class="snap photo"><i class="washi w-mint"></i><div class="mystery"><b>?</b></div></div>` },
-    what: { title: "What it does", tapes: ["w-mint", "w-pink"], prop: `
-      <div class="scrap note-wrap"><p class="note">Copy me.<br>I'm watching.</p></div>
-      <div class="puppet"><span class="stick"></span><img src="../../app/public/look/jester/classic-still.webp" alt="" /></div>` },
-    how: { title: "How we built it", tapes: ["w-dots", "w-mint"], prop: `
+    what: { act: "Act 2", title: "What it does", tapes: ["w-mint", "w-pink"], prop: `
+      <div class="scrap note-wrap"><p class="note">Copy the part<br>I give you.</p></div>
+      <img class="jester-sticker" src="../../app/public/look/jester/classic-still.webp" alt="" />` },
+    how: { act: "Act 3", title: "How we built it", tapes: ["w-dots", "w-mint"], prop: `
       <div class="parts">
         <span class="tag" style="font-size:26px"><i class="dot" style="--c:var(--p3)"></i>the clip side</span>
         <span class="tag" style="font-size:26px"><i class="dot" style="--c:var(--p1)"></i>the player side</span>
         <span class="tag" style="font-size:26px"><i class="dot" style="--c:var(--p2)"></i>the scoring engine</span>
       </div>` },
-    stack: { title: "Tech stack", tapes: ["w-pink", "w-mint"], prop: `
+    stack: { act: "Act 4", title: "Tech stack", tapes: ["w-pink", "w-mint"], prop: `
       <div class="pile">
         <span class="tag" style="left:250px;top:8px;rotate:4deg">MediaPipe</span>
         <span class="tag" style="left:30px;top:30px;rotate:-5deg">TypeScript</span>
         <span class="tag" style="left:120px;top:110px;rotate:2deg">WebCodecs</span>
         <span class="tag" style="left:340px;top:100px;rotate:-3deg">Supabase</span>
       </div>` },
-    challenges: { title: "Challenges", tapes: ["w-pink", "w-dots"], prop: `
+    challenges: { act: "Act 5", title: "Challenges", tapes: ["w-pink", "w-dots"], prop: `
       <span class="stampmark">Try again</span>
       <span class="problem p1">That did not work.</span>
       <span class="problem p2">No person found in this clip.</span>` },
-    wins: { title: "Accomplishments", tapes: ["w-dots", "w-pink"], prop: `
-      <span class="star"><i></i></span>
-      <span class="score big-sticker">100%</span>` },
-    learned: { title: "What we learned", tapes: ["w-mint", "w-dots"], prop: `
-      <div class="scrap note-wrap"><p class="note">Same clip in,<br>same guide out.</p></div>` },
-    next: { title: "What's next", tapes: ["w-mint", "w-pink"], prop: `
+    wins: { act: "Act 6", title: "Accomplishments", tapes: ["w-dots", "w-pink"], prop: `
+      <span class="score big-sticker">249</span>
+      <span class="tag passed">tests pass</span>` },
+    learned: { act: "Act 7", title: "What we learned", tapes: ["w-mint", "w-dots"], prop: `
+      <div class="scrap note-wrap"><p class="note">The same clip always<br>gives the same guide.</p></div>` },
+    next: { act: "Act 8", title: "What's next", tapes: ["w-mint", "w-pink"], prop: `
       <div class="ticket-wrap"><div class="ticket"><span>Next show</span><i class="stub"><b>Admit one</b></i></div></div>` },
   };
   const key = new URLSearchParams(location.search).get("s") || "inspiration";
   const s = SECTIONS[key];
   document.body.classList.add(`s-${key}`);
+  document.getElementById("act").textContent = s.act;
   document.getElementById("title").textContent = s.title;
   document.title = s.title;
   document.querySelector(".w1").classList.add(s.tapes[0]);

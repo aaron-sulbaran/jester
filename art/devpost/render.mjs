@@ -87,6 +87,8 @@ async function render(browser, job) {
   await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.all([...document.images].map((img) => img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; })));
+    // Pages that draw after load (canvases, arrows) set window.__ready.
+    await window.__ready;
   });
   if (job.height === "page") {
     const height = await page.evaluate(() => Math.ceil(document.documentElement.scrollHeight));

@@ -69,7 +69,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 
 - It is a party game first, built for a few friends around one laptop, with a jester as the host.
 - The laugh is built in: secret parts mean you find out at the reveal that you were the dog.
-- The retry loop: same clip, one more go, to beat a friend's score.
+- The retry loop: play the same clip again to beat a friend's score.
 - New clips become levels without anyone drawing them, so the game does not run out of things to copy.
 
 ![Tech stack](https://jester-pi.vercel.app/devpost/heading-stack.png)
@@ -90,7 +90,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 
 ![Challenges](https://jester-pi.vercel.app/devpost/heading-challenges.png)
 
-- **Same clip in, same guide out.** Our first stand-in read the clip from a playing video, timed by the wall clock, so the same file gave different guides. Now frames are decoded at fixed times and the analysis is saved under the file's fingerprint.
+- **The same clip must give the same guide.** Our first stand-in read the clip from a playing video, timed by the wall clock, so the same file gave different guides. Now frames are decoded at fixed times and the analysis is saved under the file's fingerprint.
 - **One dancer, many tracks.** People cross, turn and hide behind each other, and a tracker loses them. Early runs split one dancer into a pile of short tracks. Rejoining after gaps of up to 3 seconds, plus cut detection, fixed most of it. [check]
 - **Standing still must not score, but moving must.** A naive pose score gives points for doing nothing, so the engine scores only what you add above standing still. Then blind mode scored every player 0 on gentle dance clips, where standing still already matches most of the pose. Engine 0.9.0 measures how much you actually moved with the clip, and when you did, counts your accuracy directly.
 - **Laptop cameras rarely see legs.** Whole-body parts wait until you fit in frame. A hidden limb caps the score instead of being skipped, and you can choose to play a part with a hand, your head or a foot.

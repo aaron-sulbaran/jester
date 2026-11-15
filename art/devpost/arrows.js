@@ -18,7 +18,7 @@ function drawArrows(links) {
     const a = card(from), b = card(to);
     let x1, y1, x2, y2, bend;
     if (side === "right") { x1 = a.r + 6; y1 = a.cy - 20; x2 = b.l - 8; y2 = b.cy - 10; bend = [0, -14]; }
-    if (side === "left") { x1 = a.l - 6; y1 = a.cy + 10; x2 = b.r + 8; y2 = b.cy + 20; bend = [0, 14]; }
+    if (side === "left") { x1 = a.l - 6; y1 = a.cy - 20; x2 = b.r + 8; y2 = b.cy - 10; bend = [0, -14]; }
     if (side === "down") { x1 = a.cx + 40; y1 = a.b + 12; x2 = b.cx + 40; y2 = b.t - 16; bend = [36, 0]; }
     if (side === "up") { x1 = a.cx - 60; y1 = a.t - 12; x2 = b.cx - 60; y2 = b.b + 16; bend = [-36, 0]; }
     const mx = (x1 + x2) / 2 + bend[0], my = (y1 + y2) / 2 + bend[1];
@@ -32,7 +32,7 @@ function drawArrows(links) {
     html += `<path class="pen" d="M${head(0.5)} L${x2} ${y2} L${head(-0.5)}"/>`;
     if (label) {
       const lx = side === "up" || side === "down" ? mx + (side === "up" ? -18 : 18) : mx;
-      const ly = side === "up" || side === "down" ? my + 10 : my + (side === "left" ? 44 : -16);
+      const ly = side === "up" || side === "down" ? my + 10 : my - 16;
       const anchor = side === "up" ? "end" : side === "down" ? "start" : "middle";
       html += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" style="font: 700 30px var(--hand); letter-spacing: -.04em; fill: var(--pen)">${label}</text>`;
     }

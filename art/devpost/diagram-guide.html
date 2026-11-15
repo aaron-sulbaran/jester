@@ -165,12 +165,12 @@
     </section>
   </div>
 
-  <div class="foot"><div class="note-wrap"><p class="note">Then it is a level. Pick a part and play.</p></div></div>
+  <div class="foot"><div class="note-wrap"><p class="note">Now the clip is a level anyone can play.</p></div></div>
 </div>
 <script src="common.js"></script>
 <script src="arrows.js"></script>
 <script>
-  document.fonts.ready.then(() => drawArrows([[1, 2, "right"], [2, 3, "right"], [3, 4, "down"], [4, 5, "left"], [5, 6, "left"]]));
+  window.__ready = document.fonts.ready.then(() => drawArrows([[1, 2, "right"], [2, 3, "right"], [3, 4, "down"], [4, 5, "left"], [5, 6, "left"]]));
 </script>
 </body>
 </html>
