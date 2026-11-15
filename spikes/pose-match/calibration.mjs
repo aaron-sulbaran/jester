@@ -10,7 +10,7 @@ const inFrame = (lm) => lm && (lm.visibility ?? 1) >= MIN_VISIBILITY && lm.x >= 
 
 // Which key joints are missing, and one plain instruction for the player.
 export function checkFraming(landmarks) {
-  if (!landmarks) return { ok: false, missing: Object.keys(KEY_JOINTS), message: "I can't see you. Step into the frame." };
+  if (!landmarks) return { ok: false, missing: Object.keys(KEY_JOINTS), message: "I can't see you. Step into the picture." };
   const missing = Object.entries(KEY_JOINTS).filter(([, i]) => !inFrame(landmarks[i])).map(([name]) => name);
   if (missing.length === 0) return { ok: true, missing, message: "Good. Hold still." };
   const legs = missing.filter((n) => /Knee|Ankle/.test(n)).length;
