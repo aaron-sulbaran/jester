@@ -61,6 +61,7 @@ function syncButtons() {
   $<HTMLButtonElement>("add").disabled = busy || !dir || !current;
   $<HTMLButtonElement>("seed").disabled = busy || !dir;
   $<HTMLInputElement>("file").disabled = busy;
+  $<HTMLInputElement>("files").disabled = busy || !dir;
   for (const b of document.querySelectorAll<HTMLButtonElement>("button.remove")) b.disabled = busy;
 }
 
@@ -105,7 +106,9 @@ async function useFolder(handle: FileSystemDirectoryHandle) {
   dir = handle;
   await rememberFolder(handle);
   $("reuseFolder").classList.add("hidden");
-  say("folderStatus", `Writing to the folder "${handle.name}".`, "good");
+  // jester-deploy/bank is copied into every deploy of the public site; the private bank never leaves this laptop.
+  if (handle.name === "bank") say("folderStatus", `Writing to "bank". If this is jester-deploy/bank, everything added here goes out with the next deploy of the public site. For clips saved from TikTok or Instagram, pick jester-private-bank instead.`, "bad");
+  else say("folderStatus", `Writing to the folder "${handle.name}".`, "good");
   syncButtons();
   await showBank();
 }
@@ -162,11 +165,19 @@ const writeIndex = (folder: FileSystemDirectoryHandle, index: BankIndex) => writ
 
 // ---- Analysis and the cast preview ----
 
+/**
+ * How the bank stores the file. A phone's MOV is the same container as MP4 (browsers read both with one
+ * reader), so it goes in as clip.mp4; the lab reading it for moves shows that it decodes.
+ */
 function videoType(file: File): VideoType | null {
-  if (file.type === "video/mp4" || /\.mp4$/i.test(file.name)) return "mp4";
+  if (file.type === "video/mp4" || /\.(mp4|m4v)$/i.test(file.name)) return "mp4";
+  if (file.type === "video/quicktime" || /\.mov$/i.test(file.name)) return "mp4";
   if (file.type === "video/webm" || /\.webm$/i.test(file.name)) return "webm";
   return null;
 }
+
+/** A title from a file name: no file type, dashes and underscores as spaces. */
+const titleFrom = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim().replace(/\s+/g, " ").slice(0, 80) || "Untitled clip";
 
 async function analyse(file: File, onProgress: (share: number) => void): Promise<Result<Found>> {
   // The reader may decode through the <video> element, so the cast preview lets go of it first.
@@ -312,7 +323,7 @@ $("file").addEventListener("change", async (event) => {
   preview = null;
   $("found").classList.add("hidden");
   const type = videoType(file);
-  if (!type) return say("addStatus", "The bank takes MP4 or WebM files. Export this one as MP4 and try again.", "bad");
+  if (!type) return say("addStatus", "The bank takes MP4, WebM or MOV files. Export this one as MP4 and try again.", "bad");
   busy = true;
   syncButtons();
   say("addStatus", `Finding the people and things in ${file.name}...`);
@@ -325,7 +336,7 @@ $("file").addEventListener("change", async (event) => {
   }
   current = { file, type, guides: found.data.guides };
   listCast(found.data);
-  $<HTMLInputElement>("title").value = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+  $<HTMLInputElement>("title").value = titleFrom(file.name);
   $<HTMLInputElement>("credit").value = "";
   $("found").classList.remove("hidden");
   say("addStatus", `${file.name}: ${found.data.guides.length} to copy. Check the outlines sit on the right people and things, then add it.`, "good");
@@ -354,13 +365,17 @@ $("add").addEventListener("click", async () => {
   await showBank();
 });
 
-// ---- Starter clips ----
+// ---- Many at once: a batch of files, or the starter clips ----
 
-$("seed").addEventListener("click", async () => {
+interface Queued { title: string; credit: string; file: () => Promise<File | string> }
+
+/** Reads and adds each clip in turn, one line each in `logId`. A clip that fails is listed and skipped. */
+async function addMany(items: Queued[], logId: string) {
   if (!dir || busy) return;
+  const folder = dir;
   busy = true;
   syncButtons();
-  const log = $("seedLog");
+  const log = $(logId);
   log.replaceChildren();
   const note = (text: string, tone: "good" | "bad" | "" = "") => {
     const li = document.createElement("li");
@@ -370,28 +385,54 @@ $("seed").addEventListener("click", async () => {
     return li;
   };
   const progress = $<HTMLProgressElement>("progress");
-  for (const s of STARTERS) {
-    const index = await readIndex(dir);
+  let added = 0;
+  for (const [n, item] of items.entries()) {
+    const index = await readIndex(folder);
     if (index.error !== null) { note(index.error, "bad"); break; }
-    if (index.data.clips.some((c) => c.title === s.title)) { note(`${s.title}: already in the bank.`); continue; }
-    const line = note(`${s.title}: finding the people and things...`);
-    const response = await fetch(`/_clips/${s.file}`).catch(() => null);
-    const kind = response?.headers.get("content-type") ?? "";
-    if (!response?.ok || !kind.startsWith("video/")) { line.textContent = `${s.title}: ${s.file} is not in app/public/_clips.`; line.className = "bad"; continue; }
-    const file = new File([await response.blob()], s.file, { type: kind.split(";")[0] });
+    if (index.data.clips.some((c) => c.title === item.title)) { note(`${item.title}: already in the bank.`); continue; }
+    const line = note(`${item.title} (${n + 1} of ${items.length}): finding the people and things...`);
+    const fail = (why: string) => { line.textContent = `${item.title}: ${why}`; line.className = "bad"; };
+    const file = await item.file();
+    if (typeof file === "string") { fail(file); continue; }
     const type = videoType(file);
-    const found = type ? await analyse(file, (share) => { progress.value = share; }) : { data: null, error: "Not an MP4 or WebM file." };
-    if (found.error !== null) { line.textContent = `${s.title}: ${found.error}`; line.className = "bad"; continue; }
+    if (!type) { fail("not an MP4, WebM or MOV file."); continue; }
+    const found = await analyse(file, (share) => { progress.value = share; });
+    if (found.error !== null) { fail(found.error); continue; }
     await showCast(found.data.guides);
-    const added = await addToBank(dir, file, type!, found.data.guides, s.title, s.credit);
-    if (added.error !== null) { line.textContent = `${s.title}: ${added.error}`; line.className = "bad"; continue; }
-    line.textContent = `${s.title}: added as ${added.data.entry.id}, ${describe(added.data.entry)}.`;
+    const result = await addToBank(folder, file, type, found.data.guides, item.title, item.credit);
+    if (result.error !== null) { fail(result.error); continue; }
+    added++;
+    line.textContent = `${item.title}: added as ${result.data.entry.id}, ${describe(result.data.entry)}.`;
     line.className = "good";
     await showBank();
   }
-  note("Done.");
+  note(`Done: ${added} added.`);
   busy = false;
   syncButtons();
+}
+
+$("files").addEventListener("change", async (event) => {
+  const input = event.target as HTMLInputElement;
+  const files = [...(input.files ?? [])];
+  input.value = "";
+  if (files.length === 0) return;
+  if (!dir) return say("folderStatus", "Pick the bank folder first.", "bad");
+  const credit = $<HTMLInputElement>("manyCredit").value.trim().replace(/\s+/g, " ") || "Saved for a private test, not for sharing";
+  await addMany(files.map((f) => ({ title: titleFrom(f.name), credit, file: async () => f })), "manyLog");
+});
+
+$("seed").addEventListener("click", () => {
+  void addMany(STARTERS.map((s) => ({
+    title: s.title,
+    credit: s.credit,
+    file: async () => {
+      const response = await fetch(`/_clips/${s.file}`).catch(() => null);
+      const kind = response?.headers.get("content-type") ?? "";
+      // A dev server answers a missing file with its page, so only a video counts as found.
+      if (!response?.ok || !kind.startsWith("video/")) return `${s.file} is not in app/public/_clips.`;
+      return new File([await response.blob()], s.file, { type: kind.split(";")[0] });
+    },
+  })), "seedLog");
 });
 
 // ---- What is in the bank ----

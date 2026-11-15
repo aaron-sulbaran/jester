@@ -37,14 +37,14 @@
     <h2>1. The bank folder</h2>
     <button id="pickFolder">Pick the bank folder</button>
     <button id="reuseFolder" class="hidden">Use the same folder again</button>
-    <p id="folderStatus" class="status">Pick the folder <code>jester-deploy/bank</code>. The browser asks once to let this page write there.</p>
+    <p id="folderStatus" class="status">For clips saved from TikTok or Instagram, pick <code>hack-princeton/jester-private-bank</code>: it stays on this laptop. <code>jester-deploy/bank</code> goes out with every deploy of the public site. The browser asks once to let this page write there.</p>
   </section>
 
   <section id="addSection">
     <h2>2. Add a clip</h2>
-    <input id="file" type="file" accept="video/mp4,video/webm" />
+    <input id="file" type="file" accept="video/mp4,video/webm,video/quicktime,.mov" />
     <progress id="progress" value="0" max="1"></progress>
-    <p id="addStatus" class="status">Pick an MP4 or WebM video. People, animals, balls and cars are found.</p>
+    <p id="addStatus" class="status">Pick an MP4, WebM or MOV video. People, animals, balls and cars are found.</p>
     <div id="found" class="hidden">
       <canvas id="overlay" width="720" height="405"></canvas>
       <ul id="subjects"></ul>
@@ -58,8 +58,17 @@
   </section>
 
   <section>
-    <h2>Starter clips</h2>
-    <p class="sub">Free Wikimedia Commons clips with their credits filled in. Needs them in <code>app/public/_clips/</code>. Clips already in the bank under the same title are left alone.</p>
+    <h2>3. Add many at once</h2>
+    <p class="sub">Pick a batch of videos. Each one is read and added with its file name as the title (rename the files first for good titles) and the credit below. Videos with no one to copy are left out and listed. Titles already in the bank are skipped.</p>
+    <label for="manyCredit">Credit for the whole batch</label>
+    <input id="manyCredit" type="text" maxlength="120" value="Saved for a private test, not for sharing" />
+    <p><input id="files" type="file" multiple accept="video/mp4,video/webm,video/quicktime,.mov" /></p>
+    <ul id="manyLog"></ul>
+  </section>
+
+  <section>
+    <h2>Free starter clips</h2>
+    <p class="sub">Wikimedia Commons clips with their credits filled in. Needs them in <code>app/public/_clips/</code>. Clips already in the bank under the same title are left alone.</p>
     <button id="seed" disabled>Add the starter clips</button>
     <ul id="seedLog"></ul>
   </section>
