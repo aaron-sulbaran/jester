@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jester eval lab</title>
+  <style>
+    body { font: 15px/1.4 system-ui, sans-serif; margin: 0 auto; padding: 16px; max-width: 1100px; color: #1b1b1b; background: #fafaf7; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #555; margin: 0 0 12px; }
+    .panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0; }
+    .tags label { white-space: nowrap; }
+    .hint { color: #555; font-size: 13px; }
+    .stage { display: flex; flex-wrap: wrap; gap: 12px; }
+    .stage figure { margin: 0; flex: 1 1 320px; }
+    .stage canvas, .stage video { width: 100%; background: #000; border-radius: 6px; display: block; }
+    figcaption { font-size: 13px; color: #555; margin-top: 4px; }
+    #score { font-size: 40px; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
+    button { font: inherit; padding: 6px 14px; }
+    .hidden { display: none !important; }
+    #countdown { font-size: 64px; font-weight: 700; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Jester eval lab</h1>
+  <p class="sub">Dev server only. Pick a clip and what you are about to do on purpose, play one round, repeat. Every round is saved to <code>eval/data/rounds</code>; run <code>npm run eval</code> in <code>eval/</code> to read the report.</p>
+
+  <section class="panel">
+    <div class="row">
+      <label>Clip <select id="clip"><option value="starter">Starter dance (built in)</option></select></label>
+      <label>Subject <select id="subject"></select></label>
+      <span id="bankNote" class="hint">Loading the video bank...</span>
+    </div>
+    <div class="tags" id="tags"></div>
+    <p id="tagHint" class="hint"></p>
+    <div class="row">
+      <input id="note" maxlength="120" placeholder="Note (optional), for example: dim light" size="40" />
+      <label><input id="sim" type="checkbox" /> Simulated player (no camera)</label>
+      <label id="simSeatedWrap" class="hidden"><input id="simSeated" type="checkbox" /> seated</label>
+      <button id="start">Start round</button>
+    </div>
+  </section>
+
+  <div id="countdown" class="hidden"></div>
+
+  <section class="stage">
+    <figure>
+      <video id="clipVideo" class="hidden" playsinline muted></video>
+      <canvas id="clipCanvas" width="480" height="360"></canvas>
+      <figcaption>Clip</figcaption>
+    </figure>
+    <figure>
+      <video id="cam" class="hidden" playsinline muted></video>
+      <canvas id="playerCanvas" width="480" height="360"></canvas>
+      <figcaption>You (mirrored)</figcaption>
+    </figure>
+  </section>
+
+  <section class="panel">
+    <div class="row"><span id="score">-</span><span id="summary" class="hint">No round yet.</span></div>
+    <p id="status" class="hint"></p>
+  </section>
+
+  <section class="panel">
+    <table>
+      <thead><tr><th>Round</th><th>Clip</th><th>Tag</th><th>Score</th><th>Lag</th><th>Saved as</th></tr></thead>
+      <tbody id="history"></tbody>
+    </table>
+  </section>
+
+  <script type="module" src="./src/eval-lab.ts"></script>
+</body>
+</html>

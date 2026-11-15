@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { sampleTimeline, fitToCharacter, composeFrame, drawComposite, winnerIndex, PLAYER_COLORS } from "./reveal.mjs";
 import { mirrorPose } from "./score.mjs";
+import { DETAIL_BONES } from "./skeleton.mjs";
 import { makeStickPose, POSES } from "./synthetic.mjs";
 
 const mid = (pose, a, b, aspect = 1) => ({ x: (pose[a].x + pose[b].x) / 2 * aspect, y: (pose[a].y + pose[b].y) / 2 });
@@ -60,8 +61,8 @@ test("drawComposite draws every visible bone and skips missing figures", () => {
   const ctx = new Proxy({}, { get: (_, k) => (k in calls ? () => { calls[k]++; } : () => {}), set: () => true });
   const pose = makeStickPose(POSES.rest);
   drawComposite(ctx, 100, 100, [{ pose, color: "#fff" }, { pose: null, color: "#000" }]);
-  assert.equal(calls.moveTo, 12);
-  assert.equal(calls.lineTo, 12);
+  assert.equal(calls.moveTo, DETAIL_BONES.length);
+  assert.equal(calls.lineTo, DETAIL_BONES.length);
   assert.equal(calls.arc, 1);
 });
 
