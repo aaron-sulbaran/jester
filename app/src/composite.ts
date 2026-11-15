@@ -4,7 +4,7 @@
 //   drawReveal(revealCanvas, roles, clipMediaMs, { clipAspect, winner });
 
 import type { Guide } from "../../clip/src/types.ts";
-import { composeFrame, drawComposite } from "../../spikes/pose-match/reveal.mjs";
+import { composeFrame, drawComposite, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 
 export interface RevealRole {
   /** A player's recording (recorder.finish() or deserializeTimeline()), times in clip media ms. */
@@ -12,6 +12,8 @@ export interface RevealRole {
   /** The clip character this player played. */
   guide: Guide;
   name?: string;
+  /** The round score for this role; the highest is highlighted as the winner. */
+  score?: number | null;
 }
 
 type Obj = { x: number; y: number; z: number; visibility: number };
@@ -27,13 +29,15 @@ export function characterPoseAt(guide: Guide, mediaMs: number): Obj[] | null {
   return best.landmarks.map(([x, y, visibility]) => ({ x, y, z: 0, visibility }));
 }
 
-export function drawReveal(canvas: HTMLCanvasElement, roles: RevealRole[], mediaMs: number, { clipAspect, winner = -1 }: { clipAspect: number; winner?: number }) {
-  const withCharacter = roles.map((r) => ({ timeline: r.timeline, characterPose: characterPoseAt(r.guide, mediaMs), name: r.name }));
+/** Draws all roles at clip media time `mediaMs`. Returns the figures and the winner's index (-1 if no scores). */
+export function drawReveal(canvas: HTMLCanvasElement, roles: RevealRole[], mediaMs: number, { clipAspect, winner }: { clipAspect: number; winner?: number }) {
+  const shown = roles.map((r) => ({ role: r, characterPose: characterPoseAt(r.guide, mediaMs) }));
   const figures = composeFrame(
-    withCharacter.filter((r) => r.characterPose).map((r) => ({ ...r, characterPose: r.characterPose! })),
+    shown.filter((r) => r.characterPose).map((r) => ({ timeline: r.role.timeline, characterPose: r.characterPose!, name: r.role.name })),
     mediaMs,
     { playerAspect: 4 / 3, clipAspect },
   );
-  drawComposite(canvas.getContext("2d")!, canvas.width, canvas.height, figures, { highlight: winner });
-  return figures;
+  const best = winner ?? winnerIndex(roles.map((r) => r.score ?? null));
+  drawComposite(canvas.getContext("2d")!, canvas.width, canvas.height, figures, { highlight: best });
+  return { figures, winner: best };
 }
