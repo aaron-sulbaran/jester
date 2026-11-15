@@ -24,6 +24,7 @@ import { addHands } from "./clipside/hands.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
+import { whereToStand, LATE_HINT, type WhereToStand } from "./fitFrame.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
@@ -839,7 +840,7 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
  * ankles) has been in view for about 0.7 s, telling them what to do ("Step back until your knees and ankles are in
  * view"). After 12 s the hint becomes clickable ("click to start anyway") for a room too small to fit in.
  */
-async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement }, onFrame: (f: { landmarks: LandmarkObject[] | null; aspect: number }) => void) {
+async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement }, onFrame: (f: { landmarks: LandmarkObject[] | null; aspect: number }) => void, fit: WhereToStand | null = null) {
   const host = stage.guideCanvas.parentElement!;
   const hint = document.createElement("div");
   // Styled by the look (.framing-hint in style.css): a paper tag at the bottom of the stage.
@@ -854,6 +855,13 @@ async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasEl
     const late = window.setTimeout(() => { hint.classList.add("late"); hint.onclick = done; hint.dataset.late = "1"; }, 12000);
     player.start((f) => {
       onFrame({ landmarks: f.landmarks as LandmarkObject[] | null, aspect: f.aspect });
+      // With a where-to-stand frame, aim at it: pass once the player has fitted it for a moment.
+      if (fit) {
+        const r = fit.framing(f.landmarks as LandmarkObject[] | null);
+        hint.textContent = r.text + (hint.dataset.late ? LATE_HINT : "");
+        if (r.passed) { clearTimeout(late); done(); }
+        return;
+      }
       const r = calibrator.update(f.landmarks as never, 30);
       hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " Can't fit? Click here to start anyway." : "");
       if (r.passed) { clearTimeout(late); done(); }
@@ -1053,6 +1061,9 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   const g = s.guide;
   const stage = ui.playStage();
   const view = roleView(s, stage.guideCanvas, scene);
+  // Where to stand: a frame on the mirror view at the role's place and size, for a person copied with the whole body.
+  const firstMs = (Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null)) * 1000) / g.source.sampleHz;
+  const fit = !followsBox(s) && boxAt(g, firstMs) ? whereToStand({ stage: stage.guideCanvas.parentElement!, canvas: stage.playerCanvas, boxAt: (ms) => boxAt(g, ms), clipAspect: g.source.width / g.source.height, firstMs, hints: !deps.simMode() }) : null;
   const scratch = document.createElement("canvas");
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
@@ -1082,13 +1093,14 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
     paintRole(stage.guideCanvas, s, sizedView(), clipMs >= 0 ? Math.min(scene.durationMs, sound.now()) : 0, clipMs >= 0 ? leadMs : 0, scratch);
     fitCanvas(stage.playerCanvas, aspect);
     drawFrame(stage.playerCanvas, deps.simMode() ? null : stage.cam, pose, { mirror: true, color: s.color });
+    fit?.follow(clipMs >= 0 ? Math.min(scene.durationMs, sound.now()) : -1, pose);
   };
   // A timer, not requestAnimationFrame, so it keeps drawing in a background tab.
   const painter = window.setInterval(paint, 1000 / 30);
   paint();
   // A whole-body turn waits until the player is fully in view; a simulated player is always in view.
   if (!deps.simMode() && !followsBox(s)) {
-    try { await waitForFraming(player, stage, (f) => { pose = f.landmarks; aspect = f.aspect; }); pose = null; }
+    try { await waitForFraming(player, stage, (f) => { pose = f.landmarks; aspect = f.aspect; }, fit); pose = null; }
     catch { /* no camera frames: just carry on to the countdown */ }
   }
   await ui.countdown(3);
@@ -1116,6 +1128,7 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   player.setCapture?.(null);
   clearInterval(painter);
   clipMs = -1; pose = null; paint();
+  fit?.stop();
   if (frames === "restart") { player.stop(); throw new RestartTurn(); }
 
   // recorder.mjs is plain JS; TypeScript misreads its option types from the defaults.

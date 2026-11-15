@@ -290,6 +290,8 @@
             <div class="stage" id="stage">
               <canvas id="youCanvas" width="640" height="480" aria-label="You, in a mirror"></canvas>
               <canvas id="guideCanvas" width="640" height="360" aria-label="Your shape to copy"></canvas>
+              <!-- Where to stand (fitFrame.ts): the subject's place and size on the mirror view, never who. -->
+              <div class="fit-frame" id="fitFrame" data-fit="unseen" hidden aria-hidden="true"></div>
               <div class="count" id="count" aria-live="assertive" hidden></div>
               <!-- No pose for 1.5 s while the moves count (ui/feel.ts). A notice only; the turn carries on. -->
               <p class="problem lost" id="lostNotice" role="status" hidden>The camera can't see you. Step back into the picture.</p>

@@ -585,6 +585,15 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   font: 400 clamp(17px, 1.8vw, 24px)/1.3 var(--type); color: var(--ink); text-align: center;
 }
 .framing-hint.late { pointer-events: auto; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+/* Where to stand: a taped frame on the mirror view at the subject's place and size. It says where and how big, never who. */
+.fit-frame { position: absolute; z-index: 3; pointer-events: none; border: 3px dashed rgba(255, 254, 250, .9); box-shadow: 0 0 0 1px rgba(30, 27, 24, .45), inset 0 0 0 1px rgba(30, 27, 24, .45); transition: left .25s linear, top .25s linear, width .25s linear, height .25s linear, opacity .4s var(--ease), border-color .3s var(--ease); }
+.fit-frame::before, .fit-frame::after { content: ""; position: absolute; width: 42px; height: 14px; background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, .2) 0 3px, transparent 3px 10px); box-shadow: 1px 2px 0 var(--shade); }
+.fit-frame::before { top: -9px; left: -16px; rotate: -38deg; }
+.fit-frame::after { bottom: -9px; right: -16px; rotate: -38deg; }
+.fit-frame[data-fit="good"] { border-style: solid; border-color: var(--who); }
+#screen-turn[data-state="play"] .fit-frame { opacity: .45; }
+#screen-turn[data-state="play"] .framing-hint { left: 75%; max-width: 46%; }
+@media (prefers-reduced-motion: reduce) { .fit-frame { transition: none; } }
 /* Scoped to the notice: the crowning marks losing jesters .lost too, and a bare .lost pulled them onto the winner. */
 #lostNotice { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
 .place-who .aside { text-align: left; }
