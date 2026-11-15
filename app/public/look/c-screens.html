@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester: Hot Seat</title>
+<style>
+@font-face {
+  font-family: "Archivo";
+  src: url("fonts/archivo.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: block;
+}
+
+/* Hot Seat. Black, white, and one colour per player. Type scale: 14, 18, 28, 56, 120, 240, and the countdown. */
+:root {
+  --lisa: #2B3BFF;
+  --alex: #FF3B6B;
+  --aaron: #FFD500;
+  --ink: #000000;
+  --paper: #FFFFFF;
+  --gut: 48px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Archivo", system-ui, sans-serif;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-size: 18px;
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+body[data-s="play"] { background: var(--ink); }
+[hidden] { display: none !important; }
+h1, h2, p, ol, figure { margin: 0; }
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+
+/* ---------- Screen 1: start ---------- */
+.start {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: last baseline;
+  gap: 16px 40px;
+  padding: 40px var(--gut);
+}
+.mark {
+  font-size: min(clamp(64px, calc((100vw - 32px) / 3.95), 240px), 27vh);
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.045em;
+  line-height: 0.75;
+  margin-left: -0.02em;
+}
+.voice {
+  flex: 0 1 340px;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.clips {
+  display: flex;
+  flex-direction: column;
+  border-top: 2px solid var(--ink);
+}
+.clip {
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 0;
+  min-height: 72px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: calc(100% / 3) 1fr auto;
+  grid-template-areas: "name parts sil";
+  align-items: center;
+  border-bottom: 2px solid var(--ink);
+}
+.clip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.clip[aria-checked="true"] { color: var(--paper); }
+.clip[aria-checked="true"]::before { transform: none; }
+.clip:focus-visible { outline-offset: -10px; }
+.clip-name {
+  grid-area: name;
+  padding: 0 16px 0 var(--gut);
+  font-size: clamp(28px, 3.9vw, 56px);
+  font-weight: 850;
+  font-stretch: 125%;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+.clip:hover:not([aria-checked="true"]) .clip-name {
+  text-decoration: underline 3px;
+  text-underline-offset: 0.14em;
+}
+.clip-parts {
+  grid-area: parts;
+  padding-left: var(--gut);
+  font-size: clamp(14px, 1.25vw, 18px);
+  font-weight: 500;
+}
+.sil {
+  grid-area: sil;
+  display: block;
+  height: 56px;
+  width: auto;
+  margin-right: var(--gut);
+  overflow: visible;
+  --seam: var(--paper);
+}
+.clip[aria-checked="true"] .sil { --seam: var(--ink); }
+
+.more {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  border-bottom: 2px solid var(--ink);
+}
+.more button {
+  min-height: 80px;
+  padding: 0 var(--gut);
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 550;
+}
+.more button + button { border-left: 2px solid var(--ink); }
+.more button:focus-visible { outline-offset: -10px; }
+.more button:hover, .again:hover {
+  text-decoration: underline 2px;
+  text-underline-offset: 0.2em;
+}
+
+.go {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  min-height: 120px;
+}
+.seated {
+  align-self: center;
+  padding: 16px var(--gut);
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  font-size: 18px;
+  font-weight: 550;
+}
+.track {
+  flex: none;
+  position: relative;
+  width: 56px;
+  height: 32px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+}
+.knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.switch[aria-checked="true"] .track { background: var(--ink); }
+.switch[aria-checked="true"] .knob { transform: translateX(24px); background: var(--paper); }
+.help {
+  margin: 0 0 0 72px;
+  font-size: 14px;
+  font-weight: 450;
+}
+.play-btn {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 var(--gut);
+  font-size: clamp(28px, 3.9vw, 56px);
+  font-weight: 850;
+  font-stretch: 125%;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+.play-btn:hover, .send:hover {
+  text-decoration: underline 4px;
+  text-underline-offset: 0.16em;
+}
+.play-btn:focus-visible, .send:focus-visible, .again:focus-visible { outline-offset: -10px; }
+
+/* ---------- Screen 2: blind play, Aaron's turn ---------- */
+.play {
+  position: relative;
+  height: 100vh;
+  min-height: 560px;
+  overflow: hidden;
+  background: var(--aaron);
+  color: var(--ink);
+}
+.cam {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: var(--ink);
+}
+.cam-tall { display: none; }
+.play-type {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
+  grid-template-areas:
+    "name count"
+    "role count"
+    "hint count"
+    ".    count"
+    "note note";
+  padding: var(--gut);
+}
+.p-name {
+  grid-area: name;
+  font-size: clamp(44px, 14.4vw, 120px);
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.03em;
+  line-height: 0.8;
+}
+.p-role {
+  grid-area: role;
+  margin-top: 18px;
+  font-size: clamp(28px, 3.9vw, 56px);
+  font-weight: 800;
+  font-stretch: 125%;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+.p-hint {
+  grid-area: hint;
+  margin-top: 20px;
+  max-width: 22em;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 500;
+  line-height: 1.25;
+}
+.p-count {
+  grid-area: count;
+  justify-self: end;
+  font-size: clamp(120px, 38.5vw, 440px);
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.04em;
+  line-height: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.p-note {
+  grid-area: note;
+  font-size: clamp(14px, 1.25vw, 18px);
+  font-weight: 550;
+}
+
+/* ---------- Screen 3: reveal and results ---------- */
+.film { display: block; width: 100%; height: auto; }
+.s-num {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-size: 150px;
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+  paint-order: stroke fill;
+  stroke: var(--ink);
+  stroke-width: 10px;
+  stroke-linejoin: round;
+}
+.s-name {
+  font-size: 30px;
+  font-weight: 600;
+  font-stretch: 100%;
+  letter-spacing: 0;
+  fill: var(--ink);
+  stroke: none;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 90px;
+  padding: 0 var(--gut) 0 calc(var(--gut) - 16px);
+}
+.pp {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.pp span { width: 8px; height: 26px; background: currentColor; }
+.pp.paused span:first-child {
+  width: 0;
+  height: 0;
+  background: none;
+  border-style: solid;
+  border-width: 14px 0 14px 24px;
+  border-color: transparent transparent transparent currentColor;
+}
+.pp.paused span:last-child { display: none; }
+.bar { position: relative; flex: 1; height: 8px; }
+.bar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 2px;
+  background: var(--ink);
+}
+.bar span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink); }
+
+.results { list-style: none; padding: 0; }
+.r {
+  display: flex;
+  align-items: baseline;
+  gap: 32px;
+  padding: 36px var(--gut);
+}
+.r-name, .r-score {
+  font-size: clamp(56px, 8.4vw, 120px);
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.03em;
+  line-height: 0.8;
+}
+.r-score { font-variant-numeric: tabular-nums; }
+.r-part {
+  flex: 1;
+  font-size: clamp(14px, 2vw, 28px);
+  font-weight: 500;
+}
+.r-lisa { background: var(--lisa); color: var(--paper); }
+.r-aaron { background: var(--aaron); color: var(--ink); }
+.r-alex { background: var(--alex); color: var(--ink); }
+
+.verdict {
+  max-width: 20em;
+  padding: 64px var(--gut) 72px;
+  font-size: clamp(28px, 3.9vw, 56px);
+  font-weight: 550;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.end {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  min-height: 120px;
+  border-top: 2px solid var(--ink);
+}
+.send {
+  grid-column: 2;
+  grid-row: 1;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 var(--gut);
+  /* The longest label on the page: sized so it always holds one line in its column. */
+  font-size: clamp(24px, calc(5.03vw - 7.5px), 56px);
+  font-weight: 850;
+  font-stretch: 125%;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+.again {
+  grid-column: 1;
+  grid-row: 1;
+  padding: 0 var(--gut);
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 550;
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 720px) {
+  :root { --gut: 16px; }
+
+  .head { display: block; padding: 24px 16px 20px; }
+  .voice { margin-top: 14px; max-width: 22em; }
+  .clip {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "name sil" "parts sil";
+    align-content: center;
+    row-gap: 4px;
+    padding: 14px 16px;
+    min-height: 76px;
+  }
+  .clip-name, .clip-parts { padding: 0; }
+  .sil { height: 36px; margin: 0 0 0 12px; }
+  .more { grid-template-columns: 1fr 1fr; }
+  .more button { min-height: 56px; }
+  .go { grid-template-columns: 1fr; min-height: 0; }
+  .seated { padding: 16px; }
+  .play-btn { min-height: 72px; }
+
+  .cam-wide { display: none; }
+  .cam-tall { display: block; }
+  .play-type {
+    column-gap: 12px;
+    grid-template-areas:
+      "name count"
+      "role role"
+      "hint hint"
+      ".    ."
+      "note note";
+  }
+  .p-name { align-self: end; }
+  .p-role { margin-top: 14px; }
+  .p-hint { margin-top: 10px; }
+
+  .s-num { font-size: 180px; stroke-width: 16px; }
+  .s-name { font-size: 64px; }
+  .controls { height: 56px; gap: 12px; padding: 0 16px 0 4px; }
+  .pp { width: 48px; height: 48px; gap: 6px; }
+  .pp span { width: 6px; height: 20px; }
+  .r {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "name score" "part score";
+    align-items: center;
+    gap: 6px 16px;
+    padding: 18px 16px;
+  }
+  .r-name { grid-area: name; }
+  .r-part { grid-area: part; }
+  .r-score { grid-area: score; }
+  .verdict { padding: 32px 16px 36px; }
+  .end { grid-template-columns: 1fr; min-height: 0; }
+  .send { grid-column: 1; grid-row: 1; min-height: 72px; font-size: calc(7.5vw - 3px); }
+  .again { grid-column: 1; grid-row: 2; min-height: 56px; }
+}
+
+/* ---------- One moment per screen ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* Start: the black fill wipes across the clip you pick. */
+  .clip { transition: color 200ms ease; }
+  .clip::before { transition: transform 360ms cubic-bezier(0.2, 0.7, 0, 1); }
+  .track { transition: background-color 180ms ease; }
+  .knob { transition: transform 180ms cubic-bezier(0.2, 0.7, 0, 1), background-color 180ms ease; }
+
+  /* Play: your colour floods up the screen when your turn starts. */
+  .play { animation: flood 760ms cubic-bezier(0.7, 0, 0.2, 1) both; }
+  @keyframes flood {
+    from { clip-path: inset(100% 0 0 0); }
+    to { clip-path: inset(0 0 0 0); }
+  }
+
+  /* Reveal: each player lands in the clip, one after another. */
+  .cut {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: land 560ms cubic-bezier(0.3, 1.5, 0.6, 1) both;
+  }
+  .cut-2 { animation-delay: 160ms; }
+  .cut-3 { animation-delay: 320ms; }
+  @keyframes land {
+    from { opacity: 0; transform: translateY(24px) scale(0.82); }
+    to { opacity: 1; transform: none; }
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Shared filters. Radii are in the user units of whatever uses them. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- The part to fit into: faint white fill, a white line on the edge, then a thick black band outside it. -->
+    <filter id="guide" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="inner" />
+      <feMorphology in="SourceAlpha" operator="dilate" radius="15" result="outer" />
+      <feComposite in="outer" in2="inner" operator="out" result="blackBand" />
+      <feComposite in="inner" in2="SourceAlpha" operator="out" result="whiteBand" />
+      <feFlood flood-color="#000000" result="black" />
+      <feComposite in="black" in2="blackBand" operator="in" result="blackRing" />
+      <feFlood flood-color="#FFFFFF" result="white" />
+      <feComposite in="white" in2="whiteBand" operator="in" result="whiteRing" />
+      <feFlood flood-color="#FFFFFF" flood-opacity="0.3" result="faint" />
+      <feComposite in="faint" in2="SourceAlpha" operator="in" result="faintFill" />
+      <feMerge>
+        <feMergeNode in="faintFill" />
+        <feMergeNode in="whiteRing" />
+        <feMergeNode in="blackRing" />
+      </feMerge>
+    </filter>
+    <!-- A cut edge around each player in the reveal, so yellow still reads on light grey. -->
+    <filter id="edge" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="grown" />
+      <feFlood flood-color="#000000" />
+      <feComposite in2="grown" operator="in" result="ring" />
+      <feMerge>
+        <feMergeNode in="ring" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<!-- ================= Screen 1: start ================= -->
+<section class="start" data-screen="start" aria-label="Start">
+  <header class="head">
+    <h1 class="mark">Jester</h1>
+    <p class="voice">Pick a clip. I’ll give each of you a part from it, in secret.</p>
+  </header>
+
+  <div class="clips" role="radiogroup" aria-label="Starter clips">
+    <button class="clip" role="radio" aria-checked="true" data-name="Fetch">
+      <span class="clip-name">Fetch</span>
+      <span class="clip-parts">3 parts: a thrower, a dog, a ball</span>
+      <svg class="sil" viewBox="4 0 116 60" aria-hidden="true" focusable="false">
+        <use href="art.svg#throw" x="0" y="0" width="40" height="60" />
+        <use href="art.svg#dog" x="46" y="31" width="48" height="29" />
+        <use href="art.svg#ball" x="104" y="4" width="14" height="14" />
+      </svg>
+    </button>
+    <button class="clip" role="radio" aria-checked="false" data-name="Handshake">
+      <span class="clip-name">Handshake</span>
+      <span class="clip-parts">2 parts: two people</span>
+      <svg class="sil" viewBox="6 0 59 60" aria-hidden="true" focusable="false">
+        <use href="art.svg#player" x="-1" y="0" width="45" height="60" />
+        <use href="art.svg#player" x="27" y="0" width="45" height="60" />
+      </svg>
+    </button>
+    <button class="clip" role="radio" aria-checked="false" data-name="Bounce">
+      <span class="clip-name">Bounce</span>
+      <span class="clip-parts">1 part: a ball</span>
+      <svg class="sil" viewBox="0 0 16 60" aria-hidden="true" focusable="false">
+        <use href="art.svg#ball" x="0" y="44" width="16" height="16" />
+      </svg>
+    </button>
+    <button class="clip" role="radio" aria-checked="false" data-name="Wave">
+      <span class="clip-name">Wave</span>
+      <span class="clip-parts">1 part: a person</span>
+      <svg class="sil" viewBox="6 0 29 60" aria-hidden="true" focusable="false">
+        <use href="art.svg#player" x="0" y="0" width="45" height="60" />
+      </svg>
+    </button>
+  </div>
+
+  <div class="more">
+    <button type="button">Upload a video</button>
+    <button type="button">Record one now</button>
+  </div>
+
+  <div class="go">
+    <div class="seated">
+      <button class="switch" type="button" role="switch" aria-checked="false" aria-describedby="seated-help">
+        <span class="track" aria-hidden="true"><span class="knob"></span></span>
+        <span>Playing seated</span>
+      </button>
+      <p class="help" id="seated-help">Only your upper body is scored.</p>
+    </div>
+    <button class="play-btn" type="button">Play Fetch</button>
+  </div>
+</section>
+
+<!-- ================= Screen 2: blind play, Aaron's turn ================= -->
+<section class="play" data-screen="play" aria-label="Aaron's turn">
+  <!-- Aaron's own camera, mirrored, as a two-tone image: yellow is light, black is shadow. -->
+  <svg class="cam cam-wide" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+    <path fill-opacity=".12" fill-rule="evenodd" d="M0 0H1400V770H0Z M150 70V420H470V70Z" />
+    <path fill-opacity=".2" d="M1400 0H1600V850L1400 770Z" />
+    <path fill-opacity=".3" d="M0 770H1400L1600 850V900H0Z" />
+    <g opacity=".1" fill="none" stroke="#000" stroke-width="14">
+      <rect x="150" y="70" width="320" height="350" />
+      <path d="M310 70V420M150 250H470" />
+    </g>
+    <rect x="128" y="420" width="364" height="20" fill-opacity=".1" />
+    <g opacity=".42">
+      <path d="M1236 470H1344L1374 560H1206Z" />
+      <path d="M1290 560V828" stroke="#000" stroke-width="10" />
+      <ellipse cx="1290" cy="830" rx="56" ry="12" />
+    </g>
+    <use href="art.svg#player" x="542" y="118" width="675" height="900" opacity=".62" />
+    <use href="art.svg#dog" x="390" y="400" width="820" height="492" transform="translate(1600 0) scale(-1 1)" filter="url(#guide)" />
+  </svg>
+  <svg class="cam cam-tall" viewBox="0 0 900 1600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+    <path fill-opacity=".12" fill-rule="evenodd" d="M0 0H780V1380H0Z M110 150V540H400V150Z" />
+    <path fill-opacity=".2" d="M780 0H900V1430L780 1380Z" />
+    <path fill-opacity=".3" d="M0 1380H780L900 1430V1600H0Z" />
+    <g opacity=".24" fill="none" stroke="#000" stroke-width="14">
+      <rect x="110" y="150" width="290" height="390" />
+      <path d="M255 150V540M110 345H400" />
+    </g>
+    <rect x="92" y="540" width="326" height="20" fill-opacity=".24" />
+    <g opacity=".42">
+      <path d="M695 640H785L810 720H670Z" />
+      <path d="M740 720V1392" stroke="#000" stroke-width="10" />
+      <ellipse cx="740" cy="1394" rx="46" ry="10" />
+    </g>
+    <use href="art.svg#player" x="-37" y="430" width="975" height="1300" opacity=".62" />
+    <use href="art.svg#dog" x="110" y="1030" width="680" height="408" transform="translate(900 0) scale(-1 1)" filter="url(#guide)" />
+  </svg>
+
+  <div class="play-type">
+    <h2 class="p-name">Aaron</h2>
+    <p class="p-role">You are the dog.</p>
+    <p class="p-hint">Get inside the outline. Move when it moves.</p>
+    <p class="p-count" role="timer" aria-label="Starting in 3">3</p>
+    <p class="p-note">3 of 3. Everyone else, look away.</p>
+  </div>
+</section>
+
+<!-- ================= Screen 3: reveal and results ================= -->
+<section class="reveal" data-screen="reveal" aria-label="Reveal and results">
+  <svg class="film" viewBox="0 0 1600 900" role="img" aria-label="The Fetch clip. Lisa stands in as the thrower, Alex is curled up in the air as the ball, and Aaron crawls after it as the dog." focusable="false">
+    <rect width="1600" height="900" fill="#F4F4F4" />
+    <path fill="#E8E8E8" d="M0 640V565C180 522 360 516 560 560C760 602 900 592 1060 556C1240 516 1420 522 1600 562V640Z" />
+    <rect y="630" width="1600" height="270" fill="#DDDDDD" />
+    <rect x="94" y="360" width="30" height="280" fill="#C8C8C8" />
+    <g fill="#D1D1D1">
+      <circle cx="109" cy="290" r="112" />
+      <circle cx="40" cy="362" r="74" />
+      <circle cx="180" cy="356" r="70" />
+    </g>
+    <ellipse cx="1530" cy="640" rx="124" ry="46" fill="#D1D1D1" />
+    <g fill="#CDCDCD">
+      <ellipse cx="370" cy="768" rx="112" ry="10" />
+      <ellipse cx="915" cy="712" rx="46" ry="7" />
+      <ellipse cx="1210" cy="736" rx="138" ry="10" />
+    </g>
+
+    <g class="cut cut-1">
+      <g filter="url(#edge)"><use href="art.svg#throw" x="230" y="350" width="280" height="420" style="color: var(--lisa)" /></g>
+      <text class="s-num" x="530" y="742" style="fill: var(--lisa)">91<tspan class="s-name" dx="18">Lisa</tspan></text>
+    </g>
+    <g class="cut cut-2">
+      <g filter="url(#edge)"><use href="art.svg#tuck" x="840" y="210" width="150" height="150" style="color: var(--alex)" /></g>
+      <text class="s-num" x="1010" y="318" style="fill: var(--alex)">64<tspan class="s-name" dx="18">Alex</tspan></text>
+    </g>
+    <g class="cut cut-3">
+      <g filter="url(#edge)"><use href="art.svg#crawl" x="1050" y="540" width="330" height="198" style="color: var(--aaron)" /></g>
+      <text class="s-num" x="1084" y="522" style="fill: var(--aaron)">82<tspan class="s-name" dx="18">Aaron</tspan></text>
+    </g>
+  </svg>
+
+  <div class="controls">
+    <button class="pp" type="button" aria-label="Pause"><span></span><span></span></button>
+    <div class="bar" role="progressbar" aria-label="Clip progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42"><span style="width: 42%"></span></div>
+  </div>
+
+  <ol class="results" aria-label="Scores">
+    <li class="r r-lisa"><span class="r-name">Lisa</span><span class="r-part">the thrower</span><span class="r-score">91</span></li>
+    <li class="r r-aaron"><span class="r-name">Aaron</span><span class="r-part">the dog</span><span class="r-score">82</span></li>
+    <li class="r r-alex"><span class="r-name">Alex</span><span class="r-part">the ball</span><span class="r-score">64</span></li>
+  </ol>
+
+  <p class="verdict">Lisa wins. Alex, that was a brave ball.</p>
+
+  <div class="end">
+    <button class="send" type="button">Send this to someone</button>
+    <button class="again" type="button">Play again</button>
+  </div>
+</section>
+
+<script>
+(() => {
+  const wanted = new URLSearchParams(location.search).get("s");
+  const screens = [...document.querySelectorAll("[data-screen]")];
+  if (screens.some((el) => el.dataset.screen === wanted)) {
+    screens.forEach((el) => { el.hidden = el.dataset.screen !== wanted; });
+    document.body.dataset.s = wanted;
+  }
+  const clips = [...document.querySelectorAll(".clip")];
+  const playButton = document.querySelector(".play-btn");
+  clips.forEach((clip) => clip.addEventListener("click", () => {
+    clips.forEach((other) => other.setAttribute("aria-checked", String(other === clip)));
+    playButton.textContent = "Play " + clip.dataset.name;
+  }));
+  const seated = document.querySelector(".switch");
+  seated.addEventListener("click", () => {
+    seated.setAttribute("aria-checked", String(seated.getAttribute("aria-checked") !== "true"));
+  });
+  const pause = document.querySelector(".pp");
+  pause.addEventListener("click", () => {
+    const paused = pause.classList.toggle("paused");
+    pause.setAttribute("aria-label", paused ? "Play" : "Pause");
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester, cut paper</title>
+<style>
+  @font-face { font-family: "Bowlby One"; src: url("fonts/bowlby-one.woff2") format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Atkinson Hyperlegible"; src: url("fonts/atkinson-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Atkinson Hyperlegible"; src: url("fonts/atkinson-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+  :root {
+    --lemon: #FFD43B;
+    --paper: #FFFFFF;
+    --ink: #161616;
+    --cobalt: #2350E6;
+    --pink: #FF6FAE;
+    --mint: #22B07D;
+    --lisa: var(--cobalt);
+    --alex: var(--pink);
+    --aaron: var(--mint);
+    --tape: rgba(242, 233, 206, 0.84);
+    --lift: 4px 5px 0 var(--ink);
+    --display: "Bowlby One", "Arial Black", sans-serif;
+    --text: "Atkinson Hyperlegible", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--lemon); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font: 400 18px/1.4 var(--text);
+    /* Construction paper fibre, very faint. Inline, nothing fetched. */
+    background: var(--lemon) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .09 0 0 0 0 .09 0 0 0 0 .09 .16 0 0 0 -.05'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px dashed var(--ink); outline-offset: 6px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  .f-lemon { fill: var(--lemon); } .f-paper { fill: var(--paper); } .f-ink { fill: var(--ink); }
+  .f-cobalt { fill: var(--cobalt); } .f-pink { fill: var(--pink); } .f-mint { fill: var(--mint); }
+
+  .screen { position: relative; min-height: 100vh; min-height: 100svh; padding: 40px 48px; overflow-x: clip; }
+  .screen[hidden] { display: none !important; }
+
+  /* Shared paper bits */
+  .tape {
+    position: absolute; z-index: 3; width: 104px; height: 30px; background: var(--tape); pointer-events: none;
+    clip-path: polygon(3% 0, 97% 0, 100% 18%, 97% 36%, 100% 54%, 97% 72%, 100% 90%, 97% 100%, 3% 100%, 0 82%, 3% 64%, 0 46%, 3% 28%, 0 10%);
+  }
+  .say-wrap { filter: drop-shadow(4px 5px 0 var(--ink)); rotate: -1deg; align-self: flex-start; }
+  .say {
+    margin: 0; background: var(--paper); font-weight: 700; font-size: 28px; line-height: 1.25;
+    padding: 38px 30px 24px;
+    clip-path: polygon(0 18px, 36px 18px, 54px 0, 66px 18px, 100% 11px, calc(100% - 5px) 100%, 7px calc(100% - 4px));
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+    min-height: 56px; padding: 14px 24px; cursor: pointer;
+    font-weight: 700; font-size: 21px; line-height: 1.15; text-align: center;
+    background: var(--paper); border: 3px solid var(--ink); border-radius: 0; box-shadow: var(--lift);
+  }
+  .btn svg { width: 28px; height: 28px; flex: none; }
+  .btn-main { background: var(--pink); font-size: 30px; min-height: 84px; padding: 20px 44px; box-shadow: 6px 7px 0 var(--ink); rotate: -1.2deg; }
+
+  /* ---------- Start ---------- */
+  .start { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 56px; align-content: center; }
+  .start-left { display: flex; flex-direction: column; gap: 30px; }
+  .start-right { display: flex; flex-direction: column; gap: 34px; }
+
+  .wordmark { margin: 0 0 4px; font-family: var(--display); font-weight: 400; font-size: 136px; line-height: 1; color: var(--cobalt); filter: url(#cut-word); padding: 10px 14px 18px 8px; align-self: flex-start; }
+  .wordmark .wm { display: inline-flex; letter-spacing: -0.01em; }
+  .wordmark .wm span { display: inline-block; rotate: var(--r); translate: 0 var(--y); }
+
+  .go { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 26px; }
+  .seated { display: flex; align-items: center; gap: 22px; }
+  .seated-label { display: block; font-weight: 700; font-size: 21px; cursor: pointer; }
+  .seated-help { margin: 2px 0 0; font-size: 17px; }
+  .switch { position: relative; flex: none; width: 76px; height: 44px; padding: 0; cursor: pointer; background: var(--paper); border: 3px solid var(--ink); border-radius: 0; box-shadow: 3px 4px 0 var(--ink); rotate: 1.5deg; }
+  .switch .knob { position: absolute; top: 4px; left: 4px; width: 30px; height: 30px; background: var(--ink); }
+  .switch[aria-checked="true"] { background: var(--mint); }
+  .switch[aria-checked="true"] .knob { translate: 32px 0; }
+
+  .clips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 34px; }
+  .clip {
+    position: relative; display: flex; flex-direction: column; text-align: left; cursor: pointer;
+    padding: 12px 12px 16px; background: var(--paper); border: 0; border-radius: 0;
+    box-shadow: var(--lift); rotate: var(--r);
+  }
+  .clip .pic { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .clip .name { margin-top: 12px; font-weight: 700; font-size: 22px; line-height: 1.15; }
+  .clip .parts { font-size: 16px; line-height: 1.3; }
+  .clip[aria-pressed="true"] { box-shadow: 0 0 0 4px var(--ink), 8px 10px 0 2px var(--ink); }
+  .clip .tick { display: none; position: absolute; top: -16px; right: -14px; z-index: 2; width: 48px; height: 48px; border-radius: 50%; background: var(--cobalt); border: 4px solid var(--paper); box-shadow: 3px 4px 0 var(--ink); place-items: center; rotate: 6deg; }
+  .clip[aria-pressed="true"] .tick { display: grid; }
+  .clip .tick svg { width: 24px; height: 24px; }
+
+  .own { display: flex; gap: 22px; }
+  .own .btn:first-child { rotate: -0.8deg; }
+  .own .btn:last-child { rotate: 1deg; }
+
+  /* ---------- Blind play ---------- */
+  .play { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 44px; align-content: center; }
+  .turn { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 28px; padding-top: 6px; }
+  .cam-wrap { grid-column: 1; grid-row: 1; position: relative; justify-self: start; rotate: -0.8deg; width: min(100%, calc((100vh - 180px) * 4 / 3 + 28px)); }
+
+  .tag-wrap { filter: drop-shadow(4px 5px 0 var(--ink)); align-self: flex-start; rotate: 1.2deg; }
+  .tag { margin: 0; display: flex; align-items: center; gap: 16px; padding: 14px 34px 14px 20px; background: var(--aaron); font-weight: 700; font-size: 28px; line-height: 1.1; clip-path: polygon(0 5%, 100% 0, calc(100% - 16px) 50%, 100% 100%, 1% 95%); }
+  .tag-of { background: var(--paper); font-size: 18px; padding: 5px 10px; }
+
+  .part { margin: 0; font-family: var(--display); font-weight: 400; font-size: 56px; line-height: 1.02; background: var(--paper); padding: 22px 24px 26px; box-shadow: var(--lift); rotate: -1.6deg; }
+
+  .count { margin: -6px 0 0 6px; font-family: var(--display); font-size: 300px; line-height: 0.8; color: var(--cobalt); }
+  .count span { display: inline-block; filter: url(#cut-num); padding: 14px 20px 22px 12px; rotate: -3deg; }
+
+  .away-wrap { position: relative; margin-top: auto; margin-bottom: 18px; }
+  .away { margin: 0; background: var(--pink); padding: 20px 22px; font-weight: 700; font-size: 25px; line-height: 1.2; box-shadow: var(--lift); rotate: 2deg; }
+  .away-wrap .tape { top: -15px; left: 40%; rotate: -3deg; width: 86px; }
+
+  .cam-print { margin: 0; background: var(--paper); padding: 14px 14px 0; box-shadow: 6px 7px 0 var(--ink); }
+  .cam { position: relative; overflow: hidden; aspect-ratio: 4 / 3; background: var(--cobalt); }
+  .room { position: absolute; inset: 0; width: 100%; height: 100%; scale: -1 1; } /* the camera is mirrored */
+  .outline { position: absolute; left: 50%; bottom: 3%; width: 64%; height: auto; translate: -50% 0; overflow: visible; }
+  .cam-print figcaption { padding: 14px 6px 16px; font-weight: 700; font-size: 20px; line-height: 1.25; }
+  .cam-wrap .t1 { top: -12px; left: -32px; rotate: -38deg; }
+  .cam-wrap .t2 { top: -10px; right: -34px; rotate: 36deg; }
+
+  /* ---------- Reveal ---------- */
+  .reveal { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 48px; align-content: center; }
+  .film { position: relative; align-self: center; rotate: 0.6deg; }
+  .film-print { margin: 0; background: var(--paper); padding: 14px; box-shadow: 6px 7px 0 var(--ink); }
+  .frame { position: relative; container-type: inline-size; }
+  .frame > svg { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .film .t1 { top: -12px; left: -30px; rotate: -36deg; }
+  .film .t2 { bottom: 54px; right: -36px; rotate: -40deg; }
+
+  .cut { transform-box: fill-box; transform-origin: 50% 50%; }
+  .sticker {
+    position: absolute; display: flex; align-items: center; gap: 0.55em;
+    padding: 0.4em 0.75em 0.45em 0.6em; background: var(--paper);
+    border-left: 0.55em solid var(--who); box-shadow: 3px 4px 0 var(--ink); rotate: var(--r);
+    font-size: clamp(10px, 1.6cqw, 17px); line-height: 1.12; white-space: nowrap;
+  }
+  .sticker .n { font-family: var(--display); font-size: 2.1em; line-height: 0.9; }
+  .sticker b, .sticker .sp { display: block; }
+
+  .controls { display: flex; align-items: center; gap: 16px; padding-top: 14px; }
+  .pp { flex: none; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; cursor: pointer; background: var(--ink); border: 0; border-radius: 0; rotate: -2deg; }
+  .pp svg { width: 22px; height: 22px; }
+  .scrub { flex: 1; padding: 13px 0; cursor: pointer; }
+  .bar { position: relative; height: 20px; background: var(--lemon); border: 3px solid var(--ink); }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; width: 66%; background: var(--cobalt); }
+  .bar .knob { position: absolute; left: 66%; top: 50%; width: 24px; height: 32px; translate: -50% -50%; background: var(--paper); border: 3px solid var(--ink); box-shadow: 2px 3px 0 var(--ink); rotate: 4deg; }
+  .time { flex: none; font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; }
+
+  .results { display: flex; flex-direction: column; gap: 24px; }
+  .results .say { font-size: 28px; }
+  .scores { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+  .score { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 12px 22px 12px 14px; box-shadow: var(--lift); rotate: var(--r); }
+  .score .rank { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--paper); color: var(--ink); font-family: var(--display); font-size: 20px; }
+  .score b { display: block; font-size: 24px; line-height: 1.1; }
+  .score .who span { font-size: 17px; }
+  .score .pts { font-family: var(--display); font-size: 46px; line-height: 1; }
+  .score.first { padding-top: 16px; padding-bottom: 16px; }
+  .score.first .pts { font-size: 64px; }
+  .s-lisa { background: var(--lisa); color: var(--paper); }
+  .s-aaron { background: var(--aaron); }
+  .s-alex { background: var(--alex); }
+  .actions { margin-top: auto; display: flex; flex-direction: column; align-items: stretch; gap: 18px; }
+  .actions .btn-main { font-size: 26px; min-height: 76px; }
+  .actions .btn:last-child { rotate: 0.8deg; }
+
+  /* ---------- Motion: one moment per screen ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .btn, .clip, .switch .knob { transition: translate 0.14s ease-out, box-shadow 0.14s ease-out; }
+    .btn:hover, .clip:hover { translate: -1px -3px; }
+    .btn:active, .clip:active { translate: 3px 4px; box-shadow: 1px 1px 0 var(--ink); }
+
+    /* Start: the pieces drop onto the page. */
+    .wordmark .wm span { animation: drop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) backwards; animation-delay: calc(var(--i) * 50ms); }
+    .start .say-wrap { animation: drop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 260ms backwards; }
+    .clip { animation: drop 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards; animation-delay: calc(340ms + var(--i) * 90ms); }
+    @keyframes drop { from { opacity: 0; translate: 0 -40px; scale: 1.06; } }
+
+    /* Blind play: the numeral lands. */
+    .count span { animation: land 0.6s cubic-bezier(0.25, 1, 0.4, 1) 150ms backwards; }
+    @keyframes land { 0% { opacity: 0; scale: 2.1; translate: 40px -50px; } 55% { opacity: 1; scale: 0.92; translate: 0 0; } 78% { scale: 1.04; } 100% { scale: 1; } }
+
+    /* Reveal: each cutout gets glued into the clip, then its sticker goes on. */
+    .cut { animation: glue 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards; animation-delay: calc(200ms + var(--i) * 280ms); }
+    .sticker { animation: stick 0.28s ease-out backwards; animation-delay: calc(520ms + var(--i) * 280ms); }
+    @keyframes glue { from { opacity: 0; scale: 1.3; translate: 0 -46px; } }
+    @keyframes stick { from { opacity: 0; scale: 0.6; } }
+  }
+
+  /* ---------- Phone ---------- */
+  @media (max-width: 760px) {
+    body { font-size: 17px; }
+    .screen { padding: 22px 16px 28px; }
+    .say { font-size: 20px; padding: 32px 20px 18px; }
+    .btn-main { font-size: 24px; min-height: 64px; padding: 14px 24px; }
+
+    .start { grid-template-columns: minmax(0, 1fr); gap: 22px; align-content: start; }
+    .start-left, .start-right, .go { display: contents; }
+    .wordmark { order: 1; font-size: 82px; margin: 0; }
+    .start .say-wrap { order: 2; }
+    .clips { order: 3; gap: 20px 14px; margin-top: 6px; }
+    .clip { padding: 7px 7px 10px; }
+    .clip .name { margin-top: 8px; font-size: 17px; }
+    .clip .parts { font-size: 14px; }
+    .clip .tick { width: 40px; height: 40px; top: -12px; right: -8px; }
+    .own { order: 4; flex-direction: column; gap: 14px; }
+    .own .btn { width: 100%; }
+    .seated { order: 5; justify-content: space-between; gap: 16px; }
+    .seated-help { font-size: 15px; }
+    .play-btn { order: 4; width: 100%; }
+    .own { order: 5; } .seated { order: 6; }
+
+    .play { grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
+    .turn { grid-column: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "tag count" "part count" "away away"; gap: 14px 6px; padding: 0; }
+    .tag-wrap { grid-area: tag; }
+    .tag { font-size: 19px; gap: 8px; padding: 10px 24px 10px 12px; }
+    .tag-of { font-size: 14px; padding: 3px 7px; }
+    .part { grid-area: part; font-size: 30px; padding: 14px 16px 16px; align-self: start; }
+    .count { grid-area: count; align-self: center; margin: 0; font-size: 112px; }
+    .count span { padding: 10px 14px 14px 8px; }
+    .away-wrap { grid-area: away; margin: 6px 0 0; }
+    .away { font-size: 19px; padding: 13px 16px; rotate: 1deg; }
+    .cam-wrap { grid-column: 1; grid-row: auto; width: 100%; rotate: -0.6deg; }
+    .cam-print { padding: 9px 9px 0; }
+    .cam { aspect-ratio: 4 / 5; }
+    .outline { width: 96%; bottom: 2.5%; }
+    .cam-print figcaption { font-size: 16px; padding: 10px 4px 12px; }
+    .cam-wrap .t1 { left: -26px; width: 84px; }
+    .cam-wrap .t2 { right: -26px; width: 84px; }
+
+    .reveal { grid-template-columns: minmax(0, 1fr); gap: 28px; align-content: start; }
+    .film-print { padding: 9px; }
+    .film .t1 { left: -24px; width: 80px; }
+    .film .t2 { right: -26px; width: 80px; bottom: 40px; }
+    .controls { gap: 10px; padding-top: 9px; }
+    .pp { width: 44px; height: 44px; }
+    .pp svg { width: 18px; height: 18px; }
+    .bar { height: 16px; }
+    .bar .knob { width: 20px; height: 28px; }
+    .time { font-size: 14px; }
+    .sticker .sp { display: none; }
+    .results { gap: 22px; }
+    .results .say { font-size: 22px; }
+    .score { gap: 12px; padding: 10px 16px 10px 12px; }
+    .score .rank { width: 34px; height: 34px; font-size: 17px; }
+    .score b { font-size: 20px; }
+    .score .who span { font-size: 15px; }
+    .score .pts { font-size: 36px; }
+    .score.first .pts { font-size: 46px; }
+    .actions .btn-main { font-size: 22px; min-height: 64px; }
+  }
+</style>
+</head>
+<body>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- Cut paper: grow the shape's alpha into a white paper rim, then drop a hard ink shadow under it. -->
+    <filter id="cut-word" x="-10%" y="-25%" width="125%" height="160%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="7" result="grown" />
+      <feOffset in="grown" dx="6" dy="7" result="dropped" />
+      <feFlood flood-color="#161616" /><feComposite in2="dropped" operator="in" result="shadow" />
+      <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+      <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="cut-num" x="-30%" y="-20%" width="170%" height="150%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="8" result="grown" />
+      <feOffset in="grown" dx="7" dy="8" result="dropped" />
+      <feFlood flood-color="#161616" /><feComposite in2="dropped" operator="in" result="shadow" />
+      <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+      <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="cut-scene" x="-30%" y="-30%" width="170%" height="170%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="9" result="grown" />
+      <feOffset in="grown" dx="9" dy="11" result="dropped" />
+      <feFlood flood-color="#161616" /><feComposite in2="dropped" operator="in" result="shadow" />
+      <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+      <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<!-- ============ Screen 1: start ============ -->
+<section class="screen start" id="start" aria-label="Start">
+  <div class="start-left">
+    <h1 class="wordmark">
+      <span class="wm" aria-hidden="true"><span style="--i:0;--r:-3deg;--y:3px">J</span><span style="--i:1;--r:2deg;--y:-5px">e</span><span style="--i:2;--r:-1deg;--y:2px">s</span><span style="--i:3;--r:3deg;--y:-3px">t</span><span style="--i:4;--r:-2deg;--y:4px">e</span><span style="--i:5;--r:1deg;--y:-2px">r</span></span>
+      <span class="sr-only">Jester</span>
+    </h1>
+
+    <div class="say-wrap"><p class="say">Pick a clip. I’ll give each of you a part from it, in secret.</p></div>
+
+    <div class="go">
+      <div class="seated">
+        <div>
+          <label class="seated-label" id="seated-label" for="seated">Playing seated</label>
+          <p class="seated-help" id="seated-help">Only your upper body is scored.</p>
+        </div>
+        <button class="switch" id="seated" type="button" role="switch" aria-checked="false" aria-labelledby="seated-label" aria-describedby="seated-help"><span class="knob"></span></button>
+      </div>
+      <button class="btn btn-main play-btn" id="play-btn" type="button">Play Fetch</button>
+    </div>
+  </div>
+
+  <div class="start-right">
+    <div class="clips" role="group" aria-label="Starter clips">
+
+      <button class="clip" type="button" aria-pressed="true" data-name="Fetch" style="--i:0;--r:-1.6deg">
+        <span class="tape" style="top:-15px;left:42%;rotate:2.5deg;width:92px" aria-hidden="true"></span>
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" class="f-lemon" />
+          <path class="f-pink" d="M0 112 C60 90 120 92 180 108 C230 121 270 96 320 100 V180 H0 Z" />
+          <path class="f-paper" d="M0 134 L11 135 L22 134 L34 131 L43 135 L54 135 L61 133 L69 133 L79 130 L87 132 L99 134 L107 135 L114 134 L122 130 L133 131 L141 136 L153 132 L165 133 L175 131 L187 134 L199 135 L207 132 L215 131 L222 132 L232 130 L243 132 L251 135 L261 132 L270 134 L277 135 L284 134 L296 130 L307 132 L316 130 L320 131 V180 H0 Z" />
+          <path class="f-mint" d="M0 137 L11 138 L22 138 L34 133 L43 138 L54 138 L61 136 L69 137 L79 134 L87 136 L99 138 L107 138 L114 136 L122 134 L133 134 L141 140 L153 135 L165 137 L175 134 L187 138 L199 138 L207 136 L215 135 L222 135 L232 133 L243 136 L251 138 L261 135 L270 139 L277 140 L284 137 L296 134 L307 135 L316 134 L320 135 V180 H0 Z" />
+          <use href="art.svg#throw" x="28" y="38" width="70" height="105" style="color:var(--ink)" />
+          <use href="art.svg#ball" x="160" y="40" width="26" height="26" style="color:var(--pink);--seam:#fff" />
+          <use href="art.svg#dog" x="196" y="100" width="105" height="63" style="color:var(--ink)" />
+        </svg>
+        <span class="name">Fetch</span>
+        <span class="parts">3 parts: a thrower, a dog, a ball</span>
+        <span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.5 L10 18 L20 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="square" /></svg></span>
+      </button>
+
+      <button class="clip" type="button" aria-pressed="false" data-name="Handshake" style="--i:1;--r:1.2deg">
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" class="f-pink" />
+          <rect y="140" width="320" height="40" class="f-paper" />
+          <use href="art.svg#player" x="70" y="22" width="120" height="160" style="color:var(--ink)" />
+          <use href="art.svg#player" x="129" y="22" width="120" height="160" style="color:var(--paper)" />
+        </svg>
+        <span class="name">Handshake</span>
+        <span class="parts">2 parts: two people</span>
+      </button>
+
+      <button class="clip" type="button" aria-pressed="false" data-name="Bounce" style="--i:2;--r:0.7deg">
+        <span class="tape" style="top:-12px;right:-26px;rotate:38deg;width:80px" aria-hidden="true"></span>
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" class="f-cobalt" />
+          <rect y="142" width="320" height="38" class="f-lemon" />
+          <path d="M24 142 Q74 26 124 142 Q149 96 174 92" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" />
+          <ellipse cx="174" cy="147" rx="15" ry="3.5" class="f-ink" />
+          <use href="art.svg#ball" x="156" y="74" width="36" height="36" style="color:var(--pink);--seam:var(--ink)" />
+        </svg>
+        <span class="name">Bounce</span>
+        <span class="parts">1 part: a ball</span>
+      </button>
+
+      <button class="clip" type="button" aria-pressed="false" data-name="Wave" style="--i:3;--r:-2.2deg">
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" class="f-mint" />
+          <path class="f-paper" d="M0 138 L9 136 L20 136 L30 140 L37 138 L47 136 L56 139 L65 139 L73 137 L81 138 L92 138 L103 137 L114 136 L122 139 L133 138 L140 137 L148 137 L160 137 L171 140 L178 137 L188 136 L197 140 L204 138 L212 138 L223 137 L231 136 L240 136 L248 138 L259 138 L268 139 L276 138 L284 139 L295 136 L305 139 L313 137 L320 140 V180 H0 Z" />
+          <use href="art.svg#throw" x="118" y="24" width="84" height="126" style="color:var(--ink)" />
+        </svg>
+        <span class="name">Wave</span>
+        <span class="parts">1 part: a person</span>
+      </button>
+    </div>
+
+    <div class="own">
+      <button class="btn" type="button">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="6" width="22" height="16" fill="none" stroke="currentColor" stroke-width="3" /><path d="M9 6 V22 M19 6 V22" stroke="currentColor" stroke-width="2.5" /></svg>
+        Upload a video
+      </button>
+      <button class="btn" type="button">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="10.5" fill="none" stroke="currentColor" stroke-width="3" /><circle cx="14" cy="14" r="5.5" fill="#FF6FAE" /></svg>
+        Record one now
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Screen 2: blind play, Aaron's turn ============ -->
+<section class="screen play" id="play" aria-label="Blind play">
+  <div class="turn">
+    <div class="tag-wrap"><p class="tag"><span>Aaron’s turn</span><span class="tag-of">3 of 3</span></p></div>
+    <h1 class="part">You are the dog.</h1>
+    <p class="count" aria-label="Starting in 3"><span aria-hidden="true">3</span></p>
+    <div class="away-wrap">
+      <span class="tape" aria-hidden="true"></span>
+      <p class="away">Everyone else, look away.</p>
+    </div>
+  </div>
+
+  <div class="cam-wrap">
+    <span class="tape t1" aria-hidden="true"></span>
+    <span class="tape t2" aria-hidden="true"></span>
+    <figure class="cam-print">
+      <div class="cam">
+        <svg class="room" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Aaron’s camera">
+          <rect width="1200" height="620" class="f-cobalt" />
+          <!-- window -->
+          <rect x="790" y="120" width="300" height="290" class="f-paper" />
+          <rect x="808" y="138" width="123" height="118" class="f-lemon" />
+          <rect x="949" y="138" width="123" height="118" class="f-lemon" />
+          <rect x="808" y="274" width="123" height="118" class="f-lemon" />
+          <rect x="949" y="274" width="123" height="118" class="f-lemon" />
+          <rect x="770" y="404" width="340" height="22" class="f-paper" />
+          <!-- small picture on the wall -->
+          <rect x="400" y="140" width="140" height="104" class="f-paper" />
+          <rect x="414" y="154" width="112" height="76" class="f-mint" />
+          <!-- dresser and lamp -->
+          <g transform="translate(-70 0)">
+          <rect x="80" y="452" width="260" height="168" class="f-paper" />
+          <rect x="102" y="474" width="216" height="56" fill="none" stroke="#161616" stroke-width="6" />
+          <rect x="102" y="544" width="216" height="56" fill="none" stroke="#161616" stroke-width="6" />
+          <circle cx="210" cy="502" r="7" class="f-ink" /><circle cx="210" cy="572" r="7" class="f-ink" />
+          <rect x="184" y="424" width="52" height="28" class="f-ink" />
+          <rect x="205" y="330" width="10" height="96" class="f-ink" />
+          <path d="M152 250 H268 L296 340 H124 Z" class="f-lemon" />
+          </g>
+          <!-- floor -->
+          <rect y="604" width="1200" height="18" class="f-paper" />
+          <rect y="620" width="1200" height="280" class="f-pink" />
+          <!-- Aaron, standing, before the count ends -->
+          <use href="art.svg#player" x="360" y="260" width="480" height="640" style="color:var(--aaron)" />
+        </svg>
+
+        <!-- His part: the dog, as a dashed line to fit into. Offset outline of art.svg#dog. -->
+        <svg class="outline" viewBox="-10 -10 330 210" aria-hidden="true">
+          <defs>
+            <filter id="ring-paper" filterUnits="userSpaceOnUse" x="-10" y="-10" width="330" height="210">
+              <feMorphology in="SourceAlpha" operator="dilate" radius="4.4" result="grown" />
+              <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+              <feFlood flood-color="currentColor" />
+              <feComposite in2="ring" operator="in" />
+            </filter>
+            <pattern id="cut-checks" width="13" height="13" patternUnits="userSpaceOnUse">
+              <rect width="6.5" height="6.5" fill="#fff" /><rect x="6.5" y="6.5" width="6.5" height="6.5" fill="#fff" />
+            </pattern>
+            <mask id="cut-dashes" maskUnits="userSpaceOnUse" x="-10" y="-10" width="330" height="210">
+              <rect x="-10" y="-10" width="330" height="210" fill="url(#cut-checks)" />
+            </mask>
+          </defs>
+          <use href="art.svg#dog" width="300" height="180" style="color:#fff" opacity=".55" />
+          <g mask="url(#cut-dashes)">
+            <use href="art.svg#dog" width="300" height="180" transform="translate(2.2 2.6)" filter="url(#ring-paper)" style="color:#161616" />
+            <use href="art.svg#dog" width="300" height="180" filter="url(#ring-paper)" style="color:#ffffff" />
+          </g>
+          <use href="#dog-cut" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-dasharray="8 6.5" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- tiny scissors riding the line -->
+          <g transform="translate(97 50) rotate(-11) scale(0.82)" stroke="#161616" stroke-width="2.4" stroke-linejoin="round">
+            <path d="M2 1 C12 -2 22 -6 33 -10 C25 -3 15 2 4 5 Z" fill="#fff" />
+            <path d="M2 -1 C12 2 22 6 33 10 C25 3 15 -2 4 -5 Z" fill="#fff" />
+            <path d="M-3 -5 L5 0 M-3 5 L5 0" fill="none" stroke-width="3.2" />
+            <circle cx="-8" cy="-8" r="6" fill="#fff" />
+            <circle cx="-8" cy="8" r="6" fill="#fff" />
+            <circle cx="5" cy="0" r="1.8" fill="#161616" stroke="none" />
+          </g>
+        </svg>
+      </div>
+      <figcaption>Get inside the outline. Move when it moves.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ Screen 3: reveal and results ============ -->
+<section class="screen reveal" id="reveal" aria-label="Reveal and results">
+  <div class="film">
+    <span class="tape t1" aria-hidden="true"></span>
+    <span class="tape t2" aria-hidden="true"></span>
+    <figure class="film-print" style="margin:0">
+      <div class="frame">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="The Fetch clip, with Lisa standing in as the thrower, Alex as the ball, and Aaron as the dog">
+          <rect width="1600" height="900" class="f-lemon" />
+          <g class="f-paper">
+            <circle cx="250" cy="150" r="40" /><circle cx="306" cy="128" r="54" /><circle cx="366" cy="150" r="38" /><rect x="214" y="150" width="190" height="40" />
+            <circle cx="1150" cy="104" r="34" /><circle cx="1200" cy="86" r="46" /><circle cx="1250" cy="106" r="30" /><rect x="1118" y="104" width="160" height="34" />
+          </g>
+          <path class="f-pink" d="M0 600 C180 520 380 500 600 560 C760 604 900 540 1080 500 C1240 466 1420 500 1600 560 V900 H0 Z" />
+          <path class="f-ink" d="M1452 700 L1462 430 L1436 362 L1456 356 L1474 398 L1500 340 L1516 348 L1488 430 L1496 700 Z" />
+          <g class="f-mint">
+            <circle cx="1470" cy="250" r="150" /><circle cx="1352" cy="306" r="92" /><circle cx="1588" cy="306" r="108" /><circle cx="1470" cy="380" r="84" />
+          </g>
+          <path class="f-paper" d="M0 683 L24 686 L48 690 L65 679 L93 684 L112 697 L135 694 L157 691 L175 690 L204 688 L230 691 L247 693 L271 684 L287 695 L310 692 L338 692 L367 686 L395 687 L424 695 L441 681 L460 696 L482 690 L502 688 L524 685 L548 690 L577 691 L606 694 L635 691 L654 694 L683 695 L707 692 L726 694 L750 684 L767 694 L797 681 L824 686 L842 684 L869 695 L886 690 L902 692 L923 695 L953 688 L983 685 L1000 690 L1016 683 L1038 690 L1056 680 L1084 685 L1114 695 L1135 687 L1158 691 L1183 689 L1207 696 L1230 687 L1256 683 L1277 697 L1300 689 L1316 686 L1340 679 L1365 690 L1382 690 L1404 691 L1425 692 L1451 679 L1468 691 L1498 684 L1520 690 L1541 686 L1561 686 L1585 684 L1600 693 V900 H0 Z" />
+          <path class="f-mint" d="M0 693 L24 694 L48 700 L65 686 L93 695 L112 708 L135 704 L157 697 L175 700 L204 696 L230 699 L247 704 L271 696 L287 701 L310 703 L338 701 L367 694 L395 695 L424 705 L441 690 L460 706 L482 700 L502 695 L524 696 L548 701 L577 703 L606 704 L635 697 L654 701 L683 702 L707 703 L726 702 L750 692 L767 706 L797 688 L824 696 L842 693 L869 701 L886 700 L902 703 L923 702 L953 695 L983 693 L1000 696 L1016 692 L1038 701 L1056 690 L1084 694 L1114 706 L1135 694 L1158 700 L1183 697 L1207 706 L1230 693 L1256 694 L1277 703 L1300 696 L1316 697 L1340 691 L1365 699 L1382 699 L1404 699 L1425 699 L1451 689 L1468 698 L1498 690 L1520 698 L1541 693 L1561 696 L1585 695 L1600 704 V900 H0 Z" />
+
+          <!-- The players, cut out and glued where their parts were. -->
+          <g class="cut" filter="url(#cut-scene)" style="--i:0;color:var(--lisa)"><use href="art.svg#throw" x="230" y="350" width="280" height="420" /></g>
+          <g class="cut" filter="url(#cut-scene)" style="--i:1;color:var(--alex)"><use href="art.svg#tuck" x="840" y="210" width="150" height="150" /></g>
+          <g class="cut" filter="url(#cut-scene)" style="--i:2;color:var(--aaron)"><use href="art.svg#crawl" x="1050" y="540" width="330" height="198" /></g>
+        </svg>
+
+        <div class="sticker" style="--i:0;--who:var(--lisa);--r:-3deg;left:2.6%;top:24%"><span class="n">91</span><span><b>Lisa</b><span class="sp">the thrower</span></span></div>
+        <div class="sticker" style="--i:1;--who:var(--alex);--r:2.2deg;left:62%;top:20%"><span class="n">64</span><span><b>Alex</b><span class="sp">the ball</span></span></div>
+        <div class="sticker" style="--i:2;--who:var(--aaron);--r:-1.4deg;left:66%;top:47%"><span class="n">82</span><span><b>Aaron</b><span class="sp">the dog</span></span></div>
+      </div>
+
+      <div class="controls">
+        <button class="pp" type="button" aria-label="Pause">
+          <svg viewBox="0 0 22 22" aria-hidden="true"><rect x="3" y="2" width="6" height="18" fill="#fff" /><rect x="13" y="2" width="6" height="18" fill="#fff" /></svg>
+        </button>
+        <div class="scrub" role="slider" tabindex="0" aria-label="Reveal video" aria-valuemin="0" aria-valuemax="12" aria-valuenow="8" aria-valuetext="0:08 of 0:12">
+          <div class="bar"><span class="fill"></span><span class="knob"></span></div>
+        </div>
+        <span class="time">0:08 / 0:12</span>
+      </div>
+    </figure>
+  </div>
+
+  <div class="results">
+    <div class="say-wrap"><h1 class="say">Lisa wins. Alex, that was a brave ball.</h1></div>
+    <ol class="scores">
+      <li class="score s-lisa first" style="--r:-1.2deg"><span class="rank">1</span><span class="who"><b>Lisa</b><span>the thrower</span></span><span class="pts">91</span></li>
+      <li class="score s-aaron" style="--r:0.9deg"><span class="rank">2</span><span class="who"><b>Aaron</b><span>the dog</span></span><span class="pts">82</span></li>
+      <li class="score s-alex" style="--r:-0.6deg"><span class="rank">3</span><span class="who"><b>Alex</b><span>the ball</span></span><span class="pts">64</span></li>
+    </ol>
+    <div class="actions">
+      <button class="btn btn-main" type="button">Send this to someone</button>
+      <button class="btn" type="button">Play again</button>
+    </div>
+  </div>
+</section>
+
+<script>
+  const which = new URLSearchParams(location.search).get("s");
+  if (["start", "play", "reveal"].includes(which)) {
+    for (const screen of document.querySelectorAll(".screen")) screen.hidden = screen.id !== which;
+  }
+  const seatedSwitch = document.getElementById("seated");
+  seatedSwitch.addEventListener("click", () => {
+    seatedSwitch.setAttribute("aria-checked", String(seatedSwitch.getAttribute("aria-checked") !== "true"));
+  });
+  const playButton = document.getElementById("play-btn");
+  const clipButtons = document.querySelectorAll(".clip");
+  for (const clip of clipButtons) {
+    clip.addEventListener("click", () => {
+      for (const other of clipButtons) other.setAttribute("aria-pressed", String(other === clip));
+      playButton.textContent = "Play " + clip.dataset.name;
+    });
+  }
+</script>
+</body>
+</html>

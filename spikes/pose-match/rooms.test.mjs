@@ -82,3 +82,32 @@ test("messages for other rooms are ignored and leaving removes the player", asyn
   b.leave(); await tick();
   assert.deepEqual(a.roster().map((p) => p.id), ["ana"]);
 });
+
+test("start can carry extra data (role assignments) and results can carry extra (role name)", async () => {
+  const [a, b] = makeRooms(["ana", "ben"]);
+  a.join(); b.join(); await tick();
+  a.start("scene1", 1000, { assign: { ana: 0, ben: 1 } }); await tick();
+  assert.deepEqual(b.round.extra, { assign: { ana: 0, ben: 1 } });
+  b.submitResult({ score: 80, extra: { role: "the ball", guideIndex: 1 } }); await tick();
+  assert.deepEqual(a.standings().find((r) => r.id === "ben").extra, { role: "the ball", guideIndex: 1 });
+  assert.equal(a.standings().find((r) => r.id === "ana").extra, null);
+});
+
+test("ready flags travel, late joiners see them, and allReady needs everyone", async () => {
+  const bus = new MemoryBus();
+  const mk = (id, now) => new Room({ transport: bus.transport(), code: "RDY1", playerId: id, name: id, now: () => now });
+  const a = mk("ana", 1000), b = mk("ben", 1001);
+  a.join(); b.join(); await tick();
+  assert.equal(a.allReady, false);
+  a.setReady(true); b.setReady(true); await tick();
+  assert.equal(a.allReady, true);
+  assert.equal(b.allReady, true);
+  const c = mk("cy", 1002);                       // joins late
+  c.join(); await tick();
+  assert.equal(a.allReady, false);                 // the newcomer is not ready yet
+  assert.equal(c.roster().find((p) => p.id === "ana").ready, true); // but sees that Ana is
+  c.setReady(true); await tick();
+  assert.equal(a.allReady, true);
+  b.setReady(false); await tick();
+  assert.equal(c.allReady, false);
+});

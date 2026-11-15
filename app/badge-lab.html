@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Badge lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 1100px; background: #1f4e5a; color: #fff; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p { margin: 0 0 12px; color: #d8ecee; max-width: 70ch; }
+    button { font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 8px; border: 0; background: #f2c14e; color: #1b1a1a; cursor: pointer; margin-right: 8px; }
+    button:disabled { opacity: .4; cursor: default; }
+    #status { min-height: 1.4em; margin: 12px 0; }
+    #badges { display: flex; flex-wrap: wrap; gap: 18px; }
+    figure { margin: 0; text-align: center; }
+    canvas { width: 220px; height: 220px; background: #f6efe2; border-radius: 18px; display: block; }
+    figcaption { margin-top: 6px; color: #d8ecee; }
+    video { position: fixed; right: 16px; bottom: 16px; width: 200px; transform: scaleX(-1); border-radius: 10px; opacity: .85; }
+  </style>
+</head>
+<body>
+  <h1>Face badge lab</h1>
+  <p>Your face from the camera, levelled and put inside the jester's cap and collar, like the photo badges on Mario Kart arcade results. Nothing is uploaded or saved; it stays in this tab.</p>
+  <button id="start">Start the camera</button>
+  <button id="snap" disabled>Take the photo</button>
+  <p id="status">Without a camera, the badges show the jester's own face.</p>
+  <div id="badges"></div>
+  <video id="cam" playsinline muted></video>
+  <script type="module" src="./src/badge-lab.ts"></script>
+</body>
+</html>
