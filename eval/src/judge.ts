@@ -6,15 +6,15 @@ import {
 } from "../../engine/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline } from "../../spikes/pose-match/synthetic.mjs";
 import { EXPECT } from "../expectations.ts";
-import { fingerprint, packPose, unpackBoxes, unpackPose, type PackedBoxes, type PackedPose, type RoundRecord } from "./record.ts";
+import { fingerprint, packPose, unpackBoxes, unpackPose, type AnyPackedBoxes, type AnyPackedPose, type RoundRecord } from "./record.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
 type AnyResult = PoseRoundResult | TrajectoryRoundResult;
 
 export function rescore(r: RoundRecord): AnyResult {
   const player = unpackPose(r.player);
-  if (r.channel === "pose") return scorePoseRound(unpackPose(r.reference as PackedPose), player, r.options as PoseRoundOptions);
-  return scoreTrajectoryRound(unpackBoxes(r.reference as PackedBoxes), player, r.options as TrajectoryRoundOptions);
+  if (r.channel === "pose") return scorePoseRound(unpackPose(r.reference as AnyPackedPose), player, r.options as PoseRoundOptions);
+  return scoreTrajectoryRound(unpackBoxes(r.reference as AnyPackedBoxes), player, r.options as TrajectoryRoundOptions);
 }
 
 // ---- What-if: change an engine constant for this run only ----
@@ -129,7 +129,7 @@ export function judge(item: Rescored, all: readonly Rescored[]): Verdict | null 
       return { expectation: `no score or ${EXPECT.walkedOutOfFrame.maxScore} or less`, holds: s === null || s <= EXPECT.walkedOutOfFrame.maxScore, detail: show(s) };
     case "seated": {
       if (r.channel !== "pose") return { expectation: "capped (pose clips only)", holds: null, detail: show(s) };
-      const swing = legSwingDeg(unpackPose(r.reference as PackedPose));
+      const swing = legSwingDeg(unpackPose(r.reference as AnyPackedPose));
       if (swing < EXPECT.seated.legRangeDeg) return { expectation: "capped when the clip uses the legs", holds: null, detail: `${show(s)}; legs swing only ${Math.round(swing)} degrees here` };
       const hidden = (item.now as PoseRoundResult).hiddenLimbs ?? [];
       return { expectation: `${EXPECT.seated.maxScore} or less (legs swing ${Math.round(swing)} degrees)`, holds: s === null || s <= EXPECT.seated.maxScore, detail: `${show(s)}${hidden.length ? "; hidden: " + hidden.join(", ") : "; nothing marked hidden"}` };

@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { looksLikeRecord, type PackedBoxes, type PackedPose, type RoundRecord } from "./record.ts";
+import { looksLikeRecord, type AnyPackedBoxes, type AnyPackedPose, type RoundRecord } from "./record.ts";
 
 export const EVAL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const REPO_DIR = join(EVAL_DIR, "..");
@@ -52,7 +52,7 @@ export function loadCases(): { rounds: RoundRecord[]; skipped: string[] } {
   for (const name of readdirSync(CASES_DIR).filter((n) => n.endsWith(".json.gz")).sort()) {
     try {
       const stored = readJson(join(CASES_DIR, name)) as Omit<RoundRecord, "reference"> & { reference: { ref: string } };
-      const reference = readJson(join(REFS_DIR, stored.reference.ref + ".json.gz")) as PackedPose | PackedBoxes;
+      const reference = readJson(join(REFS_DIR, stored.reference.ref + ".json.gz")) as AnyPackedPose | AnyPackedBoxes;
       const r = { ...stored, reference };
       if (looksLikeRecord(r)) rounds.push(r); else skipped.push(name);
     } catch {
