@@ -39,6 +39,16 @@ export function duelPlaces(scores: readonly (number | null)[], lags: readonly (n
   });
 }
 
+/**
+ * The podium: who stands where, and their place. A duel lists players by the place finishGame gave them, so the
+ * crowned player is first even when timing broke a tie on score. Any other game keeps the order it is given (best
+ * score first) and counts higher scores, so tied scores share a place, exactly as before duels.
+ */
+export function podiumOrder<R extends { score: number | null; duel?: boolean; place?: number }>(rows: readonly R[]): { row: R; place: number }[] {
+  if (!rows.some((r) => r.duel)) return rows.map((row) => ({ row, place: 1 + rows.filter((o) => (o.score ?? -1) > (row.score ?? -1)).length }));
+  return [...rows].sort((a, b) => (a.place ?? Infinity) - (b.place ?? Infinity)).map((row) => ({ row, place: row.place ?? rows.length }));
+}
+
 /** The results and crowning headline for a duel. */
 export function duelHeadline(winners: readonly string[]): string {
   if (winners.length === 0) return "Everyone played!";

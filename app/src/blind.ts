@@ -1459,11 +1459,13 @@ function mediaTimeline(s: Seat, scene: Scene, speed: number): ResultRow["timelin
   return { ...rec, frames: rec.frames.map((f) => ({ ...f, t: scene.startMs + f.t * speed })) };
 }
 
-function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number): RoleInfo {
+function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number, duel = false): RoleInfo {
   return {
     look: s.look, text: roleText(),
-    parts: partsWorthOffering(s.original.boxTrack).map((key) => ({ key, label: BODY_PARTS[key].label.toLowerCase() })),
+    // A duel offers the whole body only, so a hand is never ranked against a whole body.
+    parts: partsWorthOffering(s.original.boxTrack).filter((key) => !duel || key === "body").map((key) => ({ key, label: BODY_PARTS[key].label.toLowerCase() })),
     preview: () => previewRole(s, scene, speed, ui, leadMs),
+    ...(duel ? { duel } : {}),
   };
 }
 
@@ -1492,12 +1494,8 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     for (;;) {
       drawFirstFrame(s, scene, ui);
       // A preview still playing stops when the player starts, or leaves.
-      const role = roleOf(s, scene, speed, ui, leadMs);
-      // A duel is copied with the whole body only, so a hand is never ranked against a whole body.
-      if (options.duel) { role.parts = [{ key: "body", label: BODY_PARTS.body.label.toLowerCase() }]; role.duel = true; }
-      try { s.part = await ui.showPart(s, { ...role, problem }); }
+      try { s.part = await ui.showPart(s, { ...roleOf(s, scene, speed, ui, leadMs, !!options.duel), problem }); }
       finally { stopPreview?.(); }
-      if (options.duel) s.part = "body";
       try { await playTurn(s, scene, speed, deps, ui, leadMs); break; }
       catch (err) {
         if (err instanceof RestartTurn) { problem = undefined; continue; }

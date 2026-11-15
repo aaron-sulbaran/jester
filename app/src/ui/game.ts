@@ -14,7 +14,7 @@ import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, motionOf, rankFor } from "../feelText.ts";
-import { DUEL_WINNER_AWARD, duelHeadline } from "../duelPlay.ts";
+import { DUEL_WINNER_AWARD, duelHeadline, podiumOrder } from "../duelPlay.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -1039,7 +1039,8 @@ export function initGame(deps: GameDeps) {
     stopPodium();
     // A duel lists players by their place (timing breaks a tie on score), so the crowned player is first.
     const duel = rows.some((r) => r.duel);
-    const listed = duel ? [...rows].sort((a, b) => (a.place ?? Infinity) - (b.place ?? Infinity)) : rows;
+    const podium = podiumOrder(rows);
+    const listed = podium.map((p) => p.row);
     const winners = listed.filter((r) => r.winner);
     const headline = duel ? duelHeadline(winners.map((w) => w.name))
       : winners.length === 0 ? "Everyone played!"
@@ -1052,8 +1053,7 @@ export function initGame(deps: GameDeps) {
     const awards = awardsFor(listed.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })))
       .map((award, i) => (duel && listed[i]!.winner && !listed[i]!.tied ? DUEL_WINNER_AWARD : award));
     listed.forEach((r, i) => {
-      // Tied scores share a place; a duel's place comes from the game, where timing breaks a tie on score.
-      const place = r.place ?? 1 + listed.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
+      const place = podium[i]!.place;
       const li = document.createElement("li");
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
