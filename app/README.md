@@ -42,6 +42,21 @@ Each guide carries, one entry per frame at the same times: `timeline` (pose, for
 
 To draw what a player sees without the clip: `placeSubject(guide, canvas, "fit" | "exact")` from `../clip` gives the placement once per guide, and `drawBlind(canvas, guide, guideFrameAt(guide, mediaMs), "outline" | "stick", view)` from `src/clipside/blind.ts` draws one frame. "fit" centres the subject on its own average position at about 70 percent of the canvas height and shrinks it if its movement would leave the canvas; "exact" keeps it where it is in the clip frame. The clip lab shows both.
 
+## Blind mode: the game (src/blind.ts)
+
+`blind.ts` is the whole game and makes no DOM. Screens plug in as a `BlindUi` (typed at the top of the file); `src/blindScreens.ts` is the plain stand-in on the ids in `index.html` until the look's screens replace it. `?blind=1` opens it, `?nocam=1` plays it with simulated players.
+
+```ts
+const scene = demoScene() /* or */ dribbleScene() /* or */ await videoScene(file, video, onProgress); // a string means "why not"
+const rows = await runBlindGame(scene, names, ui, { simMode, noise, getCamera }, { speed: 0.75 });
+```
+
+- Roles: one per subject in the scene (people from `subjectGuides`; things once jester#15 merges and `videoScene` passes `{ things: true }`). They repeat only when there are more players than subjects.
+- What a player sees: never the role's name. `ui.showPart` is called while the stage shows the role's first frame; the player picks a body part (offered for every role) and can watch it once (`role.preview()`, unscored). A person copied with the whole body is scored limb by limb (pose channel); anything copied with a hand or the head is scored as that part following the role's box (trajectory channel).
+- During a turn the role is drawn smoothly (blended between samples) with a faint copy `leadMs` (400) ahead, so the next move shows coming.
+- Speed: `speed` 1, 0.75 or 0.5 slows every turn. Turns are scored in the clip's own time (the player's frames are sped back up), so slow motion does not change scores, and lag is forgiven in proportion. The reveal plays at the clip's own speed with each cutout sped up to match.
+- End: `ui.results(rows)` (name, role, look, score, winner or tied, plus `guide` and `timeline` in clip media ms for Lisa's `drawReveal`), then the reveal records on `ui.revealCanvas()` and `ui.revealReady(url)` hands over a webm to play and download.
+
 ## How the engine is wired
 
 Each player frame is tagged with `clipTimeMs`, the clip's playback time when the frame arrived (video `currentTime`, or wall time since start for the starter clip). The engine's adapter uses that in place of `trackerTimeAtClipStartMs`, and it stays right if the video stalls. Frames before the clip starts are tagged -1 and dropped.

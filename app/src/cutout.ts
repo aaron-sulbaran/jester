@@ -223,6 +223,8 @@ export interface RevealLayer {
   cutouts: readonly Cutout[];
   /** The player's measured lag: their move at clip time t happened at t + lagMs. */
   lagMs: number;
+  /** Cutouts were captured in a slowed play time: replay time ms is play time ms * timeScale (default 1). */
+  timeScale?: number;
   /** Where the subject is at replay time ms, normalized like the clip. */
   boxAt: (ms: number) => Box | null;
   /** A person's cutout is the whole body sized to the box; a thing's is sized up so a small ball still shows a hand. */
@@ -256,7 +258,7 @@ function nearest(cutouts: readonly Cutout[], ms: number): Cutout | null {
 export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
   for (const layer of layers) {
     const b = layer.boxAt(ms);
-    const c = nearest(layer.cutouts, ms + Math.max(0, layer.lagMs));
+    const c = nearest(layer.cutouts, ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs));
     if (!b || !c) continue;
     const side = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
     const x = b.cx * W - side / 2, y = b.cy * H - side / 2;

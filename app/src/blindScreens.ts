@@ -67,7 +67,7 @@ export function initBlindScreens(deps: ScreenDeps) {
     async handover(player, previous) {
       blank();
       show("blindSetup", false); show("blindEnd", false); show("blindTurn", true);
-      show("turnStart", false); show("turnPartRow", false);
+      show("turnStart", false); show("turnPartRow", false); show("turnPreview", false);
       $("turnTitle").textContent = `${player.name}'s turn`;
       $("turnText").textContent = `${previous ? `Done, ${previous.name}. Your score stays secret until the reveal. ` : ""}Pass the laptop to ${player.name}. Everyone else, look away from the screen.`;
       $("turnReveal").textContent = `I'm ${player.name}: show me`;
@@ -78,14 +78,20 @@ export function initBlindScreens(deps: ScreenDeps) {
       show("turnReveal", false);
       $("turnText").textContent = (role.problem ? role.problem + " " : "") + role.text;
       const select = $<HTMLSelectElement>("turnPart");
-      if (role.parts) {
-        select.innerHTML = role.parts.map((p) => `<option value="${p.key}">${p.label}</option>`).join("");
-        show("turnPartRow", true);
-      }
-      show("turnStart", true);
+      select.innerHTML = role.parts.map((p) => `<option value="${p.key}">${p.label}</option>`).join("");
+      show("turnPartRow", true);
+      show("turnStart", true); show("turnPreview", true);
+      // Watching once is unscored; Start stays available the whole time.
+      const onPreview = async () => {
+        $<HTMLButtonElement>("turnPreview").disabled = true;
+        await role.preview();
+        $<HTMLButtonElement>("turnPreview").disabled = false;
+      };
+      $("turnPreview").addEventListener("click", onPreview);
       await click("turnStart");
-      show("turnStart", false); show("turnPartRow", false);
-      return (role.parts ? select.value : "body") as BodyPart;
+      $("turnPreview").removeEventListener("click", onPreview);
+      show("turnStart", false); show("turnPartRow", false); show("turnPreview", false);
+      return select.value as BodyPart;
     },
     playStage: () => ({ guideCanvas: deps.guideCanvas, playerCanvas: deps.playerCanvas, cam: deps.cam }),
     countdown: deps.countdown,
@@ -125,7 +131,7 @@ export function initBlindScreens(deps: ScreenDeps) {
     if (!scene) return;
     $<HTMLButtonElement>("blindDeal").disabled = true;
     const names = [...$("blindNames").querySelectorAll("input")].map((i, k) => i.value.trim() || `Player ${k + 1}`);
-    await runBlindGame(scene, names, ui, deps);
+    await runBlindGame(scene, names, ui, deps, { speed: Number($<HTMLSelectElement>("blindSpeed").value) });
     $<HTMLButtonElement>("blindDeal").disabled = false;
   });
 
