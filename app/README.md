@@ -20,6 +20,8 @@ The clip lab, http://localhost:5173/clip-lab.html (dev server only, not in the b
 
 The lab's switches can be set from the URL too: `?overlay=skeleton|outline|both`, `?look=outline|stick`, `?place=fit|exact`. Its table shows how many blind mode roles the clip gives, and how many track pieces were joined into how many tracks.
 
+The lab's link box opens the link lab (`link-lab.html?link=<link>`) with that link, for clips that are not downloaded. The link lab arrives with pull request 32.
+
 On the pick frame, a dashed box is a person who is not in that frame, drawn where they are nearest to it, so every person found can be chosen.
 
 `?model=heavy` (or `lite`) runs a fresh analysis with that pose model and does not save it; the table's "Seconds taken" is the number to compare with the default `full`. The game always uses `full`.
