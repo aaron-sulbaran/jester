@@ -5,6 +5,7 @@
 
 import type { Player } from "../round.ts";
 import { cameraTrouble } from "../feelText.ts";
+import { calmMotion } from "../settings.ts";
 import * as sfx from "../sfx.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -22,7 +23,8 @@ export function installFeel() {
   // A soft tap for every button and clip card. Programmatic clicks from the skip key count too.
   document.addEventListener("click", (e) => {
     const hit = (e.target as Element | null)?.closest?.("button, summary, label.upload");
-    if (hit && !(hit as HTMLButtonElement).disabled) sfx.click();
+    if (!hit || (hit as HTMLButtonElement).disabled) return;
+    if (hit.classList.contains("btn-main")) sfx.ticket(); else sfx.click();
   }, { capture: true });
   installKeys();
   $("demoRow").hidden = !DEMO;
@@ -228,7 +230,7 @@ function watched(p: Player): Player {
         if (lost === showing) return;
         showing = lost;
         notice.hidden = !lost;
-        if (lost) sfx.lost();
+        // No sound: the notice shows during the scored part of the turn, while the clip's own sound plays.
       }, 100);
       unwatch = () => { clearInterval(timer); notice.hidden = true; unwatch = null; };
       p.start((f) => {
@@ -246,7 +248,7 @@ function watched(p: Player): Player {
 
 /** Counts `el` up from 0 to `to`, easing out; shows the number at once when motion is reduced. */
 export function countUp(el: HTMLElement, to: number, delayMs = 0) {
-  if (to <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = String(to); return; }
+  if (to <= 0 || calmMotion()) { el.textContent = String(to); return; }
   el.textContent = "0";
   const durationMs = 700 + to * 8;
   const t0 = performance.now() + delayMs;

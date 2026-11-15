@@ -13,10 +13,12 @@ import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
+import { startRide, type Ride } from "./ride.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
 import { DUEL_WINNER_AWARD, duelHeadline, podiumOrder } from "../duelPlay.ts";
 import { say } from "../host.ts";
+import { applySettings, bindSettings, calmMotion, onSettings } from "../settings.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
@@ -68,7 +70,7 @@ const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((re
   signal?.addEventListener("abort", stop, { once: true });
 });
 
-const SCREENS = ["howto", "start", "submit", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "settings", "start", "submit", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 /** Screens where a game is under way: leaving from these asks first. */
 const MID_GAME: readonly ScreenName[] = ["handover", "turn", "drumroll", "reveal"];
@@ -80,6 +82,7 @@ function show(name: ScreenName) {
   // Home shows everywhere except the start screen and How to play; How to play's tag only on the start screen.
   $("gameNav").hidden = name === "start" || name === "howto";
   $("howtoLink").hidden = name !== "start";
+  $("settingsOpen").hidden = name !== "start";
   window.scrollTo(0, 0);
 }
 
@@ -143,6 +146,8 @@ const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3
 /** One player may play alone; a new cast still starts with two, since it is a party game. */
 const MIN_PLAYERS = 1;
 const MAX_PLAYERS = 4;
+/** How long the Surprise me ride waits for Normal's posters to decode before it starts without the slow ones. */
+const POSTER_WAIT_MS = 300;
 
 export function initGame(deps: GameDeps) {
   let scene: Scene | null = null;
@@ -151,6 +156,8 @@ export function initGame(deps: GameDeps) {
   let pick: Pick | null = null;
   /** The bank clip being cast, and its scene with every part; `scene` leaves out the things when they are off. */
   let castClip: BankClip | null = null;
+  /** The next cast screen comes in under the Surprise me ride, whole, rather than piece by piece. */
+  let rideArrive = false;
   let fullScene: Scene | null = null;
   let names: string[] = ["", "", ""];
   /** Each seat's jester colour, picked on the cast screen; seats start on different colours. */
@@ -179,10 +186,10 @@ export function initGame(deps: GameDeps) {
 
   const bankBox = $("bank");
   document.body.dataset.mode = mode;
-  // Team tools (the testing upload, the practice area, the empty bank note) show only on a local dev server
-  // or with ?dev=1, never to visitors on the live site. ?dev=0 shows the visitor's page on a dev server.
-  const devParam = new URLSearchParams(location.search).get("dev");
-  document.body.classList.toggle("dev", devParam !== null ? devParam !== "0" : ["localhost", "127.0.0.1"].includes(location.hostname));
+  // Team tools (the testing upload, the practice area, the empty bank note, the build stamp) show only in developer
+  // mode (settings.ts): the setting, a local dev server or ?dev=1, never to visitors by default. ?dev=0 shows the
+  // visitor's page on a dev server. Calm motion goes on the page too (html[data-motion]).
+  applySettings();
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
@@ -422,15 +429,51 @@ export function initGame(deps: GameDeps) {
     const from = surprises().length ? surprises() : bank;
     const clip = pick.kind === "bank" ? pick.clip : from[Math.floor(Math.random() * from.length)];
     if (!clip) return;
+    // A surprise gets the merry-go-round while its moves load; the cast screen follows once both are done.
+    const ride = pick.kind === "surprise" ? await surpriseRide(clip, from) : null;
+    // The ride's first frame is painted before the load starts, so any work the load does runs under it.
+    if (ride) await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
     // Loaded with its things; the cast screen's switch plays them as parts or leaves them out (sceneFor).
-    const r = await bankScene(clip, deps.clipVideo);
-    if (r.error !== null) return startProblem(r.error);
+    const loading = bankScene(clip, deps.clipVideo);
+    let loaded = false;
+    void loading.then(() => { loaded = true; });
+    if (ride) {
+      await ride.landed;
+      if (!loaded) ride.say("Got one. Getting its moves ready.");
+    }
+    const r = await loading;
+    if (r.error !== null) { ride?.close(); return startProblem(r.error); }
     castClip = clip;
     fullScene = r.data;
     scene = sceneFor();
+    // After the ride, the cast screen is drawn whole beneath it and the ride fades away over it: no empty frame.
+    rideArrive = !!ride;
     openCast();
+    ride?.close(true);
   });
 
+  /**
+   * The ride for a surprise: six to eight photos, the picked clip at a random place among others it could have been.
+   * In Blind every photo is the same question mark with no name and no performers, so nothing says which clip it is.
+   */
+  async function surpriseRide(clip: BankClip, from: BankClip[]): Promise<Ride> {
+    const blind = mode === "blind";
+    const slots = Math.max(6, Math.min(8, from.length));
+    const pickAt = Math.floor(Math.random() * slots);
+    const others = from.filter((c) => c.id !== clip.id);
+    for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j]!, others[i]!]; }
+    const pool = others.length ? others : [clip];
+    const clips = Array.from({ length: slots }, (_, i) => (i === pickAt ? clip : pool[(i < pickAt ? i : i - 1) % pool.length]!));
+    // Normal shows posters, decoded before the ride starts so they spin with it rather than popping in at the end.
+    // The start screen's cards have usually loaded them already. One not ready in time stays a plain card.
+    const images = blind ? [] : clips.map((c) => { if (!c.poster) return null; const img = new Image(); img.src = c.poster; return img; });
+    if (!blind) await Promise.race([Promise.allSettled(images.map((img) => img?.decode())), new Promise((r) => setTimeout(r, POSTER_WAIT_MS))]);
+    const photos = clips.map((c, i) => {
+      const img = images[i];
+      return blind ? { name: "", image: null } : { name: c.title, image: img && img.complete && img.naturalWidth > 0 ? img : null };
+    });
+    return startRide(photos, pickAt, blind ? "Got one. Nobody sees it until the end." : `Got one: ${clip.title}.`);
+  }
   /** The clip being cast, with its things as parts or people only, by its switch: what bankScene's withThings does. */
   function sceneFor(): Scene | null {
     if (!fullScene || !castClip || withThingsFor(castClip)) return fullScene;
@@ -522,6 +565,8 @@ export function initGame(deps: GameDeps) {
    */
   function openCast(again = false) {
     if (!scene) return;
+    $("screen-cast").classList.toggle("ride-arrive", rideArrive);
+    rideArrive = false;
     $("startProblem").hidden = true;
     // As many seats as the start screen's pick; more players than parts share them, fewer leave some out.
     const want = again && names.length ? names.length : Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, count));
@@ -617,7 +662,7 @@ export function initGame(deps: GameDeps) {
     });
   }
   $("castBack").addEventListener("click", () => show("start"));
-  $("deal").addEventListener("click", () => { void runGame(); });
+  $("deal").addEventListener("click", () => { sfx.deal(Math.min(4, names.length + 1)); void runGame(); });
 
   // ---- The game ----
 
@@ -796,6 +841,15 @@ export function initGame(deps: GameDeps) {
   };
   soundButton.addEventListener("click", () => { sfx.setSound(!sfx.soundOn()); showSound(); });
   showSound();
+  onSettings(showSound); // the settings screen's switch is the same one
+
+  // ---- Settings (settings.ts keeps them; the controls are bound by id) ----
+
+  bindSettings();
+  // The settings card's "Please don't send" list is the Send in a clip screen's own list, copied, so they agree.
+  $("setRules").replaceChildren(...[...document.querySelectorAll("#sendRules li")].map((li) => li.cloneNode(true)));
+  $("settingsOpen").addEventListener("click", () => show("settings"));
+  $("settingsBack").addEventListener("click", () => show("start"));
 
   // ---- How to play ----
 
@@ -887,10 +941,11 @@ export function initGame(deps: GameDeps) {
         void el.offsetWidth; // restart the tick animation
         el.classList.add("tick");
         sfx.tick(s);
+        // "Go" sounds inside the last second, so it is over before the moves count and the clip's sound starts.
+        if (s === 1) sfx.go(0.5);
         try { await wait(1000, sig()); } catch (err) { el.hidden = true; throw err; }
       }
       el.hidden = true;
-      sfx.go();
     },
 
     turnStarted(restart) {
@@ -965,7 +1020,7 @@ export function initGame(deps: GameDeps) {
 
   /** How long the curtains take to close or open; style.css uses the same length (.drapes, #revealStage). */
   const CURTAIN_MS = 900;
-  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const calm = () => calmMotion();
 
   /**
    * The show is over: the reveal's curtains close while the picture goes dark, a beat with them shut, then the
@@ -976,6 +1031,7 @@ export function initGame(deps: GameDeps) {
     if (calm()) return;
     const screen = $("screen-reveal");
     screen.querySelector(".box")?.classList.add("closed");
+    sfx.curtain(false);
     await wait(CURTAIN_MS + 250, sig());
     screen.classList.add("leaving");
     await wait(220, sig());
@@ -1014,7 +1070,7 @@ export function initGame(deps: GameDeps) {
     const winners = winnersOf(rows);
     const headline = rows.some((r) => r.duel) ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows);
     const spot = $("crownSpot");
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce = calmMotion();
     let cancel = false;
     // The drum roll plays while the spotlight sweeps; only the latest run may land the crash.
     let roll = () => {};
@@ -1053,6 +1109,7 @@ export function initGame(deps: GameDeps) {
       if (mine === runs) {
         roll();
         sfx.crown();
+        if (rows.some((r) => r.duel) && winners.length === 1) sfx.duelWin();
         say(rows.length === 1 ? "solo" : winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: rows.length === 1 ? rows[0]!.name : winners.map((w) => w.name).join(" and ") });
       }
       spot.style.transition = "none";
@@ -1078,6 +1135,7 @@ export function initGame(deps: GameDeps) {
         await wait(220, sig());
         crownScreen.classList.remove("arriving");
         crownBox?.classList.remove("closed");
+        sfx.curtain(true);
         await wait(Math.round(CURTAIN_MS * 0.65), sig());
       }
       if (!done) void run();

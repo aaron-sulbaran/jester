@@ -5,6 +5,8 @@
 // here and is never muted or lowered: these sounds sit under it. One switch, soundOn and setSound, turns these
 // sounds and the spoken host (host.ts) off and on; the clip's sound does not follow it.
 
+import { getSettings, onSettings, setSetting } from "./settings.ts";
+
 /** How loud the whole channel is. Kept low so the clip always sits on top. */
 const VOLUME = 0.22;
 
@@ -14,40 +16,34 @@ let ctx: AudioContext | null = null;
 let out: AudioNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
 
-// ---- The switch: the game's sounds and the host, on by default, remembered on this browser ----
-
-const SOUND_KEY = "jester.sound";
-
-function storedSound(): boolean {
-  try { return globalThis.localStorage?.getItem(SOUND_KEY) !== "off"; } catch { return true; }
-}
-
-let on = storedSound();
+// ---- The switch and volume: from the settings store (settings.ts), which keeps jester.sound as it always was ----
 
 /** True when the game's own sounds and the spoken host play. */
 export function soundOn(): boolean {
-  return on;
+  return getSettings().sound;
 }
 
 /** Turns the game's own sounds and the spoken host on or off, and remembers it. The clip's sound is not touched. */
 export function setSound(next: boolean) {
-  on = next;
-  try { globalThis.localStorage?.setItem(SOUND_KEY, next ? "on" : "off"); } catch { /* private window: it lasts for this visit */ }
-  if (!next) {
-    try { globalThis.speechSynthesis?.cancel(); } catch { /* no speech here */ }
-  }
+  setSetting("sound", next);
 }
+
+// Switching off stops a line still being spoken; the volume follows the setting at once.
+onSettings((s) => {
+  if (!s.sound) { try { globalThis.speechSynthesis?.cancel(); } catch { /* no speech here */ } }
+  if (out instanceof GainNode) out.gain.value = VOLUME * s.volume;
+});
 
 /** The sound channel, made on first use. Null when the browser has no Web Audio, or the switch is off. */
 function channel(): Channel | null {
-  if (!on) return null;
+  if (!soundOn()) return null;
   try {
     if (!ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return null;
       ctx = new Ctor();
       const level = ctx.createGain();
-      level.gain.value = VOLUME;
+      level.gain.value = VOLUME * getSettings().volume;
       // Stacked sounds (a crash on top of a roll) are evened out instead of clipping.
       const even = ctx.createDynamicsCompressor();
       even.threshold.value = -18;
@@ -174,12 +170,12 @@ export function tick(left = 3) {
 }
 
 /** The countdown hits zero: a bright stab with a little whoosh. */
-export function go() {
+export function go(at = 0) {
   const ch = channel();
   if (!ch) return;
-  for (const f of [C5, E5, G5]) tone(ch, { freq: f, decay: 0.35, type: "triangle", peak: 0.3, glide: f * 1.02 });
-  tone(ch, { freq: C6, at: 0.05, decay: 0.4, type: "sine", peak: 0.25 });
-  noise(ch, { decay: 0.3, peak: 0.18, filter: "highpass", freq: 2500, attack: 0.04 });
+  for (const f of [C5, E5, G5]) tone(ch, { freq: f, at, decay: 0.35, type: "triangle", peak: 0.3, glide: f * 1.02 });
+  tone(ch, { freq: C6, at: at + 0.05, decay: 0.3, type: "sine", peak: 0.25 });
+  noise(ch, { at, decay: 0.3, peak: 0.18, filter: "highpass", freq: 2500, attack: 0.04 });
 }
 
 /**
@@ -194,7 +190,7 @@ export function drumRoll(ms?: number): () => void {
   let stopped = false;
   // Hits are booked a little ahead on the audio clock, so a busy page does not make the roll stumble.
   const book = () => {
-    if (!on) return end(); // switched off mid-roll
+    if (!soundOn()) return end(); // switched off mid-roll
     const horizon = ch.ctx.currentTime + 0.25;
     while (next < horizon) {
       const swell = Math.min(1, 0.3 + (next - start) / 2.5);
@@ -271,4 +267,52 @@ export function oops() {
   if (!ch) return;
   tone(ch, { freq: E4, decay: 0.28, type: "sawtooth", peak: 0.18, attack: 0.02, soften: 1400 });
   tone(ch, { freq: E4 * 0.94, at: 0.3, decay: 0.6, type: "sawtooth", peak: 0.18, attack: 0.02, soften: 1400, glide: E4 * 0.75, vibrato: 5 });
+}
+
+// ---- More moments (none plays during the scored part of a turn, and none over the clip's own sound) ----
+
+/** A main ticket is pressed: the paper tap with a little punch under it. */
+export function ticket() {
+  const ch = channel();
+  if (!ch) return;
+  noise(ch, { decay: 0.04, peak: 0.26, freq: 2200, q: 1.2 });
+  tone(ch, { freq: 180, decay: 0.08, type: "sine", peak: 0.3, glide: 110 });
+  tone(ch, { freq: 880, at: 0.03, decay: 0.06, type: "triangle", peak: 0.12 });
+}
+
+/** The parts are dealt: a few cards flicked onto the table. */
+export function deal(cards = 4) {
+  const ch = channel();
+  if (!ch) return;
+  for (let i = 0; i < cards; i++) {
+    const at = 0.08 + i * 0.09;
+    noise(ch, { at, decay: 0.05, peak: 0.24, freq: 3200 + i * 300, q: 1.4, attack: 0.004 });
+    noise(ch, { at: at + 0.03, decay: 0.03, peak: 0.12, filter: "lowpass", freq: 900 });
+  }
+}
+
+/** The player has just fitted the frame before their turn: a soft rising chime. */
+export function fitGood() {
+  const ch = channel();
+  if (!ch) return;
+  tone(ch, { freq: G5, decay: 0.16, type: "sine", peak: 0.18 });
+  tone(ch, { freq: C6, at: 0.1, decay: 0.3, type: "sine", peak: 0.16 });
+}
+
+/** The stage curtains close (`open` false) or part: a soft swish of cloth. */
+export function curtain(open = false) {
+  const ch = channel();
+  if (!ch) return;
+  noise(ch, { decay: 0.55, peak: 0.16, filter: "bandpass", freq: open ? 900 : 1400, q: 0.6, attack: 0.12 });
+  noise(ch, { at: 0.18, decay: 0.4, peak: 0.1, filter: "bandpass", freq: open ? 1300 : 800, q: 0.6, attack: 0.1 });
+}
+
+/** A duel is won: two bell strikes after the crowning's crash. */
+export function duelWin(at = 0.9) {
+  const ch = channel();
+  if (!ch) return;
+  for (const [k, f] of [[0, E5], [0.22, C6]] as const) {
+    tone(ch, { freq: f, at: at + k, decay: 0.7, type: "sine", peak: 0.2 });
+    tone(ch, { freq: f * 2.76, at: at + k, decay: 0.35, type: "sine", peak: 0.05 });
+  }
 }
