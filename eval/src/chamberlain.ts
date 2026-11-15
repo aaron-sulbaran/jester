@@ -8,13 +8,12 @@
 //   npm run chamberlain -- --source synthetic    only the committed synthetic cases (or: desk)
 //   npm run chamberlain -- --only name-missing,steer-frame-words
 //   npm run chamberlain -- --model claude-opus-5-5 --concurrency 2
-//   npm run chamberlain -- --trace-desk          also send desk cases (real frames) to LangSmith
 //
 // Keys: read from the review env file by absolute path (JESTER_REVIEW_ENV, else jester-deploy/.env.review found
 // beside a parent of this repo) and never printed. Desk cases are its sibling folder chamberlain-cases/, saved by
 // the dev server; reports go to chamberlain-cases/runs/. Both are outside the repo: they hold real titles.
 // With LANGSMITH_API_KEY in the env file, synthetic runs are traced to the LangSmith project
-// jester-chamberlain-eval. Desk runs are not, unless --trace-desk, since their frames show real people.
+// jester-chamberlain-eval. Desk runs never are (mayTrace): their frames, titles and credits come from real people.
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
 import {
-  addUsage, classify, costUsd, deskCase, nameCheckHolds, renderReport, summarize,
+  addUsage, classify, costUsd, deskCase, mayTrace, nameCheckHolds, renderReport, summarize,
   type CaseFile, type CaseResult, type Decision, type EvalCase, type LogEntry, type ReviewInput, type Run, type Usage,
 } from "./chamberlainCases.ts";
 
@@ -49,7 +48,6 @@ const { values: args } = parseArgs({
     only: { type: "string" },
     model: { type: "string" },
     concurrency: { type: "string", default: "4" },
-    "trace-desk": { type: "boolean", default: false },
   },
 });
 
@@ -223,7 +221,7 @@ async function main(): Promise<number> {
         usage.cacheWrite! += m?.input_token_details?.cache_creation ?? 0;
       },
     };
-    const trace = tracing && (c.source === "synthetic" || args["trace-desk"]);
+    const trace = tracing && mayTrace(c);
     const runId = randomUUID();
     if (trace) runIds.set(c.id, runId);
     const t0 = Date.now();
@@ -268,7 +266,7 @@ async function main(): Promise<number> {
     writeQuietly(join(runsDir, `${stamp}.json`), JSON.stringify(run, null, 2) + "\n");
     console.log(`Saved to ${join(runsDir, `${stamp}.md`)}.`);
   }
-  if (tracing) console.log(`Traces: LangSmith project ${env.LANGSMITH_PROJECT || PROJECT}${args["trace-desk"] ? "" : " (synthetic cases only)"}.`);
+  if (tracing) console.log(`Traces: LangSmith project ${env.LANGSMITH_PROJECT || PROJECT}, synthetic cases only; desk cases are never traced.`);
   else console.log("No LANGSMITH_API_KEY in the env file, so nothing was traced.");
 
   // A false approval or a review that did not run fails the run. False rejections, escalations and name checks

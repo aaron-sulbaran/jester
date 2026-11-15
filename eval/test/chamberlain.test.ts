@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";
 import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
-import { classify, costUsd, deskCase, nameCheckHolds, outcomeFromLog, renderReport, summarize, truthOfDesk, type CaseFile, type CaseResult, type Decision, type Truth } from "../src/chamberlainCases.ts";
+import { classify, costUsd, deskCase, mayTrace, nameCheckHolds, outcomeFromLog, renderReport, summarize, truthOfDesk, type CaseFile, type CaseResult, type Decision, type Truth } from "../src/chamberlainCases.ts";
 import { FRAME_SIZE, figureFrames } from "../src/frames.ts";
 
 const decided = (verdict: Decision["verdict"], nameCheck: Decision["nameCheck"] = "fits"): Decision =>
@@ -139,4 +139,15 @@ test("cached tokens are priced at their own rates", () => {
   assert.equal(plain, 2);
   assert.equal(cached, (100_000 * 2 + 800_000 * 0.1 + 100_000 * 2.5) / 1e6);
   assert.equal(costUsd("some-other-model", { calls: 1, input: 1, output: 1 }), null);
+});
+
+test("only synthetic cases may be traced; a case file is always a desk case, whatever it claims", () => {
+  for (const spec of SYNTHETIC) assert.equal(mayTrace(syntheticCase(spec)), true);
+  const claimsSynthetic = { ...deskFile(), source: "synthetic" } as unknown as CaseFile;
+  const pngFrames = deskFile({ input: { ...deskFile().input, frames: figureFrames("squats") } });
+  for (const file of [deskFile(), claimsSynthetic, pngFrames, deskFile({ label: { want: "approve" } })]) {
+    const c = deskCase(file);
+    assert.equal(c.source, "desk");
+    assert.equal(mayTrace(c), false);
+  }
 });

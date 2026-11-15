@@ -111,6 +111,13 @@ export function outcomeFromLog(log: LogEntry[], id: string): CaseFile["outcome"]
   return { status: e.verdict as "approved" | "rejected", by, title: e.title, reason: e.reason, ...(e.bankId ? { bankId: e.bankId } : {}), at: e.at };
 }
 
+/**
+ * Whether a case may be sent to LangSmith. Only synthetic cases, which the runner builds in code from
+ * ../chamberlain-cases.ts with stick-figure frames. Every case read from the cases folder is a desk case
+ * (deskCase sets that, whatever the file says), so a real submission's frames, title or credit are never traced.
+ */
+export const mayTrace = (c: Pick<EvalCase, "source">): boolean => c.source === "synthetic";
+
 export function deskCase(file: CaseFile, log: LogEntry[] = []): EvalCase {
   const c: CaseFile = file.outcome ? file : { ...file, outcome: outcomeFromLog(log, file.id) };
   const { truth, from } = truthOfDesk(c);
