@@ -174,10 +174,11 @@ export function initGame(deps: GameDeps) {
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
   const revealCanvas = $<HTMLCanvasElement>("revealStage");
   // Fast forward and skip for the reveal: blind.ts reads `speed` every tick while the reveal records.
-  const revealControl = { speed: 1 };
+  const revealControl: { speed: number; skip?: boolean } = { speed: 1 };
   const setPace = (speed: number) => { revealControl.speed = speed; $("revealFastLabel").textContent = `${speed}x`; };
   $("revealFast").addEventListener("click", () => { const steps = [1, 2, 4]; setPace(steps[(steps.indexOf(revealControl.speed) + 1) % steps.length] ?? 1); });
-  $("revealSkip").addEventListener("click", () => setPace(16));
+  // Skip ends the recap at once and goes to the results (the video shows what was recorded so far).
+  $("revealSkip").addEventListener("click", () => { revealControl.skip = true; setPace(16); });
   const turn = $("screen-turn");
 
   // ---- Start ----
@@ -833,6 +834,7 @@ export function initGame(deps: GameDeps) {
     results(r) {
       live();
       setPace(1);
+      revealControl.skip = false;
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
