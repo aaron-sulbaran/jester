@@ -64,8 +64,9 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
 /** Knees, ankles, heels, toes: hidden when the simulated player is seated (`?seated=1`). */
 const LEG_POINTS = new Set([25, 26, 27, 28, 29, 30, 31, 32]);
 
-export function simulatedPlayer(clip: Clip, noiseDegrees: () => number, seated = false): Player {
+export function simulatedPlayer(clip: Pick<Clip, "samples" | "width" | "height">, noiseDegrees: () => number, seated = false): Player {
   let timer = 0;
+  let capture: CaptureFn | null = null;
   const aspect = clip.width / clip.height;
   return {
     // A 30 Hz timer, not requestAnimationFrame, so it keeps running in a background tab.
@@ -75,10 +76,12 @@ export function simulatedPlayer(clip: Clip, noiseDegrees: () => number, seated =
         let landmarks: LandmarkObject[] | null = ms >= 0 ? simulatedPlayerPose(clip.samples, ms / 1000, { noiseDegrees: noiseDegrees(), aspect }) : null;
         if (landmarks && seated) landmarks = landmarks.map((l, i) => (LEG_POINTS.has(i) ? { ...l, visibility: 0 } : l));
         onFrame({ t: performance.now(), landmarks, aspect, mirrored: false, clipTimeMs: ms });
+        if (capture && landmarks && ms >= 0) capture({ landmarks, mask: null, source: null, width: Math.round(480 * aspect), height: 480, clipMs: ms });
       };
       timer = window.setInterval(loop, 1000 / 30);
     },
-    stop() { clearInterval(timer); },
+    stop() { clearInterval(timer); capture = null; },
+    setCapture(fn) { capture = fn; },
   };
 }
 
@@ -91,7 +94,7 @@ export interface RoundResult<R = PoseRoundResult> {
  * Collect the player's frames for one play of a clip. `video` is the clip's video element, or null for a
  * clip with no video (then the clock is wall time from the start and the round lasts `durationMs`).
  */
-function collectFrames(durationMs: number, video: HTMLVideoElement | null, player: Player, onLive: (f: LiveFrame) => void): Promise<WebcamFrame[]> {
+export function collectFrames(durationMs: number, video: HTMLVideoElement | null, player: Player, onLive: (f: LiveFrame) => void): Promise<WebcamFrame[]> {
   return new Promise((resolve) => {
     const frames: WebcamFrame[] = [];
     const started = performance.now();

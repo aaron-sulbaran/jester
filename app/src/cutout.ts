@@ -218,16 +218,28 @@ export function cutFrame(
 
 export interface Box { cx: number; cy: number; w: number; h: number }
 
+/** One player in the replay: their cutouts, placed on their subject's box. */
+export interface RevealLayer {
+  cutouts: readonly Cutout[];
+  /** The player's measured lag: their move at clip time t happened at t + lagMs. */
+  lagMs: number;
+  /** Where the subject is at replay time ms, normalized like the clip. */
+  boxAt: (ms: number) => Box | null;
+  /** A person's cutout is the whole body sized to the box; a thing's is sized up so a small ball still shows a hand. */
+  kind: "person" | "thing";
+  /** Name tag drawn above the cutout, e.g. "Alex 87". */
+  tag?: string;
+  color?: string;
+}
+
 export interface RevealOptions {
   canvas: HTMLCanvasElement;
   durationMs: number;
-  /** The player's measured lag: their move at clip time t happened at t + lagMs. */
-  lagMs: number;
-  cutouts: readonly Cutout[];
-  /** Draw the clip at time ms (the original video frame, or a drawn scene), without the object. */
+  layers: readonly RevealLayer[];
+  /** Draw the clip at replay time ms (the original video frame, or a drawn scene). */
   drawBackground: (ctx: CanvasRenderingContext2D, ms: number) => void;
-  /** Where the object is at time ms, normalized like the clip. */
-  boxAt: (ms: number) => Box | null;
+  /** Optional clock, e.g. a playing video; default is wall time from the start. */
+  clock?: { start(): void | Promise<void>; now(): number; stop?(): void };
   onProgress?: (share: number) => void;
 }
 
@@ -240,41 +252,60 @@ function nearest(cutouts: readonly Cutout[], ms: number): Cutout | null {
   return Math.abs(best.clipMs - ms) <= 150 ? best : null;
 }
 
+/** Draw every layer's cutout for replay time `ms`. */
+export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
+  for (const layer of layers) {
+    const b = layer.boxAt(ms);
+    const c = nearest(layer.cutouts, ms + Math.max(0, layer.lagMs));
+    if (!b || !c) continue;
+    const side = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
+    const x = b.cx * W - side / 2, y = b.cy * H - side / 2;
+    ctx.save();
+    ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = 12;
+    ctx.drawImage(c.image, x, y, side, side);
+    ctx.restore();
+    if (layer.tag) {
+      ctx.save();
+      ctx.font = `600 ${Math.round(H / 24)}px system-ui, sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      const ty = Math.max(H / 20, y + side * 0.06);
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, b.cx * W, ty);
+      ctx.fillStyle = layer.color ?? "#f5c542"; ctx.fillText(layer.tag, b.cx * W, ty);
+      ctx.restore();
+    }
+  }
+}
+
 /** Play the overlay once on the canvas while recording it. Resolves with a video URL (or null if recording is unsupported). */
-export function recordReveal(o: RevealOptions): Promise<string | null> {
+export async function recordReveal(o: RevealOptions): Promise<string | null> {
   const { canvas, durationMs } = o;
   const ctx = canvas.getContext("2d")!;
   const W = canvas.width, H = canvas.height;
-  const draw = (ms: number) => {
-    o.drawBackground(ctx, ms);
-    const b = o.boxAt(ms);
-    const c = nearest(o.cutouts, ms + Math.max(0, o.lagMs));
-    if (!b || !c) return;
-    // Size the cutout to the object's box (at least a sixth of the frame so a small ball still shows a hand).
-    const side = Math.max(b.w * W, b.h * H, H / 6) * 1.4;
-    ctx.save();
-    ctx.shadowColor = "#f5c542"; ctx.shadowBlur = 12;
-    ctx.drawImage(c.image, b.cx * W - side / 2, b.cy * H - side / 2, side, side);
-    ctx.restore();
-  };
+  const draw = (ms: number) => { o.drawBackground(ctx, ms); drawLayers(ctx, W, H, o.layers, ms); };
+  draw(0);
   const stream = typeof canvas.captureStream === "function" ? canvas.captureStream(30) : null;
   const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
   const recorder = stream && type ? new MediaRecorder(stream, { mimeType: type }) : null;
   const chunks: Blob[] = [];
+  const started = performance.now();
+  const wall = () => performance.now() - started;
+  const now = o.clock ? () => o.clock!.now() : wall;
+  if (o.clock) await o.clock.start();
   return new Promise((resolve) => {
     if (recorder) {
       recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       recorder.onstop = () => resolve(chunks.length ? URL.createObjectURL(new Blob(chunks, { type })) : null);
       recorder.start(250);
     }
-    const started = performance.now();
     // A timer, not requestAnimationFrame, so the replay still records in a background tab.
     const timer = window.setInterval(() => {
-      const ms = performance.now() - started;
+      const ms = Math.max(0, now());
       draw(Math.min(ms, durationMs));
       o.onProgress?.(Math.min(1, ms / durationMs));
-      if (ms >= durationMs) {
+      // A stalled video clock still ends the replay a little after it should have.
+      if (ms >= durationMs || wall() > durationMs + 5000) {
         clearInterval(timer);
+        o.clock?.stop?.();
         if (recorder) recorder.stop(); else resolve(null);
       }
     }, 1000 / 30);
