@@ -786,12 +786,13 @@ function shuffle<T>(xs: T[]): T[] {
 }
 
 /**
- * How people are drawn in blind mode: "d", the 3D jester Aaron picked (app/src/clipside/puppet3d.ts), with the key
- * joints on a corner card a tap swaps in (clipside/blind.ts). Null is the stick figure on the plain background;
- * a and b are the flat sticker and flat cut paper (puppet.ts).
+ * How people are drawn in blind mode: null, the stick figure on the plain background, or "d", the 3D jester Aaron
+ * picked (app/src/clipside/puppet3d.ts) with the key joints on a corner card a tap swaps in (clipside/blind.ts);
+ * a and b are the flat sticker and flat cut paper (puppet.ts). The 3D jester is the default only once Aaron has
+ * played a Blind round on it with a real camera.
  * ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
  */
-const DEFAULT_GUIDE: Construction | null = "d";
+const DEFAULT_GUIDE: Construction | null = null;
 
 const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
   const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
