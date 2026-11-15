@@ -503,7 +503,8 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .room-chat-log li, .room-chat-empty { margin: 0; font: 700 22px/var(--lh) var(--hand); letter-spacing: -.02em; color: var(--pen); overflow-wrap: anywhere; }
 .room-chat-log b { color: var(--ink); }
 .room-chat-empty { color: #6B5A48; }
-.room-chat-form { display: flex; gap: 10px; align-items: center; padding-top: 6px; }
+/* min-width 0: the message box shrinks, so Send stays inside the page on a phone. */
+.room-chat-form { display: flex; gap: 10px; align-items: center; min-width: 0; padding-top: 6px; }
 #roomChatText {
   flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 4px 2px; border: 0; border-bottom: 2px dashed #C9B497; background: transparent;
   font: 700 22px var(--hand); letter-spacing: -.02em; color: var(--pen);
@@ -937,6 +938,10 @@ body[data-screen="turn"] #clipReady { display: none; }
 .link > .ico, .aside a > .ico { margin-right: .35em; vertical-align: -.42em; }
 /* Sound: the horn plays when sound is on and is crossed out when it is off. */
 #soundToggle[aria-pressed="true"] .ico-off, #soundToggle[aria-pressed="false"] .ico-on { display: none; }
+/* A yellow ticket carries the hat stamp instead, so a control that turns into one (Join, from an invite link) hides its icon. */
+.btn-main > .ico { display: none; }
+/* The room's small tags set their own hole padding; with an icon they take the icon's place like every tag. */
+#roomCopy:has(> .ico), #roomChatSend:has(> .ico) { padding-left: .85em; }
 /* Start over stays one line beside its loop; a little smaller on a phone so it fits a 320 px screen. */
 .restart .btn-quiet { white-space: nowrap; }
 @media (max-width: 760px) { .restart .btn-quiet { font-size: 20px; } }

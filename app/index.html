@@ -454,7 +454,7 @@
           </div>
           <div class="room-have-code" id="roomHaveCode">
             <label class="field"><span>Or join with a friend's code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></label>
-            <button type="button" class="btn btn-quiet" id="roomEnter"><span class="ticket"><span class="ticket-text">Join</span></span></button>
+            <button type="button" class="btn btn-quiet" id="roomEnter"><svg class="ico" aria-hidden="true"><use href="#ico-join" /></svg><span class="ticket"><span class="ticket-text">Join</span></span></button>
           </div>
         </div>
         <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
@@ -467,7 +467,7 @@
               <h2 class="room-code" id="roomCodeText"></h2>
               <div class="room-link-row">
                 <p class="room-link" id="roomLinkLine" hidden><span id="roomLinkText" hidden></span> <span id="roomWhere"></span></p>
-                <button type="button" class="btn btn-quiet" id="roomCopy">Copy link</button>
+                <button type="button" class="btn btn-quiet" id="roomCopy"><svg class="ico" aria-hidden="true"><use href="#ico-copy" /></svg><span id="roomCopySay">Copy link</span></button>
               </div>
             </div>
             <figure class="print room-qr" id="roomQr">
@@ -527,13 +527,13 @@
               </div>
               <form class="room-chat-form" id="roomChatForm">
                 <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
-                <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
+                <button type="submit" class="btn btn-quiet" id="roomChatSend"><svg class="ico" aria-hidden="true"><use href="#ico-send" /></svg>Send</button>
               </form>
             </div>
           </section>
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
-        <button type="button" class="link" id="roomBack">Back</button>
+        <button type="button" class="link" id="roomBack"><svg class="ico" aria-hidden="true"><use href="#ico-back" /></svg><span id="roomBackSay">Back</span></button>
       </div>
     </section>
 
