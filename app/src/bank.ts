@@ -66,7 +66,7 @@ export async function listBank(): Promise<{ data: BankClip[]; error: null } | { 
 }
 
 /** Enough of a guide to draw and score it; the rest was written by the same code that reads it. */
-function looksLikeGuide(x: unknown): x is Guide {
+export function looksLikeGuide(x: unknown): x is Guide {
   if (typeof x !== "object" || x === null) return false;
   const g = x as Partial<Guide>;
   return g.schema === "guide/1"

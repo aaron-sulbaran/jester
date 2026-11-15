@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import { bankDevServer } from "./bank-dev-server.ts";
 import { roundLog } from "./round-log-plugin.ts";
 import { buildStamp } from "./build-stamp.ts";
+import { reviewDevServer } from "./review-dev-server.ts";
 
 // Where a local run asks for the two public Supabase settings when it has no settings file of its own.
 // Both values already ship inside the live page's code, so nothing secret travels here.
@@ -37,7 +38,7 @@ export default defineConfig(async ({ mode }) => {
     // Round log (round-log-plugin.ts): every scored round is saved, on a dev server to eval/data/rounds, on a
     // build made with JESTER_RECORD_ROUNDS=1 to Supabase. Build stamp (build-stamp.ts): "local" on a dev server,
     // the commit and build time plus a refresh notice on a build made with JESTER_BUILD_STAMP=1.
-    plugins: [bankDevServer(process.env.JESTER_BANK_DIR), roundLog(), buildStamp()],
+    plugins: [bankDevServer(process.env.JESTER_BANK_DIR), roundLog(), buildStamp(), reviewDevServer({ envFile: process.env.JESTER_REVIEW_ENV, supabaseUrl: process.env.VITE_SUPABASE_URL })],
     // Two pages in the build: the game and the online room page.
     build: { rollupOptions: { input: { main: "index.html", room: "room.html" } } },
   };
