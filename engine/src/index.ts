@@ -8,6 +8,8 @@ export type { PoseComparison, LimbComparison, CompareOptions, PoseRoundOptions }
 export { scoreTrajectoryRound, detectEvents, matchEvents, BODY_PARTS } from "./trajectory.ts";
 export type { TrajectoryRoundOptions, BodyPart } from "./trajectory.ts";
 export { skeletonGate } from "./gate.ts";
+export { smoothTimeline } from "./smooth.ts";
+export type { SmoothOptions } from "./smooth.ts";
 export { scorePlacement } from "./placement.ts";
 export type { GateResult } from "./gate.ts";
 export { LIMBS, LIMB_NAMES } from "./geometry.ts";
