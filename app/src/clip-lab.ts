@@ -2,13 +2,15 @@
 // URL options: ?clip=<file in /_clips/> runs that file as if picked, ?pick=<number> chooses that
 // person, ?fresh=1 ignores the saved analysis, ?model=lite|heavy times another pose model and
 // ?search=tracking looks for people the old way (MediaPipe VIDEO mode), neither saved,
-// ?overlay=skeleton|outline|both, ?look=puppet|outline|stick and ?place=fit|exact set the switches.
+// ?overlay=skeleton|outline|both, ?look=puppet|outline|stick and ?place=fit|exact set the switches;
+// ?guide=a|b|c picks which puppet on trial (a by default) and ?stage=plain|spot its stage.
 // After each run, window.__clipLab holds a summary.
 
 import { linkTracks, pointNearFrame, type Box, type Guide, type Placement, type View } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
 import { finishClip, prepareClip, subjectGuides, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
 import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
+import type { Construction, StageLook } from "./clipside/puppet.ts";
 import type { PersonSearch, PoseModel } from "./clipside/detect.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
@@ -66,6 +68,9 @@ const resetView = () => { view = null; };
 const overlayMode = radioGroup<Overlay>("overlay", ["skeleton", "outline", "both"], "both", () => {});
 const look = radioGroup<Look>("look", ["puppet", "outline", "stick"], "puppet", () => {});
 const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
+const askedGuide = params.get("guide");
+const labPuppet: Construction = askedGuide === "b" || askedGuide === "c" ? askedGuide : "a";
+const labStage: StageLook = params.get("stage") === "spot" ? "spot" : "plain";
 const askedModel = params.get("model");
 const poseModel: PoseModel = askedModel === "lite" || askedModel === "heavy" ? askedModel : "full";
 const personSearch: PersonSearch = params.get("search") === "tracking" ? "tracking" : "every-frame";
@@ -226,8 +231,8 @@ function tick() {
   if (box && mode === "skeleton") strokeBox(overlay, box, "", "#f5c542");
 
   view ??= blindView(guide, blindCanvas, place());
-  // The puppet and the outline stand on the stage, as in the game; the stick figure keeps the old plain look.
-  drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view, { background: "#16161d", color: "#F47FA6", stage: look() !== "stick" });
+  // The puppet and the outline stand on the stage; the stick figure keeps the old plain look.
+  drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view, { background: "#16161d", color: "#F47FA6", ...(look() === "stick" ? {} : { stage: labStage, puppet: labPuppet }) });
 }
 
 async function run(file: File) {

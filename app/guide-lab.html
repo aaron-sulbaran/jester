@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guide lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p.sub { margin: 0 0 12px; color: #555; max-width: 70ch; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 8px 0 14px; }
+    .controls label { display: inline-flex; gap: 6px; align-items: center; }
+    #options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 760px) { #options { grid-template-columns: 1fr; } }
+    .option h2 { font-size: 2rem; margin: 0; line-height: 1; }
+    .option p { margin: 4px 0 8px; min-height: 2.8em; color: #333; font-size: .92rem; }
+    .option .pick { display: flex; gap: 12px; margin-bottom: 8px; font-size: .9rem; }
+    canvas { display: block; width: 100%; height: auto; background: #16161d; }
+    #time { width: min(100%, 420px); }
+  </style>
+</head>
+<body>
+  <h1>Guide lab: pick a puppet</h1>
+  <p class="sub">Three ways to build the blind mode jester, side by side on the same dancer. The dancer turns all the way round (front, side, back, side, front), then sways. Each option's puppet and stage switch separately. In the game: <code>/?guide=a</code>, <code>b</code> or <code>c</code>, and <code>&amp;stage=spot</code> for the spotlight. <code>?at=3</code> holds the dancer at 3 seconds.</p>
+  <div class="controls">
+    <label>Player colour
+      <select id="color">
+        <option value="#F47FA6">Player 1</option>
+        <option value="#4F7BF0">Player 2</option>
+        <option value="#FFC93C">Player 3</option>
+        <option value="#3FBF8F">Player 4</option>
+      </select>
+    </label>
+    <label><input id="depth" type="checkbox" checked /> Tracker depth (off: the fallback from body width and the nose)</label>
+    <label><input id="pause" type="checkbox" /> Pause</label>
+    <label>Time <input id="time" type="range" min="0" max="1" step="0.001" value="0" /></label>
+  </div>
+  <div id="options"></div>
+  <script type="module" src="./src/guide-lab.ts"></script>
+</body>
+</html>

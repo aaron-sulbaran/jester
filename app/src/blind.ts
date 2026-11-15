@@ -2,8 +2,8 @@
 //
 // 1. A clip goes in: the demo scene (a dancer and a ball, works offline) or a video, read by the clip side
 //    (`prepareVideo` and `subjectGuides`, one guide per subject, all over the same stretch of the clip).
-// 2. Each player gets a secret role (a person or a thing) and a look: a jester puppet for a person (the old
-//    stick figure with ?guide=stick) or the outline of a thing, on a stage, never the clip. The player is never told what the role is: before the turn they see only its
+// 2. Each player gets a secret role (a person or a thing) and a look: a stick figure for a person (or one of
+//    the jester puppets on trial, ?guide=a|b|c) or the outline of a thing, never the clip. The player is never told what the role is: before the turn they see only its
 //    first frame, and they pick which body part copies it (a person with the whole body is scored limb by
 //    limb; any role with a hand or the head is scored as that part following the role's movement). The role is named only at the reveal.
 // 3. Players take turns on the same laptop. Each turn is scored by the engine: the pose channel for a person,
@@ -20,6 +20,7 @@ import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "..
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
 import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, type GuidePose, type Look } from "./clipside/blind.ts";
+import type { Construction, StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
@@ -667,8 +668,19 @@ function shuffle<T>(xs: T[]): T[] {
   return a;
 }
 
-/** ?guide=stick brings back the old guide (a stick figure on a plain background) to compare with the puppet. */
-const OLD_GUIDE = typeof location !== "undefined" && new URLSearchParams(location.search).get("guide") === "stick";
+/**
+ * How people are drawn in blind mode. Null is the stick figure on the plain background; a, b or c is that
+ * jester puppet (app/src/clipside/puppet.ts) on the stage. The team picks one; changing this line makes it
+ * the default. Until then ?guide=a|b|c tries one, and ?stage=plain|spot picks the stage.
+ */
+const DEFAULT_GUIDE: Construction | null = null;
+
+const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
+  const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
+  const asked = params.get("guide");
+  const puppet = asked === "a" || asked === "b" || asked === "c" ? asked : asked === "stick" ? null : DEFAULT_GUIDE;
+  return { puppet, stage: params.get("stage") === "spot" ? "spot" : "plain" };
+})();
 
 /** Every player gets a role; roles repeat only when there are more players than subjects. */
 export function deal(names: string[], guides: Guide[], colors: readonly string[] = PLAYER_COLORS): Seat[] {
@@ -677,7 +689,7 @@ export function deal(names: string[], guides: Guide[], colors: readonly string[]
     if (pool.length === 0) pool = shuffle(guides);
     const guide = pool.pop()!;
     // People are a jester puppet (a moving outline is too hard to read); things are their outline.
-    const look: Look = isThing(guide) ? "outline" : OLD_GUIDE ? "stick" : "puppet";
+    const look: Look = isThing(guide) ? "outline" : GUIDE.puppet ? "puppet" : "stick";
     return { name, color: colors[i % colors.length]!, guide, original: guide, look, part: "body", cutouts: [], face: null, result: null, recording: null };
   });
 }
@@ -712,7 +724,7 @@ function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
   // the clip's shape, so where it travels stays true.
   const shown = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 0;
   fitCanvas(canvas, !isThing(s.guide) && shown ? shown : scene.width / scene.height);
-  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color, stage: !OLD_GUIDE } };
+  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color, ...(GUIDE.puppet ? { stage: GUIDE.stage, puppet: GUIDE.puppet } : {}) } };
 }
 
 /** The role's first frame, the only thing the player sees of it before the turn. */

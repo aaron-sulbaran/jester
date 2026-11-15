@@ -3,12 +3,15 @@
 // Placement comes from `placeSubject` in ../../../clip.
 
 import { bodyTurns, NO_TURN, placeSubject, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
-import { drawPuppet, newSwing, stageImage, suitFor, type Swing } from "./puppet.ts";
+import { drawPuppet, newSwing, stageImage, suitFor, type Construction, type StageLook, type Swing } from "./puppet.ts";
 
 export type Look = "outline" | "stick" | "puppet";
 
-/** `stage` draws the stage (backdrop, floor, spotlight) behind the subject instead of the plain `background`. */
-export interface BlindStyle { background: string; color: string; stage?: boolean }
+/**
+ * `stage` draws that stage behind the subject instead of the plain `background`; `puppet` is how the
+ * puppet look is built (see `Construction` in ./puppet.ts).
+ */
+export interface BlindStyle { background: string; color: string; stage?: StageLook; puppet?: Construction }
 
 const DEFAULT_STYLE: BlindStyle = { background: "#16161d", color: "#f5c542" };
 
@@ -120,7 +123,7 @@ export function drawBlindBackground(canvas: HTMLCanvasElement, guide: Guide, vie
   const footPx = clip.footY !== null ? clip.footY * guide.source.height * view.scale + view.offsetY : null;
   const floorY = footPx !== null ? Math.min(h * 0.88, Math.max(h * 0.5, footPx - (torsoPx ?? h * 0.15) * 0.35)) : h * 0.76;
   const spotX = clip.centerX !== null ? Math.min(w * 0.8, Math.max(w * 0.2, clip.centerX * guide.source.width * view.scale + view.offsetX)) : w / 2;
-  ctx.drawImage(stageImage(w, h, { floorY, spotX }), 0, 0);
+  ctx.drawImage(stageImage(w, h, { floorY, spotX }, style.stage), 0, 0);
 }
 
 /**
@@ -168,7 +171,7 @@ export function drawBlindSubject(
     const depth = guide.depths?.[index] ?? null;
     let swing = swings.get(canvas);
     if (!swing) { swing = newSwing(); swings.set(canvas, swing); }
-    drawPuppet(ctx, { landmarks, depth, turn: at.turn, torso }, map, suitFor(style.color), swing);
+    drawPuppet(ctx, { landmarks, depth, turn: at.turn, torso }, map, suitFor(style.color), style.puppet ?? "a", swing);
     return;
   }
 

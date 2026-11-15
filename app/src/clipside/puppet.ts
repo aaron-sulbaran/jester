@@ -1,36 +1,44 @@
 // The blind mode guide as a jester puppet, drawn in code on the same 2D canvas and at the same places as
-// the stick figure (the player uses the guide to find their place in the frame). Filled, tapered limbs, a
-// torso that follows the shoulders and hips and narrows as the body turns, far-side limbs drawn first and
-// darker, a head whose face slides round with the turn and is gone when the back is to us, and a two-pointed
-// hat whose bells lag behind the head. The look is the jester's (art/jester/jester.py): a two-colour suit
-// in the player's colourway, gold collar, cuffs and bells, cream hands, blue shoes, ink outlines, toon shade.
+// the stick figure (the player uses the guide to find their place in the frame). Three ways to build it
+// are on offer until the team picks one (`Construction`); all keep to the scrapbook look's rules from the
+// frontend agent: the player's colour only (the classic purple and red stay the host's), a white die-cut
+// edge or cut paper with hard offset shadows like the `#die-cut` and `#sticker` filters in app/index.html,
+// thick ink outlines that read from three steps back, no gradients and no soft shadows.
 //
-// Also the stage behind the guide: a velvet backdrop, a plank floor and a spotlight, drawn once per size
-// and reused every frame.
+// Depth shows the same way in all three: far-side limbs drawn first and darker, a torso that narrows as
+// the body turns, a face that slides round with the turn and is gone when the back is to us, and a hat
+// whose far point goes behind the head and whose bells lag behind it.
+//
+// Also the stage behind the guide: a navy backdrop and the shoebox floor, drawn once per size and reused.
 
 import type { Landmark } from "../../../engine/src/index.ts";
 import type { Depth, Turn } from "../../../clip/src/index.ts";
 
 type P = [number, number];
 
-// Colours are the look's tokens (`:root` in app/src/style.css, docs/design/look-parts.md): --ink, --gold,
-// --stamp, --ticket, the shoebox's --side-c, --ceil-c and --floor-c, and --shade for shadows, all hard
-// edged. The jester himself keeps his model's materials (art/jester/jester.py), as his sprites do: the
-// suit in each player's colourway, porcelain peach skin, cobalt shoes.
+/** How the puppet is built. a: one die-cut sticker. b: layered cut paper. c: a jointed paper doll with pins. */
+export type Construction = "a" | "b" | "c";
+export const CONSTRUCTIONS: Record<Construction, string> = {
+  a: "Die-cut sticker: the whole jester is one sticker with a white edge and one hard shadow",
+  b: "Layered cut paper: every piece is its own paper layer casting a hard shadow on the one below",
+  c: "Jointed paper doll: every piece has its own white edge, held together with gold split pins",
+};
+/** The stage: the frontend agent's navy backdrop and shoebox floor, with or without a flat spotlight. */
+export type StageLook = "plain" | "spot";
+
+// The look's tokens (app/src/style.css) and the frontend agent's stage colour.
 const INK = "#1E1B18";
+const PHOTO = "#FFFFFF";
 const GOLD = "#F4BE1A";
 const STAMP = "#D93A2B";
-const SIDE = "#774C2B", CEIL = "#5C3A20", FLOOR = "#93613A";
-const SKIN = "#F6D9BE";
-const SHOE = "#2F4BB8";
-const CHEEK = STAMP;
-const FEATURES = INK;
-/** --shade: the look's hard shadow, ink at about a third. */
+const NAVY = "#2E4593";
+const FLOOR = "#93613A";
+const CEIL = "#5C3A20";
+/** --shade: ink at 34 percent, the look's only shadow colour. */
 const SHADE = "rgba(30,27,24,0.34)";
-/** --ink at a given strength. */
-const inkAt = (a: number) => `rgba(30,27,24,${a})`;
+const SHADE_ALPHA = 0.34;
 /** --ticket (#FFC93C) at a given strength, for the spotlight. */
-const lightAt = (a: number) => `rgba(255,201,60,${a})`;
+const ticketAt = (a: number) => `rgba(255,201,60,${a})`;
 const SEEN = 0.5;
 const TAU = Math.PI * 2;
 
@@ -41,26 +49,9 @@ const L_PINKY = 17, R_PINKY = 18, L_INDEX = 19, R_INDEX = 20;
 const L_HIP = 23, R_HIP = 24, L_KNEE = 25, R_KNEE = 26, L_ANKLE = 27, R_ANKLE = 28;
 const L_HEEL = 29, R_HEEL = 30, L_TOE = 31, R_TOE = 32;
 
-/** Each player colour's partner in the jester's two-colour suit (PLAYERS and PALETTES in art/jester/jester.py). */
-const PARTNERS: Record<string, string> = {
-  "#f47fa6": "#6B2FB3", "#4f7bf0": "#FFC93C", "#ffc93c": "#D4243A", "#3fbf8f": "#4F7BF0",
-  "#6b2fb3": "#D4243A", "#e8507a": "#6B2FB3", "#3b82c4": "#2E9E6B", "#f2c14e": "#D4243A",
-};
-
-/** The suit: the player's colour on the subject's right half (the viewer's left), its partner on the left. */
-export interface Suit { right: string; left: string }
-
-export function suitFor(color: string): Suit {
-  const key = color.trim().toLowerCase();
-  const rgb = parseHex(key);
-  const reddish = rgb !== null && rgb[0] > 170 && rgb[1] < 110;
-  return { right: color, left: PARTNERS[key] ?? (reddish ? "#6B2FB3" : "#D4243A") };
-}
-
 // ---- Colour ----
 
-/** A colour as red, green and blue, from #rgb, #rrggbb or rgb(r,g,b); null for anything else. */
-function parseHex(color: string): [number, number, number] | null {
+function parseColor(color: string): [number, number, number] | null {
   const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(color.trim());
   if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
@@ -69,18 +60,22 @@ function parseHex(color: string): [number, number, number] | null {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
-/** `color` mixed toward `toward` by `t` (0 keeps it). Colours `parseHex` cannot read come back unchanged. */
+/** `color` mixed toward `toward` by `t`, like CSS color-mix in srgb. Colours it cannot read come back unchanged. */
 function mix(color: string, toward: string, t: number): string {
-  const a = parseHex(color), b = parseHex(toward);
-  if (!a || !b || t <= 0) return color;
-  const c = a.map((v, i) => Math.round(v + (b[i]! - v) * Math.min(1, t)));
+  const a = parseColor(color), b = parseColor(toward);
+  if (!a || !b) return color;
+  const c = a.map((v, i) => Math.round(v + (b[i]! - v) * t));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-/** The toon shadow tone: the colour at 82 percent, as the sprites' material does. */
-function shadowOf(color: string): string {
-  const a = parseHex(color);
-  return a ? `rgb(${a.map((v) => Math.round(v * 0.82)).join(",")})` : color;
+/**
+ * The player's colour in the three shades the frontend agent allowed: as it is, lighter on the near side
+ * (80 percent with 20 percent --photo) and darker on the far side (72 percent with 28 percent --ink).
+ */
+export interface Suit { base: string; light: string; dark: string }
+
+export function suitFor(color: string): Suit {
+  return { base: color, light: mix(color, PHOTO, 0.2), dark: mix(color, INK, 0.28) };
 }
 
 // ---- Geometry ----
@@ -94,8 +89,6 @@ const mid = (a: P, b: P): P => lerpP(a, b, 0.5);
 const unit = (a: P, fallback: P = [0, -1]): P => { const l = len(a); return l > 1e-6 ? [a[0] / l, a[1] / l] : fallback; };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const smoothstep = (lo: number, hi: number, v: number) => { const t = clamp((v - lo) / (hi - lo), 0, 1); return t * t * (3 - 2 * t); };
-/** Light comes from the upper left, as in the sprites. */
-const LIGHT: P = unit([-0.55, -0.83]);
 
 /** A capsule from `a` (radius `ra`) to `b` (radius `rb`), as a path. */
 function taperPath(ctx: CanvasRenderingContext2D, a: P, b: P, ra: number, rb: number) {
@@ -112,18 +105,18 @@ function taperPath(ctx: CanvasRenderingContext2D, a: P, b: P, ra: number, rb: nu
   ctx.closePath();
 }
 
-/** A fill that is lit on the side facing the light and a hard toon shadow on the other, across `a` to `b`. */
-function toonAcross(ctx: CanvasRenderingContext2D, a: P, b: P, r: number, color: string): CanvasGradient {
-  let n = unit([-(b[1] - a[1]), b[0] - a[0]], [1, 0]);
-  if (n[0] * LIGHT[0] + n[1] * LIGHT[1] > 0) n = mul(n, -1);
-  const m = mid(a, b);
-  const g = ctx.createLinearGradient(m[0] - n[0] * r, m[1] - n[1] * r, m[0] + n[0] * r, m[1] + n[1] * r);
-  const dark = shadowOf(color);
-  g.addColorStop(0, color); g.addColorStop(0.6, color); g.addColorStop(0.64, dark); g.addColorStop(1, dark);
-  return g;
-}
+// ---- Pieces ----
 
-// ---- The puppet ----
+/**
+ * One cut piece of the puppet. `outline` traces its outer edge (for its white edge and its shadow); `art`
+ * paints it, ink outline included. `pins` are where a paper doll's split pins go once it is down.
+ */
+interface Piece { outline: (ctx: CanvasRenderingContext2D) => void; art: (ctx: CanvasRenderingContext2D) => void; pins?: P[] }
+
+const plain = (outline: (ctx: CanvasRenderingContext2D) => void, fill: string, ink: number): Piece => ({
+  outline,
+  art: (ctx) => { outline(ctx); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke(); },
+});
 
 export interface PuppetPose {
   landmarks: readonly Landmark[];
@@ -138,35 +131,31 @@ export interface PuppetPose {
 export interface Swing { head: P | null; lag: P }
 export const newSwing = (): Swing => ({ head: null, lag: [0, 0] });
 
-interface Part { key: number; draw: () => void }
-
 /**
  * Draws the puppet. `map` turns normalized image coordinates into canvas pixels (the guide's view), so
  * every joint sits exactly where the stick figure's would.
  */
-export function drawPuppet(ctx: CanvasRenderingContext2D, pose: PuppetPose, map: (x: number, y: number) => P, suit: Suit, swing?: Swing) {
+export function drawPuppet(
+  ctx: CanvasRenderingContext2D, pose: PuppetPose, map: (x: number, y: number) => P, suit: Suit,
+  construction: Construction = "a", swing?: Swing,
+) {
   const { landmarks: lm, turn } = pose;
   const T = pose.torso;
   const at = (i: number): P | null => { const l = lm[i]; return l && l[2] >= SEEN ? map(l[0], l[1]) : null; };
-  const ink = Math.max(1.2, T * 0.035);
+  // Thick enough to read from three steps back; never a hairline.
+  const ink = Math.max(2.5, T * 0.055);
   const sinY = Math.sin(turn.yaw);
-  ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = ink;
 
   const ls = at(L_SHOULDER), rs = at(R_SHOULDER), lh = at(L_HIP), rh = at(R_HIP);
   const sm = ls && rs ? mid(ls, rs) : ls ?? rs;
   const hmSeen = lh && rh ? mid(lh, rh) : lh ?? rh;
-  // Straight up the body: from the hips to the shoulders, else the screen's up.
   const up = sm && hmSeen ? unit(sub(sm, hmSeen)) : ([0, -1] as P);
   const hm = hmSeen ?? (sm ? sub(sm, mul(up, T)) : null);
 
-  floorShadow(ctx, lm, map, T);
+  // Each side's colour: the far side dark, else the right side light and the left as it is.
+  const far = (side: 1 | -1) => side * sinY > 0.27;
+  const sideColor = (side: 1 | -1) => (far(side) ? suit.dark : side === -1 ? suit.light : suit.base);
 
-  // How far each side is turned away (0 near or square, 1 far), and the draw order key (bigger is farther).
-  const farness = (side: 1 | -1) => clamp(side * sinY * 1.5, 0, 1);
   const depthOf = (ids: number[]): number | null => {
     if (!pose.depth || pose.depth.length !== lm.length) return null;
     const zs = ids.filter((i) => (lm[i]?.[2] ?? 0) >= SEEN).map((i) => pose.depth![i]!);
@@ -181,109 +170,155 @@ export function drawPuppet(ctx: CanvasRenderingContext2D, pose: PuppetPose, map:
     return side * sinY * 0.5 + bias;
   };
 
-  const parts: Part[] = [];
-  const limbColor = (base: string, far: number) => mix(base, INK, 0.3 * far);
+  const groups: { key: number; pieces: Piece[] }[] = [];
   for (const side of [1, -1] as const) {
     const left = side === 1;
-    const base = left ? suit.left : suit.right;
-    const far = farness(side);
-    const thin = 1 - 0.1 * far;
-    const color = limbColor(base, far);
+    const color = sideColor(side);
+    const thin = far(side) ? 0.92 : 1;
     const [sh, el, wr, pi, ix] = left ? [L_SHOULDER, L_ELBOW, L_WRIST, L_PINKY, L_INDEX] : [R_SHOULDER, R_ELBOW, R_WRIST, R_PINKY, R_INDEX];
     const [hp, kn, an, he, to] = left ? [L_HIP, L_KNEE, L_ANKLE, L_HEEL, L_TOE] : [R_HIP, R_KNEE, R_ANKLE, R_HEEL, R_TOE];
-    parts.push({
+    groups.push({
       key: keyOf([hp, kn, an], side, 0.08),
-      draw: () => limb(ctx, [at(hp), at(kn), at(an)], [0.2, 0.15, 0.11].map((r) => r * T * thin), color, ink, far, () => foot(ctx, at(an), at(he), at(to), at(kn), T * thin, far, ink)),
+      pieces: limbPieces([at(hp), at(kn), at(an)], [0.2, 0.15, 0.115].map((r) => r * T * thin), color, ink, footPiece(at(an), at(he), at(to), at(kn), T * thin, ink)),
     });
-    parts.push({
+    groups.push({
       key: keyOf([sh, el, wr], side, armBias),
-      draw: () => limb(ctx, [at(sh), at(el), at(wr)], [0.15, 0.12, 0.095].map((r) => r * T * thin), color, ink, far, () => hand(ctx, at(wr), at(el), at(ix), at(pi), T * thin, far, ink)),
+      pieces: limbPieces([at(sh), at(el), at(wr)], [0.15, 0.12, 0.1].map((r) => r * T * thin), color, ink, handPiece(at(wr), at(el), at(ix), at(pi), T * thin, ink)),
     });
   }
-  if (sm && hm) parts.push({ key: 0, draw: () => torso(ctx, { ls, rs, lh, rh, sm, hm, up }, T, turn, suit, ink) });
-  parts.sort((a, b) => b.key - a.key);
-  for (const part of parts) part.draw();
+  if (sm && hm) groups.push({ key: 0, pieces: torsoPieces({ ls, rs, lh, rh, sm, hm, up }, T, turn, sideColor, ink) });
+  groups.sort((a, b) => b.key - a.key);
+  const pieces = [...groups.flatMap((g) => g.pieces), ...headPieces(at, sm, up, T, turn, suit, sideColor, ink, swing)];
 
-  head(ctx, at, sm, up, T, turn, suit, ink, swing);
+  floorShadow(ctx, lm, map, T);
+  const rim = Math.max(3, T * 0.07);
+  const drop: P = [Math.max(3, T * 0.045), Math.max(4, T * 0.055)];
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  if (construction === "a") {
+    // One sticker: a white edge round the whole figure and one hard shadow, as the #die-cut filter does.
+    silhouette(ctx, pieces, rim + ink / 2, drop);
+    for (const p of pieces) p.art(ctx);
+  } else if (construction === "b") {
+    // Layered cut paper: each piece throws its own hard shadow onto whatever is under it.
+    const small = mul(drop, 0.6);
+    for (const p of pieces) {
+      ctx.save();
+      ctx.translate(small[0], small[1]);
+      p.outline(ctx);
+      ctx.fillStyle = SHADE; ctx.fill();
+      ctx.lineWidth = ink; ctx.strokeStyle = SHADE; ctx.stroke();
+      ctx.restore();
+      p.art(ctx);
+    }
+  } else {
+    // A paper doll: one hard shadow for the figure, then each piece with its own white edge, pinned at its joints.
+    silhouette(ctx, pieces, rim * 0.6 + ink / 2, drop, false);
+    for (const p of pieces) {
+      p.outline(ctx);
+      ctx.lineWidth = rim * 1.2 + ink; ctx.strokeStyle = PHOTO; ctx.stroke();
+      ctx.fillStyle = PHOTO; ctx.fill();
+      p.art(ctx);
+      for (const pin of p.pins ?? []) splitPin(ctx, pin, T, ink);
+    }
+  }
   ctx.restore();
 }
 
+const silhouettes = new WeakMap<object, HTMLCanvasElement>();
+
+/** Every piece's outline grown by `grow`, as a hard --shade shadow offset by `drop` and (unless `white` is false) a white edge. */
+function silhouette(ctx: CanvasRenderingContext2D, pieces: Piece[], grow: number, drop: P, white = true) {
+  const host = ctx.canvas;
+  let layer = silhouettes.get(host);
+  if (!layer) { layer = document.createElement("canvas"); silhouettes.set(host, layer); }
+  if (layer.width !== host.width || layer.height !== host.height) { layer.width = host.width; layer.height = host.height; }
+  const l = layer.getContext("2d")!;
+  l.globalCompositeOperation = "source-over";
+  l.clearRect(0, 0, layer.width, layer.height);
+  l.lineJoin = "round"; l.lineCap = "round";
+  l.fillStyle = INK; l.strokeStyle = INK; l.lineWidth = grow * 2;
+  for (const p of pieces) { p.outline(l); l.fill(); l.stroke(); }
+  ctx.save();
+  ctx.globalAlpha = SHADE_ALPHA;
+  ctx.drawImage(layer, drop[0], drop[1]);
+  ctx.restore();
+  if (!white) return;
+  l.globalCompositeOperation = "source-in";
+  l.fillStyle = PHOTO;
+  l.fillRect(0, 0, layer.width, layer.height);
+  l.globalCompositeOperation = "source-over";
+  ctx.drawImage(layer, 0, 0);
+}
+
+/** A gold split pin: a round head with the slit across it. */
+function splitPin(ctx: CanvasRenderingContext2D, p: P, T: number, ink: number) {
+  const r = Math.max(3.5, T * 0.06);
+  ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, TAU);
+  ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = Math.max(2, ink * 0.6); ctx.strokeStyle = INK; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(p[0] - r * 0.5, p[1]); ctx.lineTo(p[0] + r * 0.5, p[1]); ctx.stroke();
+}
+
+/** The hard --shade ellipse under the feet. */
 function floorShadow(ctx: CanvasRenderingContext2D, lm: readonly Landmark[], map: (x: number, y: number) => P, T: number) {
   const feet = [L_ANKLE, R_ANKLE, L_HEEL, R_HEEL, L_TOE, R_TOE].map((i) => lm[i]).filter((l): l is Landmark => !!l && l[2] >= SEEN).map((l) => map(l[0], l[1]));
   if (!feet.length) return;
   const xs = feet.map((p) => p[0]);
-  const y = Math.max(...feet.map((p) => p[1])) + T * 0.03;
+  const y = Math.max(...feet.map((p) => p[1])) + T * 0.04;
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const rx = (Math.max(...xs) - Math.min(...xs)) / 2 + T * 0.45, ry = T * 0.11;
-  // A hard --shade ellipse, like the look's offset shadows: no blur.
-  ctx.beginPath(); ctx.ellipse(cx, y, rx, ry, 0, 0, TAU);
-  ctx.fillStyle = SHADE; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, y, (Math.max(...xs) - Math.min(...xs)) / 2 + T * 0.45, T * 0.11, 0, 0, TAU);
+  ctx.fillStyle = SHADE;
+  ctx.fill();
 }
 
-/** Two tapered segments (upper and lower) and whatever ends the limb (a hand or a foot), each only where seen. */
-function limb(ctx: CanvasRenderingContext2D, joints: (P | null)[], radii: number[], color: string, ink: number, far: number, end: () => void) {
+/** Upper and lower segments, a white cuff and whatever ends the limb, each only where its joints are seen. */
+function limbPieces(joints: (P | null)[], radii: number[], color: string, ink: number, end: Piece | null): Piece[] {
   const [a, b, c] = joints;
   const [ra, rb, rc] = radii as [number, number, number];
-  if (a && b) segment(ctx, a, b, ra, rb, color, ink);
+  const out: Piece[] = [];
+  if (a && b) out.push({ ...plain((ctx) => taperPath(ctx, a, b, ra, rb), color, ink), pins: [a] });
   if (b && c) {
-    segment(ctx, b, c, rb, rc, color, ink);
-    // A gold cuff where the sleeve ends.
+    out.push({ ...plain((ctx) => taperPath(ctx, b, c, rb, rc), color, ink), pins: [b] });
     const d = unit(sub(c, b));
-    taperPath(ctx, sub(c, mul(d, rc * 0.9)), add(c, mul(d, rc * 0.15)), rc * 1.22, rc * 1.22);
-    ctx.fillStyle = mix(GOLD, INK, 0.3 * far);
-    ctx.fill(); ctx.lineWidth = ink * 0.8; ctx.stroke(); ctx.lineWidth = ink;
-    end();
+    out.push(plain((ctx) => taperPath(ctx, sub(c, mul(d, rc * 0.8)), add(c, mul(d, rc * 0.2)), rc * 1.25, rc * 1.25), PHOTO, ink * 0.85));
+    if (end) out.push(end);
   }
+  return out;
 }
 
-function segment(ctx: CanvasRenderingContext2D, a: P, b: P, ra: number, rb: number, color: string, ink: number) {
-  taperPath(ctx, a, b, ra, rb);
-  ctx.fillStyle = toonAcross(ctx, a, b, Math.max(ra, rb), color);
-  ctx.fill();
-  ctx.lineWidth = ink;
-  ctx.stroke();
-}
-
-/** A cream mitten past the wrist, toward the fingers when they are seen. */
-function hand(ctx: CanvasRenderingContext2D, wrist: P | null, elbow: P | null, index: P | null, pinky: P | null, T: number, far: number, ink: number) {
-  if (!wrist) return;
+/** A white paper mitten past the wrist, toward the fingers when they are seen. */
+function handPiece(wrist: P | null, elbow: P | null, index: P | null, pinky: P | null, T: number, ink: number): Piece | null {
+  if (!wrist) return null;
   const fingers = index && pinky ? mid(index, pinky) : index ?? pinky;
   const dir = fingers ? unit(sub(fingers, wrist)) : elbow ? unit(sub(wrist, elbow)) : ([0, 1] as P);
   const reach = fingers ? clamp(len(sub(fingers, wrist)) * 0.6, T * 0.06, T * 0.16) : T * 0.1;
   const c = add(wrist, mul(dir, reach));
-  const r = T * 0.12;
-  ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, TAU);
-  ctx.fillStyle = toonAcross(ctx, sub(c, mul(dir, r)), add(c, mul(dir, r)), r, mix(SKIN, INK, 0.3 * far));
-  ctx.fill(); ctx.lineWidth = ink; ctx.stroke();
+  return plain((ctx) => { ctx.beginPath(); ctx.arc(c[0], c[1], T * 0.125, 0, TAU); }, PHOTO, ink);
 }
 
-/** A blue shoe from heel to toe, else pointing on from the shin. */
-function foot(ctx: CanvasRenderingContext2D, ankle: P | null, heel: P | null, toe: P | null, knee: P | null, T: number, far: number, ink: number) {
-  if (!ankle) return;
-  const color = mix(SHOE, INK, 0.3 * far);
+/** An ink shoe from heel to toe, else pointing on from the shin. */
+function footPiece(ankle: P | null, heel: P | null, toe: P | null, knee: P | null, T: number, ink: number): Piece | null {
+  if (!ankle) return null;
   const r = T * 0.1;
   let a: P, b: P;
   if (toe) { a = heel ?? ankle; b = toe; } else {
     const down = knee ? unit(sub(ankle, knee)) : ([0, 1] as P);
     a = ankle; b = add(ankle, mul(down, T * 0.12));
   }
-  // Toes stick out a little past the tracked point; the heel tucks in under the ankle.
   const d = unit(sub(b, a), [1, 0]);
-  taperPath(ctx, add(a, mul(d, r * 0.2)), add(b, mul(d, r * 0.3)), r * 0.95, r);
-  ctx.fillStyle = toonAcross(ctx, a, b, r, color);
-  ctx.fill(); ctx.lineWidth = ink; ctx.stroke();
+  return plain((ctx) => taperPath(ctx, add(a, mul(d, r * 0.2)), add(b, mul(d, r * 0.3)), r * 0.95, r), INK, ink);
 }
 
 interface Frame { ls: P | null; rs: P | null; lh: P | null; rh: P | null; sm: P; hm: P; up: P }
 
 /**
  * The torso: shoulders down to the hips with a waist, as wide as the joints show plus the body's depth as
- * it turns (seen side on, a chest is still about half a torso deep). Split down the front in the suit's two
- * colours; the seam slides toward the far side as the body turns, and the far half darkens.
+ * it turns (seen side on, a chest is still about half a torso deep). Split down the front in the side
+ * colours; the seam slides toward the far side as the body turns. Then a white paper ruff at the neck.
  */
-function torso(ctx: CanvasRenderingContext2D, f: Frame, T: number, turn: Turn, suit: Suit, ink: number) {
+function torsoPieces(f: Frame, T: number, turn: Turn, sideColor: (side: 1 | -1) => string, ink: number): Piece[] {
   const sinY = Math.sin(turn.yaw);
-  // Across the body toward the subject's left (the image's right when they face us).
   const perp: P = [-f.up[1], f.up[0]];
   const across = (l: P | null, r: P | null): P => {
     if (l && r && len(sub(l, r)) > T * 0.05) return unit(sub(l, r));
@@ -298,7 +333,7 @@ function torso(ctx: CanvasRenderingContext2D, f: Frame, T: number, turn: Turn, s
   const hL = add(f.hm, mul(hDir, wH / 2)), hR = sub(f.hm, mul(hDir, wH / 2));
   const waist = lerpP(f.sm, f.hm, 0.62), wDir = unit(add(sDir, hDir), sDir), wW = (wS * 0.38 + wH * 0.62) * 0.86;
   const wL = add(waist, mul(wDir, wW / 2)), wR = sub(waist, mul(wDir, wW / 2));
-  const outline = () => {
+  const outline = (ctx: CanvasRenderingContext2D) => {
     ctx.beginPath();
     ctx.moveTo(sR[0], sR[1]);
     const top = add(f.sm, mul(f.up, T * 0.07));
@@ -311,70 +346,58 @@ function torso(ctx: CanvasRenderingContext2D, f: Frame, T: number, turn: Turn, s
     ctx.quadraticCurveTo(wR[0] + (sR[0] - wR[0]) * 0.1, wR[1] + (sR[1] - wR[1]) * 0.1, sR[0], sR[1]);
     ctx.closePath();
   };
-  // The front seam: from the middle toward the subject's left as they face the image's right.
   const s = clamp(0.5 + 0.4 * sinY, 0.08, 0.92);
   const seamTop = lerpP(sR, sL, s), seamBottom = lerpP(hR, hL, s);
-  const far = clamp(Math.abs(sinY) * 1.5, 0, 1);
   const reach = T * 3;
-  const halfPoly = (dir: 1 | -1) => {
-    const out = mul(sDir, reach * dir);
-    ctx.beginPath();
-    ctx.moveTo(...add(seamTop, mul(f.up, reach)));
-    ctx.lineTo(...add(add(seamTop, mul(f.up, reach)), out));
-    ctx.lineTo(...add(add(seamBottom, mul(f.up, -reach)), out));
-    ctx.lineTo(...add(seamBottom, mul(f.up, -reach)));
-    ctx.closePath();
+  const body: Piece = {
+    outline,
+    art: (ctx) => {
+      ctx.save();
+      outline(ctx);
+      ctx.clip();
+      for (const dir of [1, -1] as const) {
+        const out = mul(sDir, reach * dir);
+        ctx.beginPath();
+        ctx.moveTo(...add(seamTop, mul(f.up, reach)));
+        ctx.lineTo(...add(add(seamTop, mul(f.up, reach)), out));
+        ctx.lineTo(...add(add(seamBottom, mul(f.up, -reach)), out));
+        ctx.lineTo(...add(seamBottom, mul(f.up, -reach)));
+        ctx.closePath();
+        ctx.fillStyle = sideColor(dir);
+        ctx.fill();
+      }
+      ctx.beginPath(); ctx.moveTo(...seamTop); ctx.lineTo(...seamBottom);
+      ctx.lineWidth = ink * 0.7; ctx.strokeStyle = INK; ctx.stroke();
+      // Ink buttons down the seam, only on the front.
+      if (turn.face > 0.5) {
+        for (const t of [0.3, 0.5, 0.7]) {
+          const b = lerpP(seamTop, seamBottom, t);
+          ctx.beginPath(); ctx.arc(b[0], b[1], Math.max(2.5, T * 0.05), 0, TAU);
+          ctx.fillStyle = INK; ctx.fill();
+        }
+      }
+      ctx.restore();
+      outline(ctx);
+      ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke();
+    },
   };
-  ctx.save();
-  outline();
-  ctx.clip();
-  for (const dir of [1, -1] as const) {
-    halfPoly(dir);
-    const farHalf = dir === 1 ? sinY > 0 : sinY < 0;
-    ctx.fillStyle = mix(dir === 1 ? suit.left : suit.right, INK, farHalf ? 0.3 * far : 0);
-    ctx.fill();
-  }
-  // Toon shade down the side away from the light.
-  const xs = [sL, sR, hL, hR].map((p) => p[0]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs);
-  const shade = ctx.createLinearGradient(x0, 0, x1, 0);
-  shade.addColorStop(0, "rgba(30,27,24,0)"); shade.addColorStop(0.7, "rgba(30,27,24,0)");
-  shade.addColorStop(0.74, "rgba(30,27,24,0.2)"); shade.addColorStop(1, "rgba(30,27,24,0.2)");
-  ctx.fillStyle = shade;
-  ctx.fillRect(x0 - T, Math.min(sL[1], sR[1], hL[1], hR[1]) - T, x1 - x0 + 2 * T, 4 * T);
-  // Gold buttons down the seam, only on the front.
-  if (turn.face > 0.05) {
-    ctx.globalAlpha = turn.face;
-    for (const t of [0.3, 0.5, 0.7]) {
-      const b = lerpP(seamTop, seamBottom, t);
-      ctx.beginPath(); ctx.arc(b[0], b[1], T * 0.045, 0, TAU);
-      ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = ink * 0.6; ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
-  outline();
-  ctx.lineWidth = ink;
-  ctx.stroke();
-
-  // A ruff collar round the neck: gold points, flattened by the angle we see it from.
-  const n = 9, rx = wS * 0.44, ry = T * 0.13;
+  // A white paper ruff round the neck, flattened by the angle we see it from.
+  const n = 8, rx = wS * 0.44, ry = T * 0.13;
   const c = add(f.sm, mul(f.up, T * 0.02));
-  ctx.beginPath();
-  for (let k = 0; k < n * 2; k++) {
-    const a = (k * Math.PI) / n;
-    const r = k % 2 === 0 ? 1.18 : 0.78;
-    const p = add(c, add(mul(sDir, Math.cos(a) * rx * r), mul(f.up, -Math.sin(a) * ry * r)));
-    if (k === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
-  }
-  ctx.closePath();
-  ctx.fillStyle = GOLD;
-  ctx.fill();
-  ctx.lineWidth = ink * 0.8;
-  ctx.stroke();
+  const ruff = plain((ctx) => {
+    ctx.beginPath();
+    for (let k = 0; k < n * 2; k++) {
+      const a = (k * Math.PI) / n;
+      const r = k % 2 === 0 ? 1.2 : 0.78;
+      const p = add(c, add(mul(sDir, Math.cos(a) * rx * r), mul(f.up, -Math.sin(a) * ry * r)));
+      if (k === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+    }
+    ctx.closePath();
+  }, PHOTO, ink * 0.85);
+  return [body, ruff];
 }
 
-/** A point on the head's front, at (x, y) in head radii, turned by `yaw`: where it lands and whether it faces us. */
+/** A point on the head's front, at (x, y) in head radii, turned by the yaw: where it lands and how much it faces us. */
 function onSphere(x: number, y: number, sinY: number, cosY: number): { x: number; y: number; toward: number } {
   const z = -Math.sqrt(Math.max(0, 1 - x * x - y * y));
   return { x: x * cosY - z * sinY, y, toward: -(x * sinY + z * cosY) };
@@ -382,22 +405,22 @@ function onSphere(x: number, y: number, sinY: number, cosY: number): { x: number
 
 /**
  * The head with its hat. It sits between the ears (else at the nose, else above the shoulders) and leans
- * with the neck. Face features ride round the front of the head with the turn and fade as the back comes
+ * with the neck. The face rides round the front of the head with the turn and is gone when the back comes
  * round; the hat's far point is drawn behind the head and its near point in front.
  */
-function head(
-  ctx: CanvasRenderingContext2D, at: (i: number) => P | null, sm: P | null, up: P,
-  T: number, turn: Turn, suit: Suit, ink: number, swing: Swing | undefined,
-) {
+function headPieces(
+  at: (i: number) => P | null, sm: P | null, up: P, T: number, turn: Turn, suit: Suit,
+  sideColor: (side: 1 | -1) => string, ink: number, swing: Swing | undefined,
+): Piece[] {
   const le = at(L_EAR), re = at(R_EAR), nose = at(NOSE);
-  const R = T * 0.34;
-  let center: P | null = le && re ? mid(le, re) : le ?? re ?? nose;
-  if (!center && sm) center = add(sm, mul(up, T * 0.66));
-  if (!center) return;
-  const hUp: P = sm && len(sub(center, sm)) > T * 0.2 ? unit(sub(center, sm)) : up;
-  center = add(center, mul(hUp, R * 0.12));
+  const R = T * 0.36;
+  let found: P | null = le && re ? mid(le, re) : le ?? re ?? nose;
+  if (!found && sm) found = add(sm, mul(up, T * 0.66));
+  if (!found) return [];
+  const hUp: P = sm && len(sub(found, sm)) > T * 0.2 ? unit(sub(found, sm)) : up;
+  const center = add(found, mul(hUp, R * 0.12));
   const hRight: P = [-hUp[1], hUp[0]];
-  const toScreen = (x: number, y: number): P => add(center!, add(mul(hRight, x * R), mul(hUp, y * R)));
+  const toScreen = (x: number, y: number): P => add(center, add(mul(hRight, x * R), mul(hUp, y * R)));
   const sinY = Math.sin(turn.yaw), cosY = Math.cos(turn.yaw);
 
   // The bells lag behind the head as it moves.
@@ -414,117 +437,114 @@ function head(
   }
 
   // The hat's two points in head space (x toward the subject's left, y up, z away from the camera).
-  const horn = (side: 1 | -1) => {
-    const pts: { p: P; z: number }[] = [];
+  const horn = (side: 1 | -1): Piece & { z: number } => {
+    const pts: P[] = [];
+    let z = 0;
     const ctrl: [number, number, number][] = [[0.3 * side, 0.82, 0.1], [1.2 * side, 1.35, 0.25], [1.62 * side, 0.5, 0.3]];
-    for (let i = 0; i <= 14; i++) {
-      const t = i / 14, u = 1 - t;
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12, u = 1 - t;
       const q = [0, 1, 2].map((k) => u * u * ctrl[0]![k]! + 2 * u * t * ctrl[1]![k]! + t * t * ctrl[2]![k]!) as [number, number, number];
-      const x = q[0] * cosY - q[2] * sinY, z = q[0] * sinY + q[2] * cosY;
-      pts.push({ p: add(toScreen(x, q[1]), mul(lag, t * t)), z });
+      pts.push(add(toScreen(q[0] * cosY - q[2] * sinY, q[1]), mul(lag, t * t)));
+      z = q[0] * sinY + q[2] * cosY;
     }
-    return pts;
-  };
-  const drawHorn = (side: 1 | -1, pts: { p: P; z: number }[]) => {
-    const far = clamp(pts[pts.length - 1]!.z * 1.2, 0, 1);
-    const color = mix(side === 1 ? suit.left : suit.right, INK, 0.3 * far);
-    const width = (t: number) => R * (0.42 * (1 - t) + 0.07 * t);
+    const width = (t: number) => R * (0.42 * (1 - t) + 0.09 * t);
     const leftEdge: P[] = [], rightEdge: P[] = [];
-    pts.forEach(({ p }, i) => {
-      const a = pts[Math.max(0, i - 1)]!.p, b = pts[Math.min(pts.length - 1, i + 1)]!.p;
+    pts.forEach((p, i) => {
+      const a = pts[Math.max(0, i - 1)]!, b = pts[Math.min(pts.length - 1, i + 1)]!;
       const n = unit([-(b[1] - a[1]), b[0] - a[0]], [1, 0]);
       const w = width(i / (pts.length - 1));
       leftEdge.push(add(p, mul(n, w))); rightEdge.push(sub(p, mul(n, w)));
     });
-    ctx.beginPath();
-    leftEdge.forEach((p, i) => (i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
-    for (let i = rightEdge.length - 1; i >= 0; i--) ctx.lineTo(rightEdge[i]![0], rightEdge[i]![1]);
-    ctx.closePath();
-    ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = ink; ctx.stroke();
-    // The bell.
-    const tip = pts[pts.length - 1]!.p;
-    const bell = add(tip, mul(hUp, -R * 0.1));
-    const br = R * 0.19;
-    ctx.beginPath(); ctx.arc(bell[0], bell[1], br, 0, TAU);
-    ctx.fillStyle = toonAcross(ctx, add(bell, mul(LIGHT, br)), sub(bell, mul(LIGHT, br)), br, mix(GOLD, INK, 0.3 * far));
-    ctx.fill(); ctx.lineWidth = ink * 0.8; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(...sub(bell, mul(hRight, br * 0.5))); ctx.lineTo(...add(bell, mul(hRight, br * 0.5)));
-    ctx.lineWidth = ink * 0.7; ctx.stroke();
-  };
-  const horns = ([1, -1] as const).map((side) => ({ side, pts: horn(side) }));
-  const behind = horns.filter((h) => h.pts[h.pts.length - 1]!.z >= -0.05);
-  const before = horns.filter((h) => h.pts[h.pts.length - 1]!.z < -0.05);
-  for (const h of behind) drawHorn(h.side, h.pts);
-
-  // The neck, then the head: lit toward the upper left.
-  if (sm) {
-    taperPath(ctx, sm, center, T * 0.12, T * 0.11);
-    ctx.fillStyle = shadowOf(SKIN); ctx.fill();
-  }
-  ctx.beginPath(); ctx.arc(center[0], center[1], R, 0, TAU);
-  ctx.fillStyle = shadowOf(SKIN); ctx.fill();
-  ctx.save();
-  ctx.clip();
-  ctx.beginPath(); ctx.arc(center[0] + LIGHT[0] * R * 0.16, center[1] + LIGHT[1] * R * 0.16, R * 0.97, 0, TAU);
-  ctx.fillStyle = SKIN; ctx.fill();
-
-  // The cap over the top of the head, split in the suit's colours along the front seam.
-  const brim = 0.3;
-  const seam = onSphere(0, brim, sinY, cosY).x;
-  for (const side of [1, -1] as const) {
-    ctx.beginPath();
-    const a = toScreen(seam, brim + 2), b = toScreen(seam, brim - 0.05), c = toScreen(side * 2, brim - 0.05), d = toScreen(side * 2, brim + 2);
-    ctx.moveTo(...a); ctx.lineTo(...b); ctx.lineTo(...c); ctx.lineTo(...d); ctx.closePath();
-    ctx.fillStyle = side === 1 ? suit.left : suit.right;
-    ctx.fill();
-  }
-  ctx.beginPath();
-  ctx.moveTo(...toScreen(-1.2, brim - 0.05)); ctx.lineTo(...toScreen(1.2, brim - 0.05));
-  ctx.lineWidth = R * 0.16; ctx.strokeStyle = "rgba(30,27,24,0.22)"; ctx.stroke();
-  ctx.strokeStyle = INK;
-
-  // The face, riding round the front with the turn.
-  const face = turn.face;
-  if (face > 0.02) {
-    const feature = (x: number, y: number, draw: (p: P, squash: number) => void) => {
-      const s = onSphere(x, y, sinY, cosY);
-      const show = face * smoothstep(0.05, 0.35, s.toward);
-      if (show <= 0) return;
-      ctx.globalAlpha = show;
-      draw(toScreen(s.x, s.y), clamp(s.toward, 0.2, 1));
-      ctx.globalAlpha = 1;
+    const tip = pts[pts.length - 1]!;
+    const bell = add(tip, mul(hUp, -R * 0.12));
+    const br = R * 0.22;
+    const point = (ctx: CanvasRenderingContext2D) => {
+      ctx.beginPath();
+      leftEdge.forEach((p, i) => (i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
+      for (let i = rightEdge.length - 1; i >= 0; i--) ctx.lineTo(rightEdge[i]![0], rightEdge[i]![1]);
+      ctx.closePath();
     };
-    for (const x of [-0.33, 0.33]) {
-      feature(x, 0.0, (p, sq) => {
-        ctx.beginPath(); ctx.ellipse(p[0], p[1], R * 0.085 * sq, R * 0.13, Math.atan2(hRight[1], hRight[0]), 0, TAU);
-        ctx.fillStyle = FEATURES; ctx.fill();
-      });
-      feature(x * 1.45, -0.28, (p, sq) => {
-        const w = R * 0.07 * sq, h = R * 0.1;
-        ctx.beginPath();
-        ctx.moveTo(...add(p, mul(hUp, h))); ctx.lineTo(...add(p, mul(hRight, w)));
-        ctx.lineTo(...sub(p, mul(hUp, h))); ctx.lineTo(...sub(p, mul(hRight, w)));
-        ctx.closePath(); ctx.fillStyle = CHEEK; ctx.fill();
-      });
-    }
-    // The smile, drawn piece by piece so the part round the far side drops out.
-    ctx.lineWidth = Math.max(1, R * 0.07);
-    for (let i = 0; i < 8; i++) {
-      const xa = -0.24 + (0.48 * i) / 8, xb = -0.24 + (0.48 * (i + 1)) / 8;
-      const ya = -0.4 - 0.12 * (1 - (xa / 0.24) ** 2), yb = -0.4 - 0.12 * (1 - (xb / 0.24) ** 2);
-      const sa = onSphere(xa, ya, sinY, cosY), sb = onSphere(xb, yb, sinY, cosY);
-      const show = face * smoothstep(0.05, 0.35, Math.min(sa.toward, sb.toward));
-      if (show <= 0) continue;
-      ctx.globalAlpha = show;
-      ctx.beginPath(); ctx.moveTo(...toScreen(sa.x, sa.y)); ctx.lineTo(...toScreen(sb.x, sb.y)); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
-  ctx.beginPath(); ctx.arc(center[0], center[1], R, 0, TAU);
-  ctx.lineWidth = ink; ctx.stroke();
+    const farHorn = z > 0.6;
+    return {
+      z,
+      outline: (ctx) => { point(ctx); ctx.moveTo(bell[0] + br, bell[1]); ctx.arc(bell[0], bell[1], br, 0, TAU); },
+      art: (ctx) => {
+        point(ctx);
+        ctx.fillStyle = farHorn ? suit.dark : side === -1 ? suit.light : suit.base;
+        ctx.fill(); ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke();
+        ctx.beginPath(); ctx.arc(bell[0], bell[1], br, 0, TAU);
+        ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = ink * 0.85; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...sub(bell, mul(hRight, br * 0.5))); ctx.lineTo(...add(bell, mul(hRight, br * 0.5)));
+        ctx.lineWidth = Math.max(2, ink * 0.7); ctx.stroke();
+      },
+    };
+  };
+  const horns = ([1, -1] as const).map(horn);
+  const behind = horns.filter((h) => h.z >= -0.05);
+  const before = horns.filter((h) => h.z < -0.05);
 
-  for (const h of before) drawHorn(h.side, h.pts);
+  const headOutline = (ctx: CanvasRenderingContext2D) => { ctx.beginPath(); ctx.arc(center[0], center[1], R, 0, TAU); };
+  const neck: Piece | null = sm ? plain((ctx) => taperPath(ctx, sm, center, T * 0.12, T * 0.11), PHOTO, ink) : null;
+  const head: Piece = {
+    outline: headOutline,
+    art: (ctx) => {
+      headOutline(ctx);
+      ctx.fillStyle = PHOTO; ctx.fill();
+      ctx.save();
+      headOutline(ctx);
+      ctx.clip();
+      // The cap over the top of the head, split in the side colours along the front seam.
+      const brim = 0.3;
+      const seam = onSphere(0, brim, sinY, cosY).x;
+      for (const side of [1, -1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(...toScreen(seam, brim + 2)); ctx.lineTo(...toScreen(seam, brim - 0.05));
+        ctx.lineTo(...toScreen(side * 2, brim - 0.05)); ctx.lineTo(...toScreen(side * 2, brim + 2));
+        ctx.closePath();
+        ctx.fillStyle = sideColor(side);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.moveTo(...toScreen(-1.2, brim - 0.05)); ctx.lineTo(...toScreen(1.2, brim - 0.05));
+      ctx.moveTo(...toScreen(seam, brim - 0.05)); ctx.lineTo(...toScreen(seam, brim + 2));
+      ctx.lineWidth = ink * 0.8; ctx.strokeStyle = INK; ctx.stroke();
+      // The face, riding round the front with the turn; each feature shows once it faces us well enough.
+      if (turn.face > 0.02) {
+        const feature = (x: number, y: number, draw: (p: P, squash: number) => void) => {
+          const s = onSphere(x, y, sinY, cosY);
+          if (turn.face * smoothstep(0.05, 0.35, s.toward) < 0.5) return;
+          draw(toScreen(s.x, s.y), clamp(s.toward, 0.35, 1));
+        };
+        for (const x of [-0.33, 0.33]) {
+          feature(x, 0.0, (p, sq) => {
+            ctx.beginPath(); ctx.ellipse(p[0], p[1], R * 0.1 * sq, R * 0.15, Math.atan2(hRight[1], hRight[0]), 0, TAU);
+            ctx.fillStyle = INK; ctx.fill();
+          });
+          feature(x * 1.45, -0.28, (p, sq) => {
+            const w = R * 0.09 * sq, h = R * 0.12;
+            ctx.beginPath();
+            ctx.moveTo(...add(p, mul(hUp, h))); ctx.lineTo(...add(p, mul(hRight, w)));
+            ctx.lineTo(...sub(p, mul(hUp, h))); ctx.lineTo(...sub(p, mul(hRight, w)));
+            ctx.closePath(); ctx.fillStyle = STAMP; ctx.fill();
+          });
+        }
+        // The smile, piece by piece so the part round the far side drops out.
+        ctx.lineWidth = Math.max(2.5, ink * 0.8); ctx.strokeStyle = INK;
+        for (let i = 0; i < 8; i++) {
+          const xa = -0.24 + (0.48 * i) / 8, xb = -0.24 + (0.48 * (i + 1)) / 8;
+          const ya = -0.42 - 0.12 * (1 - (xa / 0.24) ** 2), yb = -0.42 - 0.12 * (1 - (xb / 0.24) ** 2);
+          const sa = onSphere(xa, ya, sinY, cosY), sb = onSphere(xb, yb, sinY, cosY);
+          if (turn.face * smoothstep(0.05, 0.35, Math.min(sa.toward, sb.toward)) < 0.5) continue;
+          ctx.beginPath(); ctx.moveTo(...toScreen(sa.x, sa.y)); ctx.lineTo(...toScreen(sb.x, sb.y)); ctx.stroke();
+        }
+      }
+      ctx.restore();
+      headOutline(ctx);
+      ctx.lineWidth = ink; ctx.strokeStyle = INK; ctx.stroke();
+    },
+    pins: sm ? [add(sm, mul(hUp, T * 0.1))] : [],
+  };
+  return [...behind, ...(neck ? [neck] : []), head, ...before];
 }
 
 // ---- The stage ----
@@ -532,69 +552,52 @@ function head(
 export interface StageSpot {
   /** Where the floor's back edge meets the backdrop, in canvas pixels from the top. */
   floorY: number;
-  /** The spotlight's middle, in canvas pixels from the left. */
+  /** The middle of the subject's usual spot, in canvas pixels from the left. */
   spotX: number;
 }
 
 const stages = new Map<string, HTMLCanvasElement>();
 
 /** The stage for this canvas size, drawn once and kept (a handful of sizes at most per game). */
-export function stageImage(width: number, height: number, spot: StageSpot): HTMLCanvasElement {
+export function stageImage(width: number, height: number, spot: StageSpot, look: StageLook = "plain"): HTMLCanvasElement {
   const floorY = Math.round(spot.floorY), spotX = Math.round(spot.spotX);
-  const key = `${width}x${height}:${floorY}:${spotX}`;
+  const key = `${look}:${width}x${height}:${floorY}:${spotX}`;
   const kept = stages.get(key);
   if (kept) return kept;
   if (stages.size > 12) stages.clear();
   const canvas = document.createElement("canvas");
   canvas.width = width; canvas.height = height;
-  drawStage(canvas.getContext("2d")!, width, height, floorY, spotX);
+  drawStage(canvas.getContext("2d")!, width, height, floorY, spotX, look);
   stages.set(key, canvas);
   return canvas;
 }
 
-/**
- * The back of the shoebox theatre, in the look's flat colours with hard edges: a pleated backdrop in the
- * shoebox's wall and ceiling browns, a plank floor in perspective, and a cut-paper spotlight in --ticket.
- */
-function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, floorY: number, spotX: number) {
-  // Backdrop: hard-edged pleats, a hem shadow where it meets the floor.
-  ctx.fillStyle = SIDE;
+/** The frontend agent's stage: a navy backdrop over the shoebox floor, flat and hard edged, with an optional flat spotlight. */
+function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, floorY: number, spotX: number, look: StageLook) {
+  ctx.fillStyle = NAVY;
   ctx.fillRect(0, 0, w, floorY);
-  const pleat = Math.max(18, h * 0.085);
-  ctx.fillStyle = CEIL;
-  for (let x = -pleat * 0.3; x < w; x += pleat) ctx.fillRect(x + pleat * 0.62, 0, pleat * 0.38, floorY);
-  ctx.fillStyle = inkAt(0.22);
-  for (let x = -pleat * 0.3; x < w; x += pleat) ctx.fillRect(x + pleat * 0.58, 0, Math.max(1, pleat * 0.05), floorY);
-  ctx.fillStyle = SHADE;
-  ctx.fillRect(0, 0, w, Math.max(4, h * 0.05));
-  ctx.fillRect(0, floorY - Math.max(4, h * 0.03), w, Math.max(4, h * 0.03));
-
-  // Floor: planks running back to a vanishing point high above, seams in the ceiling brown.
+  // Floor: planks running back to a vanishing point high above, seams in the shoebox's ceiling brown.
   const floorH = h - floorY;
   ctx.fillStyle = FLOOR;
   ctx.fillRect(0, floorY, w, floorH);
-  const vanishY = floorY - h * 1.4;
-  const k = (floorY - vanishY) / (h - vanishY);
-  const plank = Math.max(16, w * 0.07);
+  const k = (h * 1.4) / (h - floorY + h * 1.4);
+  const plank = Math.max(18, w * 0.08);
   ctx.strokeStyle = CEIL;
-  ctx.lineWidth = Math.max(1, w * 0.003);
+  ctx.lineWidth = Math.max(2, w * 0.004);
   for (let x = spotX - Math.ceil((spotX + w) / plank) * plank; x < w * 2; x += plank) {
-    ctx.beginPath();
-    ctx.moveTo(spotX + (x - spotX) * k, floorY); ctx.lineTo(x, h);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(spotX + (x - spotX) * k, floorY); ctx.lineTo(x, h); ctx.stroke();
   }
-  // The back of the floor sits in the backdrop's shadow.
+  // Where the backdrop meets the floor, a hard shadow band.
   ctx.fillStyle = SHADE;
-  ctx.fillRect(0, floorY, w, Math.max(3, floorH * 0.18));
-
-  // Spotlight: a cut-paper beam and a pool on the floor, flat and see-through.
-  const poolY = floorY + floorH * 0.5, poolRx = w * 0.3, poolRy = Math.max(6, floorH * 0.3);
-  ctx.fillStyle = lightAt(0.14);
-  ctx.beginPath();
-  ctx.moveTo(spotX - w * 0.05, 0); ctx.lineTo(spotX + w * 0.05, 0);
-  ctx.lineTo(spotX + poolRx, poolY); ctx.lineTo(spotX - poolRx, poolY);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = lightAt(0.22);
-  ctx.beginPath(); ctx.ellipse(spotX, poolY, poolRx, poolRy, 0, 0, TAU); ctx.fill();
+  ctx.fillRect(0, floorY, w, Math.max(4, floorH * 0.16));
+  if (look === "spot") {
+    const poolY = floorY + floorH * 0.5, poolRx = w * 0.3, poolRy = Math.max(6, floorH * 0.3);
+    ctx.fillStyle = ticketAt(0.16);
+    ctx.beginPath();
+    ctx.moveTo(spotX - w * 0.05, 0); ctx.lineTo(spotX + w * 0.05, 0);
+    ctx.lineTo(spotX + poolRx, poolY); ctx.lineTo(spotX - poolRx, poolY);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = ticketAt(0.24);
+    ctx.beginPath(); ctx.ellipse(spotX, poolY, poolRx, poolRy, 0, 0, TAU); ctx.fill();
+  }
 }
