@@ -557,7 +557,8 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 .room-chat-log li, .room-chat-empty { margin: 0; font: 700 22px/var(--lh) var(--hand); letter-spacing: -.02em; color: var(--pen); overflow-wrap: anywhere; }
 .room-chat-log b { color: var(--ink); }
 .room-chat-empty { color: #6B5A48; }
-.room-chat-form { display: flex; gap: 10px; align-items: center; padding-top: 6px; }
+/* min-width 0: the message box shrinks, so Send stays inside the page on a phone. */
+.room-chat-form { display: flex; gap: 10px; align-items: center; min-width: 0; padding-top: 6px; }
 #roomChatText {
   flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 4px 2px; border: 0; border-bottom: 2px dashed #C9B497; background: transparent;
   font: 700 22px var(--hand); letter-spacing: -.02em; color: var(--pen);
@@ -1033,9 +1034,13 @@ body[data-screen="turn"] #clipReady { display: none; }
 .btn-quiet:has(> .ico) { gap: .45em; padding-left: .85em; }
 .btn-quiet:has(> .ico)::before { display: none; }
 /* In a text link the icon sits on the line with the words. */
-.link > .ico, .aside a > .ico { margin-right: .35em; vertical-align: -.42em; }
+.link > .ico, .aside a > .ico, .library-find > span > .ico { margin-right: .35em; vertical-align: -.42em; }
 /* Sound: the horn plays when sound is on and is crossed out when it is off. */
 #soundToggle[aria-pressed="true"] .ico-off, #soundToggle[aria-pressed="false"] .ico-on { display: none; }
+/* A yellow ticket carries the hat stamp instead, so a control that turns into one (Join, from an invite link) hides its icon. */
+.btn-main > .ico { display: none; }
+/* The room's small tags set their own hole padding; with an icon they take the icon's place like every tag. */
+#roomCopy:has(> .ico), #roomChatSend:has(> .ico) { padding-left: .85em; }
 /* Start over stays one line beside its loop; a little smaller on a phone so it fits a 320 px screen. */
 .restart .btn-quiet { white-space: nowrap; }
 @media (max-width: 760px) { .restart .btn-quiet { font-size: 20px; } }
@@ -1045,7 +1050,7 @@ body[data-screen="turn"] #clipReady { display: none; }
    content, laptop widths only, start screen only. Still under prefers-reduced-motion and Calm motion (body.calm). */
 #screen-start { position: relative; isolation: isolate; }
 .home-drift { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
-.drift-prop { position: absolute; width: var(--s); height: var(--s); overflow: visible; rotate: var(--r); filter: url(#die-cut); }
+.drift-prop { position: absolute; width: var(--s); height: var(--s); overflow: visible; rotate: var(--r); filter: url(#die-cut-prop); }
 @media (prefers-reduced-motion: no-preference) {
   body:not(.calm) .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
 }
@@ -1080,3 +1085,60 @@ body[data-screen="turn"] #clipReady { display: none; }
 html[data-motion="calm"] .drift-prop { animation: none !important; }
 html[data-motion="full"] .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
 @media (prefers-reduced-motion: reduce) { .set-switch::after { transition: none; } }
+
+/* ---------- The royal audience (#royalAudience): a jester jigging for one unimpressed queen ---------- */
+/* Our own homage to the jester and queen loop: the classic dancing jester sprite and a cut-paper queen on a
+   throne, on a strip of stage. Start screen only, top right on laptops and tablets; hidden on phones, where it would crowd the title. The jig
+   and the queen's slowly raised eyebrow stop under reduced motion and Calm motion, holding a mid-kick frame. */
+.royal { position: absolute; z-index: -1; right: 3%; top: 64px; width: 264px; height: 168px; pointer-events: none; transform-origin: top right; }
+.royal-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; background: #93613A; box-shadow: 0 4px 0 var(--shade); }
+.royal-throne { position: absolute; right: 2px; bottom: 6px; width: 112px; height: 140px; overflow: visible; filter: url(#sticker); }
+.royal-jester { position: absolute; left: -6px; bottom: 2px; width: 150px; height: 150px; background: url("/jester/classic-dance.webp") calc(-6 * 150px) 0 / calc(24 * 150px) 150px no-repeat; filter: url(#sticker); }
+.royal-brow { transform-box: fill-box; transform-origin: left center; }
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.calm) .royal-jester { animation: royal-jig 1s steps(24) infinite; }
+  body:not(.calm) .royal-brow { animation: royal-brow 4.8s ease-in-out infinite; }
+}
+html[data-motion="calm"] :is(.royal-jester, .royal-brow) { animation: none !important; }
+html[data-motion="full"] .royal-jester { animation: royal-jig 1s steps(24) infinite; }
+html[data-motion="full"] .royal-brow { animation: royal-brow 4.8s ease-in-out infinite; }
+@keyframes royal-jig { from { background-position-x: 0; } to { background-position-x: calc(-24 * 150px); } }
+@keyframes royal-brow { 0%, 70%, 100% { translate: 0 0; rotate: 0deg; } 76%, 90% { translate: 0 -3px; rotate: -12deg; } }
+@media (max-width: 1100px) { .royal { right: 1.5%; top: 64px; scale: .6; } }
+/* On a phone there is no room beside the title that the scene would not crowd, so it waits for a wider screen. */
+@media (max-width: 760px) { .royal { display: none; } }
+
+/* ---------- Start screen spacing: one scale (8, 16, 24, 32) ---------- */
+/* Aaron: the spacing between the setup, the library and its cards was too tight. Measured before: sections 10 px
+   apart, card tapes and the gold star 0 to 3 px under the search field, the Play row 14 px under the cards. Now
+   every section break is one step (32 px on a laptop, 24 px on a short screen or a phone), the library's cards sit
+   a full step below its head with the tape clear, and rows inside a block use 16. Play stays on the first screen. */
+@media (min-width: 761px) {
+  /* "safe": when the page is taller than the window (narrow laptops, 761 to 899 px wide), it starts at the top
+     instead of centring off the top edge, so the wordmark never sits above the screen. */
+  #screen-start { row-gap: 32px; column-gap: 28px; padding-top: 22px; align-content: safe center; }
+  #screen-start .masthead { gap: 8px; }
+  #startMode { row-gap: 16px; column-gap: 56px; }
+  .start-q { column-gap: 16px; row-gap: 8px; }
+  .start-pick { gap: 8px 10px; }
+  /* The library head: title, count, the bigger-clips link and the search, each a clear step apart. */
+  #libraryHead { gap: 12px 24px; margin-bottom: 8px; }
+  #libraryHead .library-find { gap: 16px; }
+  /* Cards: a full step between photos, and the first row's tape and star clear of the head. */
+  #bank { gap: 36px 28px; padding-top: 28px; margin-top: -16px; }
+  #surpriseCard { align-self: start; margin-top: 4px; }
+  #startFoot { margin-top: 0; gap: 24px 32px; }
+}
+@media (min-width: 761px) and (max-height: 820px) {
+  #screen-start { row-gap: 20px; padding-top: 14px; }
+  #startMode { row-gap: 12px; }
+  #libraryHead { row-gap: 10px; margin-bottom: 4px; }
+  #bank { gap: 32px 24px; }
+  #startFoot { margin-top: 0; }
+}
+@media (max-width: 760px) {
+  #screen-start { gap: 24px; }
+  #startMode { gap: 16px; }
+  #libraryHead { gap: 12px 16px; margin-bottom: 4px; }
+  #bank { margin-top: -8px; }
+}

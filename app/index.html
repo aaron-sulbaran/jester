@@ -34,6 +34,16 @@
         <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
         <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
       </filter>
+      <!-- The same round white edge for the small paper stickers (the props drifting beside the title), with room
+           around them so a 38 px star keeps its whole rim. #die-cut's square growth left them with boxy corners. -->
+      <filter id="die-cut-prop" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="4.6" result="soft" />
+        <feComponentTransfer in="soft" result="grown"><feFuncA type="linear" slope="80" intercept="-2.8" /></feComponentTransfer>
+        <feOffset in="grown" dx="5" dy="6" result="dropped" />
+        <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+        <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+        <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
       <filter id="sticker" x="-12%" y="-12%" width="130%" height="130%" color-interpolation-filters="sRGB">
         <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="grown" />
         <feOffset in="grown" dx="4" dy="5" result="dropped" />
@@ -241,6 +251,14 @@
           <circle cx="24" cy="28" r="5.5" fill="#D93A2B" />
         </g>
       </symbol>
+      <symbol id="ico-settings" viewBox="0 0 48 48">
+        <g stroke="#1E1B18" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M6 11.5 H42 M6 24 H42 M6 36.5 H42" fill="none" />
+          <circle cx="30" cy="11.5" r="6" fill="#D93A2B" stroke-width="3.6" />
+          <circle cx="15" cy="24" r="6" fill="#FFC93C" stroke-width="3.6" />
+          <circle cx="34" cy="36.5" r="6" fill="#4F7BF0" stroke-width="3.6" />
+        </g>
+      </symbol>
     </defs>
   </svg>
 
@@ -275,7 +293,7 @@
     <nav class="side-nav" id="sideNav" aria-label="Help and sound">
       <button type="button" class="btn btn-quiet" id="howtoLink"><svg class="ico" aria-hidden="true"><use href="#ico-howto" /></svg>How to play</button>
       <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true"><svg class="ico ico-on" aria-hidden="true"><use href="#ico-sound-on" /></svg><svg class="ico ico-off" aria-hidden="true"><use href="#ico-sound-off" /></svg><span id="soundSay">Sound: on</span></button>
-      <button type="button" class="btn btn-quiet" id="settingsOpen">Settings</button>
+      <button type="button" class="btn btn-quiet" id="settingsOpen"><svg class="ico" aria-hidden="true"><use href="#ico-settings" /></svg>Settings</button>
     </nav>
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
       <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
@@ -388,9 +406,30 @@
         <svg class="drift-prop" style="left:7%;top:4%;--s:84px;--r:-14deg;--d:8.5s;--t:-2s"><use href="#jester-hat" /></svg>
         <svg class="drift-prop" style="left:13%;top:14%;--s:44px;--r:10deg;--d:11s;--t:-6s"><use href="#star" /></svg>
         <svg class="drift-prop" style="left:3%;top:18%;--s:50px;--r:8deg;--d:9.5s;--t:-4s"><use href="#ico-clapper" /></svg>
-        <svg class="drift-prop" style="right:8%;top:10%;--s:56px;--r:12deg;--d:10s;--t:-1s"><use href="#ico-watch" /></svg>
-        <svg class="drift-prop" style="right:4%;top:19%;--s:46px;--r:-10deg;--d:12s;--t:-7s"><use href="#ico-sound-on" /></svg>
-        <svg class="drift-prop" style="right:20%;top:7%;--s:38px;--r:-18deg;--d:7.5s;--t:-3s"><use href="#star" /></svg>
+      </div>
+      <!-- A jester giving it everything for an audience of one: our own homage to the jester and queen loop, cut
+           from paper in our colours. Decoration only; still under reduced motion and Calm motion. -->
+      <div class="royal" id="royalAudience" aria-hidden="true">
+        <span class="royal-floor"></span>
+        <svg class="royal-throne" viewBox="0 0 120 150">
+          <g stroke="#1E1B18" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M18 122 V32 Q18 10 60 10 Q102 10 102 32 V122 Z" fill="#D93A2B" stroke-width="4" />
+            <path d="M30 118 V36 Q30 22 60 22 Q90 22 90 36 V118" fill="none" stroke="#F4BE1A" stroke-width="3" />
+            <circle cx="18" cy="30" r="6" fill="#F4BE1A" stroke-width="3" /><circle cx="102" cy="30" r="6" fill="#F4BE1A" stroke-width="3" />
+            <rect x="14" y="120" width="10" height="26" fill="#93613A" stroke-width="3" /><rect x="96" y="120" width="10" height="26" fill="#93613A" stroke-width="3" />
+            <path d="M38 108 Q36 66 60 60 Q84 66 82 108 Z" fill="#6B2FB3" stroke-width="4" />
+            <rect x="8" y="104" width="104" height="18" fill="#93613A" stroke-width="4" />
+            <ellipse cx="60" cy="60" rx="16" ry="6" fill="#FFFEFA" stroke-width="3" />
+            <circle cx="53" cy="88" r="5" fill="#EDCB8E" stroke-width="3" /><circle cx="67" cy="88" r="5" fill="#EDCB8E" stroke-width="3" />
+            <circle cx="60" cy="43" r="15" fill="#EDCB8E" stroke-width="4" />
+            <path d="M46 31 L48 18 L54 25 L60 13 L66 25 L72 18 L74 31 Z" fill="#F4BE1A" stroke-width="3" />
+            <path d="M51 42 h7 M62 42 h7" fill="none" stroke-width="2.5" />
+            <circle cx="55" cy="44.5" r="1.8" fill="#1E1B18" stroke="none" /><circle cx="66" cy="44.5" r="1.8" fill="#1E1B18" stroke="none" />
+            <path class="royal-brow" d="M62 36.5 l7 -0.5" fill="none" stroke-width="2.5" />
+            <path d="M56 51.5 h8" fill="none" stroke-width="2.5" />
+          </g>
+        </svg>
+        <span class="royal-jester"></span>
       </div>
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
@@ -444,7 +483,7 @@
         <h2 class="library-title" id="libraryTitle">Pick from the library</h2>
         <span class="library-count" id="libraryCount"></span>
         <button type="button" class="link library-more" id="libraryMore" hidden></button>
-        <label class="field library-find" role="search"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
+        <label class="field library-find" role="search"><span><svg class="ico" aria-hidden="true"><use href="#ico-search" /></svg>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
       </div>
       <div class="bank" id="bank" role="group" aria-labelledby="libraryTitle"></div>
       <p class="typed library-none" id="libraryNone" role="status" hidden></p>
@@ -549,7 +588,7 @@
           </div>
           <div class="room-have-code" id="roomHaveCode">
             <label class="field"><span>Or join with a friend's code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></label>
-            <button type="button" class="btn btn-quiet" id="roomEnter"><span class="ticket"><span class="ticket-text">Join</span></span></button>
+            <button type="button" class="btn btn-quiet" id="roomEnter"><svg class="ico" aria-hidden="true"><use href="#ico-join" /></svg><span class="ticket"><span class="ticket-text">Join</span></span></button>
           </div>
         </div>
         <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
@@ -562,7 +601,7 @@
               <h2 class="room-code" id="roomCodeText"></h2>
               <div class="room-link-row">
                 <p class="room-link" id="roomLinkLine" hidden><span id="roomLinkText" hidden></span> <span id="roomWhere"></span></p>
-                <button type="button" class="btn btn-quiet" id="roomCopy">Copy link</button>
+                <button type="button" class="btn btn-quiet" id="roomCopy"><svg class="ico" aria-hidden="true"><use href="#ico-copy" /></svg><span id="roomCopySay">Copy link</span></button>
               </div>
             </div>
             <figure class="print room-qr" id="roomQr">
@@ -622,13 +661,13 @@
               </div>
               <form class="room-chat-form" id="roomChatForm">
                 <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
-                <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
+                <button type="submit" class="btn btn-quiet" id="roomChatSend"><svg class="ico" aria-hidden="true"><use href="#ico-send" /></svg>Send</button>
               </form>
             </div>
           </section>
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
-        <button type="button" class="link" id="roomBack">Back</button>
+        <button type="button" class="link" id="roomBack"><svg class="ico" aria-hidden="true"><use href="#ico-back" /></svg><span id="roomBackSay">Back</span></button>
       </div>
     </section>
 
