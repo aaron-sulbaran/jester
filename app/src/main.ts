@@ -8,7 +8,7 @@ import { cameraPlayer, playObjectRound, playRound, simulatedPlayer, type Player 
 import { drawFrame, drawObject, fitCanvas } from "./draw.ts";
 import { OBJECT_NAMES, objectClip, simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { cutFrame, recordReveal, type Cutout } from "./cutout.ts";
-import { initBlindScreens } from "./blindScreens.ts";
+import { initGame } from "./ui/game.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clipVideo = $<HTMLVideoElement>("clip");
@@ -24,8 +24,6 @@ let camera: Player | null = null;
 let playing = false;
 let clipNowMs = 0;
 let lastPlayer: { pose: LandmarkObject[] | null; aspect: number } = { pose: null, aspect: 4 / 3 };
-/** In blind mode the blind screens draw the two canvases themselves. */
-let blindMode = false;
 
 const setStatus = (text: string) => { $("status").textContent = text; };
 const simMode = () => $<HTMLInputElement>("simPlayer").checked;
@@ -236,7 +234,7 @@ $("start").addEventListener("click", async () => {
   $<HTMLButtonElement>("start").disabled = false;
 });
 
-$("again").addEventListener("click", () => $("start").click());
+$("again-solo").addEventListener("click", () => $("start").click());
 
 function playerSideLabel(limb: string): string {
   const label = LIMBS[limb]?.label ?? limb;
@@ -346,7 +344,8 @@ function showResults(r: PoseRoundResult) {
 
 function render() {
   requestAnimationFrame(render);
-  if (blindMode) return;
+  // Solo practice draws its own two canvases only while it is open; the game draws its own screens.
+  if (!document.body.classList.contains("solo")) return;
   if (objClip) drawObject(clipCanvas, objClip.boxAt(playing ? clipNowMs : 0), objClip.name);
   else if (clip) {
     const ms = clip.videoUrl ? clipVideo.currentTime * 1000 : playing ? clipNowMs : 0;
@@ -358,21 +357,8 @@ function render() {
 }
 requestAnimationFrame(render);
 
-// ---- Modes ----
+// ---- The game ----
 
-initBlindScreens({ simMode, noise, getCamera, countdown, clipVideo, cam, guideCanvas: clipCanvas, playerCanvas });
-
-function setMode(blind: boolean) {
-  if (playing) return;
-  blindMode = blind;
-  $("modeSolo").classList.toggle("on", !blind);
-  $("modeBlind").classList.toggle("on", blind);
-  $("setup").classList.toggle("hidden", blind);
-  $("results").classList.add("hidden");
-  $("blind").classList.toggle("hidden", !blind);
-  $("clipCaption").textContent = blind ? "Your role" : "Clip";
-  for (const c of [clipCanvas, playerCanvas]) { const ctx = c.getContext("2d")!; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, c.width, c.height); }
-}
-$("modeSolo").addEventListener("click", () => setMode(false));
-$("modeBlind").addEventListener("click", () => setMode(true));
-if (params.has("blind")) setMode(true);
+// The game (blind mode, app/src/ui/game.ts on Alex's blind.ts) is the main path; solo practice above sits
+// behind "Practice alone" on the start screen.
+initGame({ simMode, noise, getCamera, clipVideo, cam });
