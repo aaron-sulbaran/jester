@@ -27,7 +27,7 @@ import { stageImage, type Construction, type StageLook } from "./clipside/puppet
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
-import { whereToStand, LATE_HINT, type WhereToStand } from "./fitFrame.ts";
+import { LATE_HINT, type WhereToStand } from "./fitFrame.ts";
 import { seatEffort, seatWobble } from "./simSeats.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
@@ -1206,9 +1206,9 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   startGuideTurn(s.look === "puppet" ? view.style.puppet ?? null : null);
   // During the turn too, a tap on the corner card swaps what the player follows (the paint loop redraws).
   if (s.look === "puppet" && !view.video) enableFollowSwap(stage.guideCanvas, () => {});
-  // Where to stand: a frame on the mirror view at the role's place and size, for a person copied with the whole body.
-  const firstMs = (Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null)) * 1000) / g.source.sampleHz;
-  const fit = !followsBox(s) && boxAt(g, firstMs) ? whereToStand({ stage: stage.guideCanvas.parentElement!, canvas: stage.playerCanvas, boxAt: (ms) => boxAt(g, ms), clipAspect: g.source.width / g.source.height, firstMs, hints: !deps.simMode() }) : null;
+  // No where-to-stand frame (fitFrame.ts): it asked for the clip subject's size on screen, which few rooms and few
+  // heights could match, and the figure already sizes itself to the player (SizeMatcher below). Framing only asks
+  // for the whole body in view.
   const scratch = document.createElement("canvas");
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
@@ -1247,14 +1247,13 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
     fitCanvas(stage.playerCanvas, aspect);
     const cam = deps.simMode() ? null : stage.cam;
     drawFrame(stage.playerCanvas, cam, pose, { mirror: true, color: s.color, backdrop: cam ? null : playerStage(stage.playerCanvas, stage.guideCanvas) });
-    fit?.follow(clipMs >= 0 ? Math.min(scene.durationMs, sound.now()) : -1, pose);
   };
   // A timer, not requestAnimationFrame, so it keeps drawing in a background tab.
   const painter = window.setInterval(paint, 1000 / 30);
   paint();
   // A whole-body turn waits until the player is fully in view; a simulated player is always in view.
   if (!deps.simMode() && !followsBox(s)) {
-    try { await waitForFraming(player, stage, (f) => { pose = f.landmarks; aspect = f.aspect; }, fit); pose = null; }
+    try { await waitForFraming(player, stage, (f) => { pose = f.landmarks; aspect = f.aspect; }); pose = null; }
     catch { /* no camera frames: just carry on to the countdown */ }
   }
   await ui.countdown(3);
@@ -1282,7 +1281,6 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   player.setCapture?.(null);
   clearInterval(painter);
   clipMs = -1; pose = null; paint();
-  fit?.stop();
   if (frames === "restart") { player.stop(); throw new RestartTurn(); }
 
   // recorder.mjs is plain JS; TypeScript misreads its option types from the defaults.
