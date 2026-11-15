@@ -287,7 +287,10 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
 }
 
 /** A clock for a segment, e.g. a video playing from some point; default is wall time from the segment's start. */
-export interface SegmentClock { start(): void | Promise<void>; now(): number; stop?(): void }
+export interface SegmentClock { start(): void | Promise<void>; now(): number; stop?(): void; /** Lets the clock run faster (a video's playbackRate). */ setSpeed?(speed: number): void }
+
+/** Read on every tick while recording, so a button can speed up or skip the rest of a reveal. 1 is real time. */
+export interface PlaybackControl { speed: number }
 
 /** One part of a recorded video: drawn for `durationMs`, at the time its clock gives. */
 export interface Segment {
@@ -301,7 +304,7 @@ export interface Segment {
  * pauses while a segment's clock gets ready (a video seeking), so no dead frames land in the file.
  * Resolves with a video URL, or null if this browser cannot record (the segments still play).
  */
-export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void): Promise<string | null> {
+export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void, control?: PlaybackControl): Promise<string | null> {
   const ctx = canvas.getContext("2d")!;
   const stream = typeof canvas.captureStream === "function" ? canvas.captureStream(30) : null;
   const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
@@ -322,15 +325,19 @@ export async function recordSegments(canvas: HTMLCanvasElement, segments: readon
     else if (recorder && k === 0) recorder.start(250);
     const started = performance.now();
     const wall = () => performance.now() - started;
-    const now = seg.clock ? () => seg.clock!.now() : wall;
+    // Without a video clock, time runs at the control's speed: virtual ms add up as (real elapsed) x (speed now).
+    let virtual = 0, lastReal = started;
+    const pace = () => { const t = performance.now(); virtual += (t - lastReal) * (control?.speed ?? 1); lastReal = t; return virtual; };
+    const now = seg.clock ? () => seg.clock!.now() : pace;
     await new Promise<void>((next) => {
       // A timer, not requestAnimationFrame, so it still records in a background tab.
       const timer = window.setInterval(() => {
+        if (control && seg.clock?.setSpeed) seg.clock.setSpeed(control.speed);
         const ms = Math.max(0, now());
         seg.draw(ctx, Math.min(ms, seg.durationMs));
         onProgress?.(Math.min(1, (before + ms) / total));
         // A stalled video clock still ends the segment a little after it should have.
-        if (ms >= seg.durationMs || wall() > seg.durationMs + 5000) { clearInterval(timer); seg.clock?.stop?.(); next(); }
+        if (ms >= seg.durationMs || wall() > seg.durationMs / Math.max(1, control?.speed ?? 1) + 5000) { clearInterval(timer); seg.clock?.stop?.(); next(); }
       }, 1000 / 30);
     });
     before += seg.durationMs;

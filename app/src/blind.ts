@@ -146,6 +146,8 @@ export interface BlindUi {
   beat?(): Promise<void>;
   /** The canvas the reveal is drawn on while it records. */
   revealCanvas(): HTMLCanvasElement;
+  /** Optional: set `speed` above 1 while the reveal records to fast forward it (16 skips it); the UI's buttons own this. */
+  revealControl?: { speed: number };
   /** Recording progress of the reveal, 0 to 1. */
   progress(share: number): void;
   /** The end: everyone's role and score. Called before the reveal starts recording on `revealCanvas`. */
@@ -637,7 +639,8 @@ function videoClock(video: HTMLVideoElement, fromMs: number): SegmentClock {
       await video.play();
     },
     now: () => video.currentTime * 1000 - fromMs,
-    stop: () => video.pause(),
+    stop: () => { video.pause(); video.playbackRate = 1; },
+    setSpeed: (speed) => { video.playbackRate = Math.min(16, Math.max(0.25, speed)); },
   };
 }
 
@@ -708,7 +711,7 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   }));
 }
 
-async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void): Promise<string | null> {
+async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }): Promise<string | null> {
   const scene = played;
   // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
   // about 7 times. Wide clips stay 960 wide.
@@ -754,7 +757,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
-  return recordSegments(canvas, segments, onProgress);
+  return recordSegments(canvas, segments, onProgress, control);
 }
 
 // ---- The game ----
@@ -814,7 +817,8 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
   ui.results(rows);
   if (options.reveal === false) return rows;
-  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share));
+  if (ui.revealControl) ui.revealControl.speed = 1;
+  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl);
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
   return rows;
