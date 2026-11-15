@@ -1051,9 +1051,10 @@ body[data-screen="turn"] #clipReady { display: none; }
 html[data-motion="calm"] .drift-prop { animation: none !important; }
 html[data-motion="full"] .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
 @media (prefers-reduced-motion: reduce) { .set-switch::after { transition: none; } }
-/* Below 390 px the three corner tags (How to play, Sound, Settings) no longer fit with their words, which wrapped
-   inside the tags, so they show only their pictures. The words stay for screen readers, like .vh. */
-@media (max-width: 389px) {
+/* In the phone layout the three corner tags (How to play, Sound, Settings) show only their pictures, clustered at the
+   right: with their words they wrapped below 390 px and covered the hat on the J from 390 to about 680 px. The words
+   stay for screen readers, like .vh, and each tag has a title for a mouse hover. */
+@media (max-width: 760px) {
   .side-nav .side-say { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .side-nav .btn-quiet:has(> .ico) { min-width: 44px; padding-right: .85em; }
 }
