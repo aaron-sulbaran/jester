@@ -38,6 +38,20 @@ const mine = confirmSubject(prepared.data, prepared.data.candidates[0]!.trackId)
 - `subjectGuides(prepared)` gives a guide for every person in the top person's shot, so all roles share one `range` and play over the same stretch of the clip. People in another shot, out of view most of the time, or too small go to `skipped` with the sentence why.
 - `confirmSubject(prepared, trackId)` is the same guide for one person the player picked (single player rounds).
 
+### Things as roles (animals, balls, cars)
+
+Pass `{ things: true }` to `prepareVideo` and `subjectGuides` returns the people first, then every thing the object detector found that moves, all from the same shot. It is off by default, so solo play and people results are unchanged; it adds a second detector (EfficientDet-Lite0, every third frame). With it on, a clip with no people but a moving thing is not refused.
+
+```ts
+const prepared = await prepareVideo(file, videoElement, onProgress, { things: true });
+const { guides } = subjectGuides(prepared.data);
+for (const guide of guides) {
+  if (guide.subject.kind === "thing") playObjectRound(thingObjectClip(guide), player, onLive, bodyPart);
+}
+```
+
+A thing guide has `subject.label` like "Dog 1" or "Ball 2", `timeline` null, `channel` "trajectory", a `box-track/1` the engine scores as is, and `outlines` that are a 24 point ellipse in the box (the detector gives no mask), the same shape `blind.ts` draws for a thing. `thingObjectClip(guide)` in `src/clip.ts` returns the shape of `ObjectClip` in `src/objectClips.ts`: `track` is the guide's box track, `boxAt(ms)` for the reveal, `name` ("dog"), and a `hint` from the ways the box moves. Draw a thing's blind view with the "outline" look. A thing that never moves goes to `skipped` with "This one does not move, so there is nothing to copy." Check it in `things-lab.html` (`?clip=<name>`, `?fresh=1`).
+
 Each guide carries, one entry per frame at the same times: `timeline` (pose, for the engine's pose channel), `boxTrack` (the box over time) and `outlines` (a closed polygon of up to 60 points in normalized image coordinates, null where the person is missing). `range` is the clip's media time for that stretch.
 
 To draw what a player sees without the clip: `placeSubject(guide, canvas, "fit" | "exact")` from `../clip` gives the placement once per guide, and `drawBlind(canvas, guide, guideFrameAt(guide, mediaMs), "outline" | "stick", view)` from `src/clipside/blind.ts` draws one frame. "fit" centres the subject on its own average position at about 70 percent of the canvas height and shrinks it if its movement would leave the canvas; "exact" keeps it where it is in the clip frame. The clip lab shows both.
