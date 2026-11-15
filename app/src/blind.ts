@@ -601,7 +601,7 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
 const DEMO_BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]] as const;
 
 /** The demo scene's own picture at `ms`: the dancer and the ball, as the clip would show them. */
-function drawDemoScene(ctx: CanvasRenderingContext2D, W: number, H: number, scene: Scene, ms: number) {
+export function drawDemoScene(ctx: CanvasRenderingContext2D, W: number, H: number, scene: Scene, ms: number) {
   ctx.fillStyle = "#1d2230"; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#2a3242"; ctx.fillRect(0, H * 0.86, W, H * 0.14);
   for (const g of scene.guides) {
