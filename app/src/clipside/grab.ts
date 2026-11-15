@@ -3,7 +3,7 @@
 // Frames are read, searched for people and dropped at once: no frame or video is kept, saved or sent.
 
 import {
-  checkClip, findCuts, frameSignature, linkTracks, pickConfirmFrame, rankCandidates, rejoinTracks, repairIdentities, withConfirmBoxes,
+  checkClip, findCuts, frameSignature, pickConfirmFrame, rankCandidates, trackPeople, withConfirmBoxes,
 } from "../../../clip/src/index.ts";
 import type { ClipSource, FrameDetections } from "../../../clip/src/index.ts";
 import type { Prepared } from "./analyze.ts";
@@ -20,8 +20,6 @@ export const MIN_GRAB_MS = 3000;
 const MAX_SIDE = 720;
 const SIGNATURE_WIDTH = 32;
 const STEP_MS = 1000 / SAMPLE_HZ;
-/** A person lost for up to this long is joined back into one track; same as the file path. */
-const REJOIN_SECONDS = 3;
 
 export const NOT_PLAYING = "The clip did not start playing. Press play on the video once, then try again.";
 export const NOTHING_GRABBED = "Sharing stopped before the moves were grabbed. Press the button again.";
@@ -71,20 +69,16 @@ class StatsCounter {
 }
 
 /**
- * Follows each person through the frames and joins people split into pieces, with the same calls and
- * settings as the file path (analyze.ts), then ranks them. Pure and quick, so saved grabs run it again.
+ * Follows each person through the frames with the same people step as the file path (`trackPeople`),
+ * then ranks them. Pure and quick, so saved grabs run it again.
  */
 function followPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
-  const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
-  const aspect = source.width / source.height;
-  const joined = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect });
-  // Puts back skeletons that crossing dancers swapped, and drops frames that show someone else's pose.
-  const { tracks } = repairIdentities(joined, { aspect });
+  const { tracks, pieces } = trackPeople(frames, cuts, { sampleHz: SAMPLE_HZ, aspect: source.width / source.height });
   const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
   const confirmFrame = pickConfirmFrame(ranked, tracks);
   const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
   const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
-  return { piecesBeforeJoining: linked.length, tracks, candidates, confirmFrame, confirmTMs: frames[confirmFrame]?.tMs ?? 0, verdict };
+  return { piecesBeforeJoining: pieces, tracks, candidates, confirmFrame, confirmTMs: frames[confirmFrame]?.tMs ?? 0, verdict };
 }
 
 /**
