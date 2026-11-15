@@ -271,3 +271,17 @@ test("a player who leaves or goes silent disappears from media", async () => {
   a.prune();
   assert.equal(a.media.has("cy"), false);
 });
+
+test("chat reaches everyone else with the sender's name, once, and only as short plain lines", async () => {
+  const [a, b, c] = makeRooms(["ana", "ben", "cy"]);
+  a.join(); b.join(); c.join(); await tick();
+  const heard = { ana: [], ben: [], cy: [] };
+  for (const r of [a, b, c]) r.on("chat", (line) => heard[r.me].push(`${line.name}: ${line.text}`));
+  a.say("  hello\n  there  ");
+  await tick();
+  b.say("   ");
+  b.say("x".repeat(500));
+  await tick();
+  const both = ["ANA: hello there", "BEN: " + "x".repeat(140)];
+  assert.deepEqual(heard, { ana: both, ben: both, cy: both });
+});

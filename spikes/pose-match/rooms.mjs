@@ -24,6 +24,9 @@ export const normalizeCode = (code) => String(code || "").trim().toUpperCase();
 //  - late joiners sit out the round in progress and play the next one
 const MAX_MEDIA_CHARS = 3_000_000, MAX_CHUNK_CHARS = 60000, MAX_PIECES = 200;
 const validKind = (k) => typeof k === "string" && /^[A-Za-z0-9_]{1,20}$/.test(k);
+export const MAX_CHAT_CHARS = 140;
+/** One line of chat: text only, trimmed, on one line, and short. Anything else is dropped. */
+const cleanChat = (t) => (typeof t === "string" ? t.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT_CHARS) : "");
 
 export class Room {
   constructor({ transport, code, playerId, name, now = () => Date.now(), heartbeatMs = 2000, silentMs = 10000 }) {
@@ -33,7 +36,7 @@ export class Room {
     this.round = null;          // { clipId, startAt (local clock), roundNo }
     this.media = new Map();     // playerId -> { kind: fullText }, pictures sent in chunks after a round
     this.pendingMedia = new Map(); // "from|kind" -> { mid, n, pieces: Map(i -> data), at }
-    this.listeners = { update: [], start: [] };
+    this.listeners = { update: [], start: [], chat: [] };
     this.skew = 0;              // estimated (my clock - sender clock), updated from each message
     this.offset = null;         // host clock minus my clock, measured by ping and reply (null until measured)
     this.bestRtt = Infinity;
@@ -111,6 +114,16 @@ export class Room {
     this.#emit("update");
   }
   get allReady() { return this.roster().every((p) => p.ready); }
+
+  // A line of chat to everyone in the room. Nothing keeps it: each device holds what it has heard, in memory.
+  say(text) {
+    const line = cleanChat(text);
+    if (!line) return null;
+    const said = { from: this.me, name: this.name, text: line, at: this.now() };
+    this.#send({ type: "chat", text: line });
+    this.#emit("chat", said);
+    return said;
+  }
   leave() { this.#send({ type: "leave" }); clearInterval(this.timer); this.timer = null; this.unsubscribe?.(); this.transport.close?.(); }
 
   // The host is the player who joined first (ties broken by id), so everyone agrees without a server.
@@ -190,6 +203,11 @@ export class Room {
       case "ready": { const p = this.players.get(m.from); if (p) p.ready = !!m.ready; break; }
       case "leave": this.players.delete(m.from); this.results.delete(m.from); this.#dropMedia(m.from); break;
       case "media": this.#receiveMedia(m); break;
+      case "chat": {
+        const line = cleanChat(m.text);
+        if (line) this.#emit("chat", { from: m.from, name: this.players.get(m.from)?.name ?? "Someone", text: line, at: this.now() });
+        break;
+      }
       case "start": {
         // translate the host's start time into my clock (skew includes network delay, fine for a party game)
         const startAt = this.offset !== null ? m.startAt - this.offset : m.startAt + this.skew; // measured offset if I have one
