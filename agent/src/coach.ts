@@ -15,7 +15,7 @@ import { Command, MemorySaver } from "@langchain/langgraph";
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import { costUsd, missingKeys, orchestratorModel, subagentModel, usage } from "./models.ts";
 import {
-  WORKSPACE, checkNumbersTool, engineConstantsTool, evalSummaryTool, getRoundTool, proposeConstantsChangeTool, replayWithTool, toolCalls, unsupportedNumbers,
+  WORKSPACE, checkNumbersTool, engineConstantsTool, evalSummaryTool, getRoundTool, overlaySummaryTool, proposeConstantsChangeTool, replayWithTool, toolCalls, unsupportedNumbers,
 } from "./tools.ts";
 
 const missing = missingKeys();
@@ -32,7 +32,9 @@ const SYSTEM = `You are the referee coach for Jester, a party game built at Hack
 - Tagged rounds (nailed, stood-still, seated, late-half-second, wrong-moves, left-right-swapped, walked-out-of-frame) each promise something about the score.
 - Derived cases are transformed copies of good rounds with known answers: late (lag moves by 500 ms), frozen (10 or less), seated (capped when the clip uses the legs), walked-out (no score or capped), jittered (within 5 of the source), mirrored (report only). "holds: null" means report only or not applicable.
 
-Your job: find where the scorer's behaviour and these expectations disagree, explain why with evidence, and say what, if anything, should change. You advise Alex; you change nothing.
+Your job has two parts. You advise; you change nothing.
+A. Scoring: find where the scorer's behaviour and these expectations disagree, explain why with evidence, and say what, if anything, should change. This part is for Alex.
+B. The overlay: during a round the game shows the subject's outline on the mirrored camera view, and an outline fit (0 to 100, shown to players, not scored) with hints to step closer or back and move left or right. Use overlay_summary to find, per clip, whether camera players can line up with it, and whether a hint most players share points at the overlay's size or place for that clip, or at how laptop cameras frame people, rather than at the players. Simulated rounds always line up perfectly and say nothing here. This part is for the team that owns the game screens.
 
 Hard rules:
 1. You never score anything and never invent a number. Every number you write must come from a tool result in this run. If no tool answers a question, write "not measured".
@@ -47,8 +49,9 @@ How to work:
 2. Call eval_summary.
 3. Group what does not hold, and the report-only oddities worth Alex's attention (for example a mirrored copy far below or above its source), by clip and cause. Hand each group to a case-investigator with the exact ids; run several at once when they are independent.
 4. For each cause that a constant might fix, hand one hypothesis at a time to the what-if-tester, or call replay_with yourself.
-5. Write the report to ${reportPath} with write_file, in this order: Summary (three lines); Findings (each: what, the evidence numbers, the likely cause, how sure); What-if results; Recommendation for Alex; Next five rounds to play (concrete: which clip, which tag, why each would add evidence).
-6. Run check_numbers on the report, fix it, then finish with the report's Summary.`;
+5. Call overlay_summary and, for any clip where most camera players share a hint or the fit is low, compare where and how big the subject and the players are in frame. A case-investigator can dig into single rounds with get_round.
+6. Write the report to ${reportPath} with write_file, in this order: Summary (three lines); Scoring findings (each: what, the evidence numbers, the likely cause, how sure); What-if results; Recommendation for Alex; Overlay findings (per clip that matters: fit, shared hints, subject versus players in frame, and what the game could change, for example where or how big the outline is drawn, or the framing advice before a round); Next five rounds to play (concrete: which clip, which tag, why each would add evidence).
+7. Run check_numbers on the report, fix it, then finish with the report's Summary.`;
 
 const investigator = subagentModel();
 const tester = subagentModel();
@@ -56,7 +59,7 @@ const tester = subagentModel();
 const agent = createDeepAgent({
   model: orchestratorModel(),
   systemPrompt: SYSTEM,
-  tools: [evalSummaryTool, getRoundTool, engineConstantsTool, replayWithTool, checkNumbersTool, proposeConstantsChangeTool],
+  tools: [evalSummaryTool, getRoundTool, engineConstantsTool, replayWithTool, overlaySummaryTool, checkNumbersTool, proposeConstantsChangeTool],
   middleware: [todoListMiddleware()],
   backend: new FilesystemBackend({ rootDir: WORKSPACE, virtualMode: true }),
   checkpointer: new MemorySaver(),
@@ -68,7 +71,7 @@ const agent = createDeepAgent({
       systemPrompt:
         "You investigate scoring cases in Jester's eval suite. Use get_round on each id (derived ids look like r-abc~frozen), compare with its source round and with engine_constants. Find the mechanism: which limbs, seconds, motion or lag numbers explain the score. Write a short finding to /findings/<short-name>.md, then reply in at most 8 lines: the cause, the evidence numbers, and how sure you are. Every number must come from a tool result; write \"not measured\" otherwise. Never invent a limit; read it with engine_constants. No em dashes.",
       model: investigator.model,
-      tools: [getRoundTool, evalSummaryTool, engineConstantsTool],
+      tools: [getRoundTool, evalSummaryTool, engineConstantsTool, overlaySummaryTool],
     },
     {
       name: "what-if-tester",

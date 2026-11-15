@@ -11,6 +11,7 @@ import { SCORER_VERSION, constants, type PoseRoundResult, type TrajectoryRoundRe
 import { clipName, judge, rescore, setConstant, type Rescored, type Verdict } from "../../eval/src/judge.ts";
 import { deriveAll, deriveCase, TRANSFORMS, type Transform } from "../../eval/src/derive.ts";
 import { isFrozen, loadCases, loadDataRounds } from "../../eval/src/store.ts";
+import { unpackPose, type AnyPackedPose } from "../../eval/src/record.ts";
 
 export const WORKSPACE = join(import.meta.dirname, "..", "workspace");
 
@@ -58,6 +59,7 @@ export function evalSummary() {
       id: it.record.id, frozenCase: isFrozen(it.record.id), clip: clipName(it.record), mode: it.record.mode, channel: it.record.channel, tag: it.record.tag,
       player: playerSource(it.record),
       scoreWhenPlayed: it.was, scoreNow: it.now.score, lagMs: Math.round(it.now.lagMs),
+      outlineFit: it.now.channel === "pose" ? (it.now as PoseRoundResult).placement.outlineFit : null,
       expectation: v?.expectation ?? null, holds: v?.holds ?? null, detail: v?.detail ?? null,
     };
   });
@@ -108,6 +110,7 @@ export function roundDetail(id: string) {
     worstLimb: p.worstLimb, hiddenLimbs: p.hiddenLimbs,
     perLimb: Object.fromEntries(Object.entries(p.perLimb).map(([limb, b]) => [limb, { credit: round2(b.credit), meanErrorDeg: Math.round(b.meanErrorDeg), direction: b.direction, unseenShare: round2(b.unseenShare) }])),
     placementUsed: p.placement.used, placementGain: round2(p.placement.gain),
+    outlineFit: p.placement.outlineFit, outlineHints: p.placement.outlineHints,
     creditPerSecond: perSecond,
   };
 }
@@ -158,12 +161,79 @@ export function unsupportedNumbers(text: string): string[] {
   return [...missing];
 }
 
+// ---- Lining up with the overlay ----
+
+type Lm = readonly (readonly number[])[] | null;
+const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2; };
+
+/** Median shoulder-midpoint x and torso height (shoulders to hips, in frame heights) over the frames that show both. */
+function bodyInFrame(frames: readonly { readonly landmarks: Lm }[]) {
+  const xs: number[] = [], torsos: number[] = [];
+  for (const f of frames) {
+    const l = f.landmarks;
+    if (!l || l.length < 25) continue;
+    const vis = (i: number) => (l[i]?.[2] ?? 0) >= 0.5;
+    if (!vis(11) || !vis(12)) continue;
+    const sx = (l[11]![0]! + l[12]![0]!) / 2, sy = (l[11]![1]! + l[12]![1]!) / 2;
+    xs.push(sx);
+    if (vis(23) && vis(24)) torsos.push(Math.abs((l[23]![1]! + l[24]![1]!) / 2 - sy));
+  }
+  return { anchorX: round2(median(xs)), torso: round2(median(torsos)) };
+}
+
+/**
+ * Per person clip, from camera rounds only (the simulated player always lines up perfectly): how well players
+ * matched the subject's place and size on the mirrored screen (outline fit, 0 to 100, shown to players, not
+ * scored), which hints they got, and where and how big the subject and the players are in frame.
+ */
+export function overlaySummary() {
+  const { items } = loadAll();
+  const byClip = new Map<string, Rescored[]>();
+  for (const it of items) {
+    if (it.record.channel !== "pose") continue;
+    const k = clipName(it.record);
+    byClip.set(k, [...(byClip.get(k) ?? []), it]);
+  }
+  const clips = [...byClip].map(([clip, all]) => {
+    const cam = all.filter((it) => it.record.device.camera);
+    const fits = cam.map((it) => (it.now as PoseRoundResult).placement.outlineFit).filter((v): v is number => v !== null);
+    const hints = cam.map((it) => (it.now as PoseRoundResult).placement.outlineHints);
+    const count = (pick: (h: { distance: string | null; side: string | null }) => string | null) => {
+      const c: Record<string, number> = {};
+      for (const h of hints) { const v = pick(h) ?? "none"; c[v] = (c[v] ?? 0) + 1; }
+      return c;
+    };
+    const distance = count((h) => h.distance), side = count((h) => h.side);
+    const share = (c: Record<string, number>) => Math.max(0, ...Object.entries(c).filter(([k]) => k !== "none").map(([, v]) => v)) / Math.max(1, cam.length);
+    const subject = bodyInFrame(unpackPose(all[0]!.record.reference as AnyPackedPose).frames);
+    const players = cam.map((it) => bodyInFrame(unpackPose(it.record.player).frames));
+    const playerX = median(players.map((p) => p.anchorX).filter((v): v is number => v !== null));
+    return {
+      clip,
+      cameraRounds: cam.length,
+      simulatedRounds: all.length - cam.length,
+      outlineFit: { median: median(fits), min: fits.length ? Math.min(...fits) : null, max: fits.length ? Math.max(...fits) : null },
+      distanceHints: distance,
+      sideHints: side,
+      sameHintShare: { distance: round2(share(distance)), side: round2(share(side)) },
+      subjectInFrame: subject,
+      // The player's camera image is not mirrored; on screen it is, so x becomes 1 - x.
+      playersInFrame: { anchorXOnScreen: playerX === null ? null : round2(1 - playerX), torso: round2(median(players.map((p) => p.torso).filter((v): v is number => v !== null))) },
+      scores: cam.map((it) => it.now.score),
+    };
+  });
+  return {
+    note: "outlineFit is shown to players, not scored. anchorX is across the frame from 0 (left) to 1 (right); torso is shoulders to hips in frame heights. A hint most camera players share on one clip points at the overlay's size or place for that clip, or at how laptops frame players, more than at the players.",
+    clips,
+  };
+}
+
 // ---- The tools ----
 
 export const evalSummaryTool = tool(async () => recorded("eval_summary", JSON.stringify(evalSummary())), {
   name: "eval_summary",
   description:
-    "Re-scores every recorded Jester round with the current scorer and returns, as JSON: each round (clip, mode, tag, player: camera or simulated stand-in, score when played, score now, lag, expectation, whether it holds), every derived case (late, frozen, seated, walked-out, jittered and mirrored copies of good rounds, with whether each expectation holds; holds null means report only or not applicable), and the ids that do not hold. Deterministic.",
+    "Re-scores every recorded Jester round with the current scorer and returns, as JSON: each round (clip, mode, tag, player: camera or simulated stand-in, score when played, score now, lag, outline fit, expectation, whether it holds), every derived case (late, frozen, seated, walked-out, jittered and mirrored copies of good rounds, with whether each expectation holds; holds null means report only or not applicable), and the ids that do not hold. Deterministic.",
   schema: z.object({}),
 });
 
@@ -191,6 +261,13 @@ export const replayWithTool = tool(async ({ changes }) => recorded("replay_with"
   schema: z.object({
     changes: z.array(z.object({ constant: z.string().describe("GROUP.name, for example ROUND.ceiling"), value: z.number() })).min(1).max(4),
   }),
+});
+
+export const overlaySummaryTool = tool(async () => recorded("overlay_summary", JSON.stringify(overlaySummary())), {
+  name: "overlay_summary",
+  description:
+    "How well camera players line up with the overlay, per person clip: outline fit (0 to 100, shown not scored), the distance and side hints they got and how many share the same one, and where and how big the subject and the players are in frame (shoulder midpoint across the frame, torso height in frame heights). Simulated rounds are counted but left out. Deterministic.",
+  schema: z.object({}),
 });
 
 export const checkNumbersTool = tool(async ({ text }) => {
