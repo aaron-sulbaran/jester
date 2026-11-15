@@ -14,7 +14,7 @@
 
 import { createHash } from "node:crypto";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
-import { precedentsBlock, type Precedent } from "./review-precedents.ts";
+import { precedentsBlock, PRECEDENTS_READ, type Precedent } from "./review-precedents.ts";
 import { castText, type CastLine } from "./src/castSummary.ts";
 
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
@@ -397,6 +397,52 @@ export interface ReviewSettings {
   runId?: string;
 }
 
+const VERDICT_WORDS: Record<Verdict, string> = { approve: "let it in", reject: "turn it away", ask_a_person: "ask a person" };
+
+/**
+ * What the Chamberlain did, in order, for the desk's list of steps. Every word is written here by code: only
+ * fixed names, counts and verdicts parsed from fixed lists, never the model's or a submitter's text. A plan
+ * the agent wrote with write_todos comes first.
+ */
+export function stepsOf(run: {
+  mode: ReviewMode;
+  messages: StateMessage[];
+  todos: string[];
+  frames: number;
+  precedents: number;
+  playability: Playability;
+  recorded: Verdict | null;
+  final: Verdict;
+  /** How many things the decision left out of the cast, after the code's check (allowedDrops). */
+  castDrops?: number;
+}): string[] {
+  const steps = [...run.todos];
+  if (run.mode === "deep") {
+    const checkerCalls = new Set<string>();
+    for (const m of run.messages) {
+      for (const call of m.tool_calls ?? []) {
+        const type = call.args?.subagent_type;
+        if (call.name === "task") {
+          if (type === "playability-checker" && typeof call.id === "string") checkerCalls.add(call.id);
+          steps.push(`Asked ${type === "playability-checker" ? "the playability-checker subagent" : type === "general-purpose" ? "the general-purpose subagent" : "a subagent"}`);
+        } else if (call.name === "read_clip_facts") {
+          steps.push("Read the game's analysis facts");
+        }
+      }
+      if (typeof m.tool_call_id === "string" && checkerCalls.has(m.tool_call_id)) {
+        const said = verdictIn(textOf(m.content));
+        steps.push(said ? `The checker said: ${said}` : "The checker gave no clear verdict");
+      }
+    }
+  }
+  steps.push(`The game's own numbers say: ${run.playability}`);
+  steps.push(`Looked at ${run.frames} frame${run.frames === 1 ? "" : "s"}${run.precedents ? ` and ${run.precedents} precedent${run.precedents === 1 ? "" : "s"}` : ""}`);
+  if (run.castDrops) steps.push(`Left out of the cast: ${run.castDrops} thing${run.castDrops === 1 ? "" : "s"}`);
+  steps.push(run.recorded ? `Recorded the decision: ${VERDICT_WORDS[run.recorded]}` : "Recorded no decision");
+  if (run.final !== run.recorded) steps.push(`The code's rules made it: ${VERDICT_WORDS[run.final]}`);
+  return steps.slice(0, 20);
+}
+
 /** Text of a LangChain message's content, whether a string or a list of blocks. */
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -511,14 +557,23 @@ export async function reviewSubmission(input: ReviewInput, settings: ReviewSetti
     clearTimeout(timer);
   }
 
-  const steps = (state.todos ?? []).map((t) => t.content ?? "").filter((s) => s !== "");
+  const todos = (state.todos ?? []).map((t) => t.content ?? "").filter((s) => s !== "");
   const code = { from: "playability-check", text: playability.text };
-  if (mode === "fast") return finalize(input, recorded, { findings: [code], steps });
+  // The steps are filled in after finalize(), so they can say when the code's rules changed the decision.
+  const withSteps = (d: Decision): Decision => ({
+    ...d,
+    steps: stepsOf({
+      mode, messages: state.messages ?? [], todos, frames: input.frames.length, precedents: Math.min(input.precedents?.length ?? 0, PRECEDENTS_READ),
+      playability: playability.verdict, recorded: (recorded as Recorded | null)?.verdict ?? null, final: d.verdict,
+      castDrops: d.castDrops.length,
+    }),
+  });
+  if (mode === "fast") return withSteps(finalize(input, recorded, { findings: [code], steps: [] }));
   // The subagent's answers come back to the Chamberlain as the results of its `task` calls.
   const answers = checkerAnswers(state.messages ?? []);
   const verdicts = answers.map(verdictIn);
   const note = answers.length === 0 ? [{ from: "playability-check", text: "The playability-checker was not asked, so the game's own numbers decide." }]
     : verdicts.every((v) => v === null) ? [{ from: "playability-check", text: "The playability-checker gave no clear verdict, so the game's own numbers decide." }]
     : [];
-  return finalize(input, recorded, { findings: [...answers.map((text) => ({ from: "playability-checker", text })), ...note, code], steps }, verdicts);
+  return withSteps(finalize(input, recorded, { findings: [...answers.map((text) => ({ from: "playability-checker", text })), ...note, code], steps: [] }, verdicts));
 }
