@@ -16,6 +16,7 @@
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
 import { boxFromLandmarks, hideUnsureJoints, partName, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
+import { partsWorthOffering } from "./partChoices.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
@@ -83,7 +84,7 @@ export interface RoleInfo {
   look: Look;
   /** One or two sentences on how to play, never what the role is. */
   text: string;
-  /** The body parts the player can copy it with (first is the whole body). Offered for every role, so it gives nothing away. */
+  /** The body parts the player can copy it with (first is the whole body, always offered); a hand, the head or a foot only when the role travels enough to score (partChoices.ts). */
   parts: { key: BodyPart; label: string }[];
   /** Plays the role once on `playStage().guideCanvas`, unscored, at the game's speed, then shows the first frame again. */
   preview(): Promise<void>;
@@ -1390,7 +1391,7 @@ function mediaTimeline(s: Seat, scene: Scene, speed: number): ResultRow["timelin
 function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number): RoleInfo {
   return {
     look: s.look, text: roleText(),
-    parts: Object.entries(BODY_PARTS).map(([key, p]) => ({ key: key as BodyPart, label: p.label.toLowerCase() })),
+    parts: partsWorthOffering(s.original.boxTrack).map((key) => ({ key, label: BODY_PARTS[key].label.toLowerCase() })),
     preview: () => previewRole(s, scene, speed, ui, leadMs),
   };
 }
