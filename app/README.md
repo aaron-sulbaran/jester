@@ -64,9 +64,11 @@ Each player frame is tagged with `clipTimeMs`, the clip's playback time when the
   - Saved analysis: `squat.webm` and `with-cut.mp4` opened again without `fresh=1` report "saved" in 0 s. `one-person.mp4` opened again reports the same refusal, because refusals are not saved.
 - Main page `/?nocam=1`: the starter clip with the simulated player (wobble 10) scored 100 (Perfect), 133 ms behind. Picking `squat.webm` there gave "squat.webm: 7.1 s, person found in 107 of 107 samples."; picking `no-person.mp4` gave "Could not read the clip: No person found in this clip."
 
+- Outlines and the blind mode preview (Saturday evening): Aaron ran the lab in his own browser and the outline sits on the person.
+
 ## Not checked
 
-- Outlines (`clip: an outline per frame for people`) and the blind mode preview: unit tests and the build pass; nobody has looked at them on a clip yet. Aaron is checking in his browser.
+- Outline jitter and analysis speed with masks on, measured: Aaron looked by eye only.
 
 A real camera. First person at a laptop: run a round and post the score and how it felt.
 
