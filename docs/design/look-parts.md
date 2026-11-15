@@ -27,7 +27,7 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **A clip card:** `.clip` with `.clip-pic`, `.clip-name`, `.clip-credit`, `.clip-hint`, `.clip-star`, `.clip-q`.
 - **The bank:** `.bank` is one row that scrolls sideways, each `.clip` snapping into place, so the Play ticket stays on screen however many clips there are. On phones a `.clip` is 68vw wide so the next card peeks in at the edge.
 - **Your clip is in:** `#clipReady`, a note taped bottom left on laptops and at the top under the corner tags on phones; hidden during a turn.
-- **Send in a clip:** `.send-invite` is the paper strip with a quiet tag under the start screen's ticket; it opens `#screen-submit`. On that screen `.rule-card.can` and `.rule-card.cannot` are the two taped cards with a list, and `.send-form` is the form card.
+- **Send in a clip:** `.send-invite` is the paper strip with a quiet tag under the start screen's ticket; it opens `#screen-submit`. On that screen `#sendSteps` is the four-step strip (How to play's `.steps`; each picture is a desk scene built from `.send-card`, `.send-tag`, `.send-stamp` and `.send-jester`), and `.send-form` is the one form card: the fields on the left, what not to send (`.send-dont`), the privacy line and the ticket on the right.
 - **The wordmark:** `#crown-doodle` is one shared drawing of the crown; `.wordmark-crown` places it on the J, with its angle, place and size as CSS variables.
 - **An illustrated step:** `.step` with `.step-pic`, as on How to play.
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
