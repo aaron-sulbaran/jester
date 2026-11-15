@@ -15,6 +15,12 @@ export function falloff(value: number, inner: number, outer: number): number {
   return 1 - x * x;
 }
 
+/** Smooth 0..1 ramp for x in 0..1: 3x^2 - 2x^3, flat at both ends. */
+export function smoothstep(x: number): number {
+  const t = clamp01(x);
+  return t * t * (3 - 2 * t);
+}
+
 /** Timing credit from the player's lag in ms (positive = behind). Being early within the search range is fine. */
 export function timingCredit(lagMs: number): number {
   return falloff(Math.max(0, lagMs), TIMING.freeMs, TIMING.zeroMs);
