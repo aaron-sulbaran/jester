@@ -42,15 +42,15 @@ Each guide carries, one entry per frame at the same times: `timeline` (pose, for
 
 To draw what a player sees without the clip: `placeSubject(guide, canvas, "fit" | "exact")` from `../clip` gives the placement once per guide, and `drawBlind(canvas, guide, guideFrameAt(guide, mediaMs), "outline" | "stick", view)` from `src/clipside/blind.ts` draws one frame. "fit" centres the subject on its own average position at about 70 percent of the canvas height and shrinks it if its movement would leave the canvas; "exact" keeps it where it is in the clip frame. The clip lab shows both.
 
+## How the engine is wired
+
+Each player frame is tagged with `clipTimeMs`, the clip's playback time when the frame arrived (video `currentTime`, or wall time since start for the starter clip). The engine's adapter uses that in place of `trackerTimeAtClipStartMs`, and it stays right if the video stalls. Frames before the clip starts are tagged -1 and dropped.
+
 ## Paste a link (tab capture)
 
 The link lab, http://localhost:5173/link-lab.html (dev server only), takes a YouTube, Shorts, TikTok or Reels link. A YouTube clip plays in the official embedded player on the page; Grab the moves shares this tab (cropped to the player with Region Capture), plays the chosen stretch (15 seconds by default, 30 at most) and stamps each frame with the player's own time. TikTok links with an embed play on the page (Instagram's embed refused the posts tried, so Instagram uses another tab) and Grab from this page shares this tab cropped to the embed, with Start and Stop timed from Start. Grab from another tab works for any site the same way through the browser's tab picker; keep Jester visible (the clip's tab in its own window beside it). Live grabs split a fast mover into pieces more often than files, so pieces that end and start again close by are joined (`stitchTracks`). Either way the result is the same `Prepared` analysis the file path builds, saved under a key made from the link and the range (`yt:<id>:<startMs>-<endMs>`), so the same link and range come back at once. Desktop Chrome and Edge only; phones are told to upload a file. Code: `src/clipside/capture.ts`, `link.ts` (parsing, tested in `clip/test/link.test.ts`), `grab.ts`, `youtube.ts`.
 
 What is kept: only the people analysis (boxes, joints, outlines, times). Jester never downloads, saves or uploads the video or any frame of it. Each captured frame is read once for people and dropped, and no tool or service that fetches video files from YouTube, TikTok or Instagram is used.
-
-## How the engine is wired
-
-Each player frame is tagged with `clipTimeMs`, the clip's playback time when the frame arrived (video `currentTime`, or wall time since start for the starter clip). The engine's adapter uses that in place of `trackerTimeAtClipStartMs`, and it stays right if the video stalls. Frames before the clip starts are tagged -1 and dropped.
 
 ## Checked
 
