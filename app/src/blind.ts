@@ -792,7 +792,7 @@ function shuffle<T>(xs: T[]): T[] {
  * played a Blind round on it with a real camera.
  * ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
  */
-const DEFAULT_GUIDE: Construction | null = null;
+const DEFAULT_GUIDE: Construction | null = "d";
 
 const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
   const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
