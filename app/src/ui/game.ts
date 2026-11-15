@@ -149,8 +149,14 @@ export function initGame(deps: GameDeps) {
     b.className = "clip" + (p.kind === "surprise" ? " surprise" : "");
     b.dataset.key = keyOf(p);
     const tape = ["pink", "mint", "dots"][i % 3];
-    const poster = p.kind === "bank" && p.clip.poster ? `<img src="${p.clip.poster}" alt="" />` : "";
-    b.innerHTML = `<span class="washi w-${tape}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true">${poster}<span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><span class="clip-credit"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
+    b.innerHTML = `<span class="washi w-${tape}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><span class="clip-credit"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
+    if (p.kind === "bank" && p.clip.poster) {
+      // The poster url comes from the bank, so set it as an attribute rather than writing it into markup.
+      const img = document.createElement("img");
+      img.src = p.clip.poster;
+      img.alt = "";
+      b.querySelector(".clip-pic")!.prepend(img);
+    }
     const [name, hint, credit] = p.kind === "surprise" ? ["Surprise me", "A clip from the bank. Nobody sees it until the end.", ""]
       : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? `by ${p.clip.credit}` : ""]
       : [p.starter.title, p.starter.hint, ""];
