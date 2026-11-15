@@ -114,17 +114,24 @@ export interface PlayerSignals {
   validShare: number;
 }
 
-export function playerSignals(player: PoseTimeline, n: number, mirror: boolean): PlayerSignals {
+export function playerSignals(player: PoseTimeline, n: number, mirror: boolean, bodyPart: BodyPart = "body"): PlayerSignals {
   const aspect = player.source.width / player.source.height;
   const grid = resamplePoses(player.frames, n);
   const vis = (ids: readonly number[]) => grid.filter((l) => l && ids.every((i) => l[i]![2] >= 0.5)).length;
-  // Pick one anchor for the whole round so it never jumps between hips and shoulders.
+  // Pick one anchor for the whole round so it never jumps between hips and shoulders. A chosen body part
+  // (a hand, the head, a foot) is its own anchor; the body's height then plays no part.
+  const part = bodyPart === "body" ? null : BODY_PARTS[bodyPart].landmarks;
   const useHips = vis(MID.hip) >= 0.7 * Math.max(1, vis(MID.shoulder));
-  const anchor = useHips ? MID.hip : MID.shoulder;
-  const useAnkles = vis([LM.leftAnkle, LM.rightAnkle, LM.nose]) >= 0.7 * Math.max(1, vis(anchor));
+  const anchor = part ?? (useHips ? MID.hip : MID.shoulder);
+  const useAnkles = !part && vis([LM.leftAnkle, LM.rightAnkle, LM.nose]) >= 0.7 * Math.max(1, vis(anchor));
 
+  // Unit: torso length. A player at a desk often hides their hips, so fall back to shoulder width.
   const torso = grid.map((l) => (l ? torsoLength(l, aspect) ?? NaN : NaN));
-  const L = median(torso);
+  const shoulders = grid.map((l) => {
+    if (!l || l[LM.leftShoulder]![2] < 0.5 || l[LM.rightShoulder]![2] < 0.5) return NaN;
+    return Math.hypot((l[LM.leftShoulder]![0] - l[LM.rightShoulder]![0]) * aspect, l[LM.leftShoulder]![1] - l[LM.rightShoulder]![1]) * TRAJECTORY.torsoPerShoulderWidth;
+  });
+  const L = Number.isFinite(median(torso)) ? median(torso) : median(shoulders);
   const ax: Signal = [], ay: Signal = [], height: Signal = [];
   let valid = 0;
   for (const l of grid) {
@@ -146,7 +153,8 @@ export function playerSignals(player: PoseTimeline, n: number, mirror: boolean):
   const x = ax.map((v) => (sign * (v - x0)) / scale);
   const y = ay.map((v) => -(v - y0) / scale);
   // Without ankles, a drop of the anchor stands in for crouching: 0.3 torso lengths down reads as 0.85.
-  const h = useAnkles && Number.isFinite(h0) && h0 > 0 ? height.map((v) => v / h0) : y.map((v) => (Number.isFinite(v) ? 1 + Math.min(0, v) / 2 : NaN));
+  const h = part ? y.map(() => NaN)
+    : useAnkles && Number.isFinite(h0) && h0 > 0 ? height.map((v) => v / h0) : y.map((v) => (Number.isFinite(v) ? 1 + Math.min(0, v) / 2 : NaN));
   const bridge = (s: Signal) => bridgeGaps(s, TRAJECTORY.maxBridgeFrames);
   return { x: bridge(x), y: bridge(y), h: bridge(h), validShare: n > 0 ? valid / n : 0 };
 }
@@ -164,13 +172,16 @@ export function referenceSignals(track: BoxTrack, n: number): ReferenceSignals {
   const H = median(boxes.map((b) => (b ? b.h : NaN)));
   const cx = boxes.map((b) => (b ? b.cx * aspect : NaN));
   const cy = boxes.map((b) => (b ? b.cy : NaN));
-  const scale = Number.isFinite(H) && H > 0 ? H : 1;
+  // A small object (a ball) crossing the frame would be dozens of its own heights; floor the unit so its
+  // motion stays on the scale a person can match with their body.
+  const scale = Math.max(Number.isFinite(H) && H > 0 ? H : 1, TRAJECTORY.minReferenceUnit);
   const x0 = median(cx), y0 = median(cy);
   const bridge = (s: Signal) => bridgeGaps(s, TRAJECTORY.maxBridgeFrames);
   return {
     x: bridge(cx.map((v) => (v - x0) / scale)),
     y: bridge(cy.map((v) => -(v - y0) / scale)),
-    h: bridge(boxes.map((b) => (b ? b.h / scale : NaN))),
+    // Height ratio stays relative to the box's own usual height (a duck is the box getting shorter).
+    h: bridge(boxes.map((b) => (b ? b.h / (Number.isFinite(H) && H > 0 ? H : 1) : NaN))),
     validShare: n > 0 ? boxes.filter((b) => b).length / n : 0,
   };
 }
@@ -232,10 +243,6 @@ function circularShift(s: Signal, k: number): Signal {
 
 // ---------- events ----------
 
-function runningBaseline(s: Signal, half: number): Signal {
-  return s.map((_, i) => median(s.slice(Math.max(0, i - half), Math.min(s.length, i + half + 1))));
-}
-
 function msToFrames(ms: number): number {
   return Math.round(ms / GRID_MS);
 }
@@ -263,25 +270,53 @@ export function detectEvents(sig: { x: Signal; y: Signal; h: Signal }, t: EventT
   const y = smooth(sig.y, TRAJECTORY.smoothFrames);
   const h = smooth(sig.h, TRAJECTORY.smoothFrames);
   const vx = velocity(x), vy = velocity(y);
-  const base = runningBaseline(y, EVENTS.baselineFrames);
   const events: MotionEvent[] = [];
   const n = y.length;
 
-  // Jumps: start on fast rise above baseline, apex at the highest point, end on landing.
-  for (let i = 0; i < n; i++) {
-    const yi = y[i]!, bi = base[i]!, v = vy[i]!;
-    if (!Number.isFinite(yi) || !Number.isFinite(bi) || !Number.isFinite(v)) continue;
-    if (v > EVENTS.jumpStartSpeed && yi - bi > t.jumpStart) {
-      const b0 = bi;
-      let apex = i, j = i;
-      while (j < n && Number.isFinite(y[j]!) && y[j]! - b0 >= EVENTS.jumpLandMargin) {
-        if (y[j]! > y[apex]!) apex = j;
-        j++;
+  // Jumps: an up-then-down excursion. Turning points come from a zigzag with a minimum swing, so the
+  // shape decides, not a ground level (a ball is mostly in the air; a player who also ducks has two floors).
+  // A jump is a high point at least jumpMinApex above the low before it, falling back at least half that,
+  // with the two lows within the allowed duration and a fast enough rise.
+  const turns: { i: number; high: boolean }[] = [];
+  {
+    const swing = t.jumpMinApex * 0.5;
+    let dir = 0, ext = -1, lo = -1, hi = -1;
+    for (let i = 0; i < n; i++) {
+      const yi = y[i]!;
+      if (!Number.isFinite(yi)) { dir = 0; ext = lo = hi = -1; continue; }
+      if (lo < 0) { lo = hi = ext = i; continue; }
+      if (dir === 0) {
+        if (yi > y[hi]!) hi = i;
+        if (yi < y[lo]!) lo = i;
+        if (y[hi]! - yi >= swing) { turns.push({ i: hi, high: true }); dir = -1; ext = i; }
+        else if (yi - y[lo]! >= swing) { turns.push({ i: lo, high: false }); dir = 1; ext = i; }
+      } else if (dir === 1) {
+        if (yi > y[ext]!) ext = i;
+        else if (y[ext]! - yi >= swing) { turns.push({ i: ext, high: true }); dir = -1; ext = i; }
+      } else {
+        if (yi < y[ext]!) ext = i;
+        else if (yi - y[ext]! >= swing) { turns.push({ i: ext, high: false }); dir = 1; ext = i; }
       }
-      const dur = (j - i) * GRID_MS;
-      if (y[apex]! - b0 >= t.jumpMinApex && dur >= EVENTS.jumpMinMs && dur <= EVENTS.jumpMaxMs) events.push({ type: "jump", frame: apex });
-      i = j;
     }
+    if (dir !== 0) turns.push({ i: ext, high: dir === 1 });
+  }
+  for (let k = 1; k + 1 < turns.length; k++) {
+    const a = turns[k - 1]!, m = turns[k]!, b = turns[k + 1]!;
+    if (!m.high || a.high || b.high) continue;
+    const base = Math.max(y[a.i]!, y[b.i]!);
+    const rise = y[m.i]! - base;
+    if (rise < t.jumpMinApex) continue;
+    // Air time: how long the excursion stays in its upper half around the apex. Lows on either side can be
+    // far away (a player who ducks between jumps), so they do not set the duration.
+    const half = y[m.i]! - 0.5 * rise;
+    let s0 = m.i, s1 = m.i;
+    while (s0 > a.i && y[s0 - 1]! >= half) s0--;
+    while (s1 < b.i && y[s1 + 1]! >= half) s1++;
+    const dur = (s1 - s0 + 1) * GRID_MS;
+    if (dur < EVENTS.jumpMinMs / 2 || dur > EVENTS.jumpMaxMs) continue;
+    let vmax = 0;
+    for (let i = a.i; i <= m.i; i++) if (Number.isFinite(vy[i]!) && vy[i]! > vmax) vmax = vy[i]!;
+    if (vmax >= EVENTS.jumpStartSpeed) events.push({ type: "jump", frame: m.i });
   }
 
   // Crouches: hysteresis on the height ratio.
@@ -308,7 +343,8 @@ export function detectEvents(sig: { x: Signal; y: Signal; h: Signal }, t: EventT
     const startX = x[Math.max(0, i - 1)]!, endX = x[Math.min(n - 1, j)]!;
     const disp = endX - startX;
     if (Number.isFinite(disp) && Math.abs(disp) >= t.moveMin && (j - i) * GRID_MS >= EVENTS.moveMinMs) {
-      events.push({ type: disp > 0 ? "moveRight" : "moveLeft", frame: peak });
+      // Timed at the start of the move: a long steady move (a car) has no clear peak to line up.
+      events.push({ type: disp > 0 ? "moveRight" : "moveLeft", frame: i });
     }
     i = j;
   }
@@ -359,15 +395,49 @@ export function matchEvents(ref: readonly MotionEvent[], player: readonly Motion
 
 // ---------- round ----------
 
+/**
+ * What plays the object. "body" is the whole body (hips, or shoulders when hips are hidden). The others
+ * follow one body part; sides are the player's own (MediaPipe's left and right are the person's).
+ * `reach`: how far that part can travel to mirror the object's full range, in torso lengths.
+ */
+export const BODY_PARTS = {
+  body: { label: "Whole body", landmarks: MID.hip, reach: 1.5 },
+  rightHand: { label: "Right hand", landmarks: [LM.rightWrist, 18, 20], reach: 2.5 },
+  leftHand: { label: "Left hand", landmarks: [LM.leftWrist, 17, 19], reach: 2.5 },
+  head: { label: "Head", landmarks: [LM.nose], reach: 1.2 },
+  rightFoot: { label: "Right foot", landmarks: [LM.rightAnkle, 30, 32], reach: 1.5 },
+  leftFoot: { label: "Left foot", landmarks: [LM.leftAnkle, 29, 31], reach: 1.5 },
+} as const satisfies Record<string, { label: string; landmarks: readonly number[]; reach: number }>;
+export type BodyPart = keyof typeof BODY_PARTS;
+
 export interface TrajectoryRoundOptions {
   mirror?: boolean;
+  /** Which part of the player plays the object (default the whole body). */
+  bodyPart?: BodyPart;
+}
+
+/**
+ * The player's x and y scaled up so their range (5th to 95th percentile) matches the reference's, by at most
+ * `partEventMaxScale`. An axis that hardly moves (under `partEventMinRange` torso lengths) is left alone, so a
+ * still hand's jitter never turns into bounces. Never scaled down.
+ */
+export function scaledTowardReference(ply: { x: Signal; y: Signal; h: Signal }, ref: { x: Signal; y: Signal }): { x: Signal; y: Signal; h: Signal } {
+  const range = (s: Signal) => percentile(s, 0.95) - percentile(s, 0.05);
+  const scale = (p: Signal, r: Signal): Signal => {
+    const pr = range(p), rr = range(r);
+    if (!(pr >= TRAJECTORY.partEventMinRange) || !(rr > pr)) return p;
+    const k = Math.min(rr / pr, TRAJECTORY.partEventMaxScale);
+    return p.map((v) => v * k);
+  };
+  return { x: scale(ply.x, ref.x), y: scale(ply.y, ref.y), h: ply.h };
 }
 
 export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, options: TrajectoryRoundOptions = {}): TrajectoryRoundResult {
   const lastRef = reference.frames.reduce((m, f) => (Number.isFinite(f.tMs) && f.tMs > m ? f.tMs : m), -1);
   const n = gridLength(lastRef);
   const ref = referenceSignals(reference, n);
-  const ply = playerSignals(player, n, options.mirror ?? true);
+  const bodyPart = options.bodyPart ?? "body";
+  const ply = playerSignals(player, n, options.mirror ?? true, bodyPart);
 
   const base = {
     channel: "trajectory" as const, scorerVersion: SCORER_VERSION, lagMs: 0, timing: 0,
@@ -386,7 +456,8 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
   const axes = {
     x: range(ref.x) >= TRAJECTORY.minRangeX,
     y: range(ref.y) >= TRAJECTORY.minRangeY,
-    h: range(ref.h) >= TRAJECTORY.minRangeY,
+    // A body part cannot get shorter like a ducking object; only the whole body copies height changes.
+    h: bodyPart === "body" && range(ref.h) >= TRAJECTORY.minRangeY,
   };
   const axisList: Axis[] = [];
   const keys = (["x", "y", "h"] as const).filter((k) => axes[k]);
@@ -400,8 +471,11 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
   }
 
   // Events on both sides.
-  const refEvents = detectEvents(ref, REFERENCE_THRESHOLDS);
-  const plyEvents = detectEvents(ply, PLAYER_THRESHOLDS);
+  const refEvents = detectEvents(ref, REFERENCE_THRESHOLDS).filter((e) => bodyPart === "body" || e.type !== "crouch");
+  // 0.8.0: a body part copies an object at its own size (a hand dribbling at a desk moves far less than the
+  // ball). Size is scored by activity; events only ask whether each beat was hit. So for a part, the player's
+  // path is scaled up toward the object's range before looking for jumps and moves.
+  const plyEvents = detectEvents(bodyPart === "body" ? ply : scaledTowardReference(ply, ref), PLAYER_THRESHOLDS);
 
   if (axisList.length === 0 && refEvents.length === 0) return { ...base, axes, score: null, tier: null, failure: "nothing-to-mimic" };
 
@@ -418,9 +492,15 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
       for (let k = 1; k <= TRAJECTORY.surrogateCount; k++) {
         const shift = Math.round((k * n) / (TRAJECTORY.surrogateCount + 1));
         if (shift < TRAJECTORY.minSurrogateShiftFrames || n - shift < TRAJECTORY.minSurrogateShiftFrames) continue;
+        // Score the shifted player at the lag already found (plus the usual slack). Searching lags again
+        // would let any rhythmic motion (a ball, a pendulum) line back up and look like a real copy.
         const shifted = axisList.map((a) => circularShift(a.player, shift));
-        const s = bestLag((l) => combinedZ(axisList, l, n, shifted));
-        if (s) { rsum += Math.tanh(s.value); rc++; }
+        let bestZ: number | null = null;
+        for (let d = -LAG.slackFrames; d <= LAG.slackFrames; d++) {
+          const z = combinedZ(axisList, lag + d, n, shifted);
+          if (z !== null && (bestZ === null || z > bestZ)) bestZ = z;
+        }
+        if (bestZ !== null) { rsum += Math.tanh(bestZ); rc++; }
       }
       chance = rc > 0 ? rsum / rc : 0;
       const denom = TRAJECTORY.goodCorrelation - chance;
@@ -433,9 +513,15 @@ export function scoreTrajectoryRound(reference: BoxTrack, player: PoseTimeline, 
 
   // Activity: a player who barely moves earns no continuous credit.
   const playerSpeed = rms(plyV.x.map((v, i) => Math.hypot(v, plyV.y[i]!)));
-  const refSpeed = rms(refV.x.map((v, i) => Math.hypot(v, refV.y[i]!)));
-  const target = Math.max(0.5 * refSpeed, TRAJECTORY.activityMin + 0.2);
-  const activity = clamp01((playerSpeed - TRAJECTORY.activityMin) / (target - TRAJECTORY.activityMin));
+  // Effort is judged in the player's own units (torso lengths per second), never against the object's
+  // speed in its own sizes: a small fast object would ask for more than any body can do. The target follows
+  // how quickly the object crosses its own range of travel, applied to the room a player has in front of a
+  // laptop, so a slow steady car asks for less than a bouncing ball.
+  const refRange = Math.max(range(ref.x), range(ref.y), 1e-6);
+  const refRel = rms(refV.x.map((v, i) => Math.hypot(v, refV.y[i]!))) / refRange;
+  const target = Math.min(TRAJECTORY.activityTarget, Math.max(TRAJECTORY.activityTargetMin, refRel * BODY_PARTS[bodyPart].reach));
+  const activityMin = Math.min(TRAJECTORY.activityMin, 0.4 * target);
+  const activity = clamp01((playerSpeed - activityMin) / (target - activityMin));
 
   const { matches, extras, f1 } = matchEvents(refEvents, plyEvents, lag);
   const lagMs = Math.round(lag * GRID_MS);
