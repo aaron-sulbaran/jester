@@ -3,7 +3,7 @@
 // Placement comes from `placeSubject` in ../../../clip.
 
 import { steadyFps, typicalMs } from "./guideRate.ts";
-import { boneLengths, boxFromLandmarks, bodyTurns, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
+import { boneLengths, boxFromLandmarks, bodyTurns, growLimit, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
 import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
 
@@ -221,6 +221,18 @@ function puppetRoom(guide: Guide): Pick<Guide, "source" | "boxTrack" | "outlines
   return { source: guide.source, boxTrack: { ...guide.boxTrack, frames }, outlines: frames.map(() => null) };
 }
 
+const rooms = new WeakMap<Guide, Pick<Guide, "source" | "boxTrack" | "outlines">>();
+
+/**
+ * How much the puppet may grow about (ax, ay) in canvas pixels (to match the player's size) and keep its whole room,
+ * hat, shoes and white edge included, on the canvas. Use with a view from `blindView(..., "fit", "puppet")`.
+ */
+export function puppetGrowLimit(guide: Guide, canvas: HTMLCanvasElement, view: View, ax: number, ay: number): number {
+  let room = rooms.get(guide);
+  if (!room) { room = puppetRoom(guide); rooms.set(guide, room); }
+  return growLimit(room, canvas, view, ax, ay);
+}
+
 function toCanvas(view: View, guide: Guide, x: number, y: number): [number, number] {
   return [x * guide.source.width * view.scale + view.offsetX, y * guide.source.height * view.scale + view.offsetY];
 }
@@ -343,10 +355,39 @@ function drawKeyJoints(ctx: CanvasRenderingContext2D, landmarks: readonly (reado
   ctx.restore();
 }
 
-/** Where the corner card sits on a canvas: the top right, about a quarter of the width, the canvas's own shape. */
-export function followCard(canvas: { width: number; height: number }) {
-  const w = Math.round(canvas.width * 0.26), h = Math.round((w * canvas.height) / canvas.width), m = Math.round(canvas.width * 0.03);
+/** On screen, the corner card is never narrower than this (CSS pixels): a readable label and a tap target. */
+const CARD_MIN_CSS = 64;
+
+/** Canvas pixels per CSS pixel, as the canvas is shown (1 before it is laid out). */
+const perCss = (canvas: { width: number; clientWidth?: number }) => (canvas.clientWidth ? canvas.width / canvas.clientWidth : 1);
+
+/**
+ * Where the corner card sits on a canvas: the top right, about a quarter of the width and the canvas's own shape.
+ * On a small screen, where that would be under CARD_MIN_CSS, an upright card at least that wide (at most half the canvas).
+ */
+export function followCard(canvas: { width: number; height: number; clientWidth?: number }) {
+  const m = Math.round(canvas.width * 0.03);
+  let w = canvas.width * 0.26, h = (w * canvas.height) / canvas.width;
+  const least = CARD_MIN_CSS * perCss(canvas);
+  if (Math.min(w, h) < least) { w = Math.min(Math.max(w, least), canvas.width * 0.5); h = w * 1.35; }
+  w = Math.round(w); h = Math.round(h);
   return { x: canvas.width - w - m, y: m, w, h };
+}
+
+/** The guide's whole range of movement in canvas pixels (the puppet's room: hat and shoes included). */
+function roomOnCanvas(guide: Guide, view: View) {
+  let room = rooms.get(guide);
+  if (!room) { room = puppetRoom(guide); rooms.set(guide, room); }
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (const f of room.boxTrack.frames) {
+    const b = f.box;
+    if (!b) continue;
+    left = Math.min(left, b.cx - b.w / 2); right = Math.max(right, b.cx + b.w / 2);
+    top = Math.min(top, b.cy - b.h / 2); bottom = Math.max(bottom, b.cy + b.h / 2);
+  }
+  if (!(right > left && bottom > top)) return null;
+  const [l, t] = toCanvas(view, guide, left, top), [r, b] = toCanvas(view, guide, right, bottom);
+  return { left: l, top: t, right: r, bottom: b };
 }
 
 /**
@@ -359,7 +400,7 @@ export function drawFollowCard(canvas: HTMLCanvasElement, guide: Guide, index: n
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   const ctx = canvas.getContext("2d")!;
   const card = followCard(canvas);
-  const perCssPx = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+  const perCssPx = perCss(canvas);
   const ink = Math.max(2, 2.5 * perCssPx);
   ctx.save();
   // A paper card with the look's hard shadow.
@@ -367,31 +408,42 @@ export function drawFollowCard(canvas: HTMLCanvasElement, guide: Guide, index: n
   ctx.fillRect(card.x + 4 * perCssPx, card.y + 5 * perCssPx, card.w, card.h);
   ctx.fillStyle = "#FFFFFF"; ctx.fillRect(card.x, card.y, card.w, card.h);
   ctx.lineWidth = ink; ctx.strokeStyle = "#1E1B18"; ctx.strokeRect(card.x, card.y, card.w, card.h);
-  // The label fits the card's width.
-  const fit = (text: string, size: number) => {
+  // The label: one line when it fits the card at a readable size (12 CSS pixels or more), else "Tap to" over "follow".
+  const words = follow === "jester" ? ["Tap to follow"] : ["Tap to follow", "the jester"];
+  const least = 12 * perCssPx;
+  const sizeFor = (lines: string[], size: number) => {
     ctx.font = `700 ${size}px Gaegu, "Comic Sans MS", cursive`;
-    const wide = ctx.measureText(text).width;
-    return wide > card.w * 0.9 ? Math.floor((size * card.w * 0.9) / wide) : size;
+    const wide = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    return wide > card.w * 0.88 ? (size * card.w * 0.88) / wide : size;
   };
-  const labelPx = fit("Tap to follow", Math.max(11 * perCssPx, card.h * 0.11));
+  let lines = words;
+  let labelPx = sizeFor(lines, Math.max(least, card.h * 0.11));
+  if (labelPx < least) { lines = words.flatMap((l) => (l === "Tap to follow" ? ["Tap to", "follow"] : [l])); labelPx = sizeFor(lines, least); }
+  labelPx = Math.floor(labelPx);
   ctx.font = `700 ${labelPx}px Gaegu, "Comic Sans MS", cursive`;
   ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillStyle = "#1E1B18";
+  const lineH = labelPx * 1.05;
   if (follow === "jester" && landmarks) {
-    ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h); ctx.clip();
-    // The guide's view shrunk into the card and zoomed on its middle (the fit centres the subject there), so the
-    // key joints fill the card rather than copying the whole canvas's margins.
-    const k = (card.w / canvas.width) * 1.5;
+    const band = lines.length * lineH + labelPx * 0.35;
+    const room = roomOnCanvas(guide, view);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h - band); ctx.clip();
+    // The guide's whole range of movement fitted into the card above the label, so the figure never leaves it.
+    const pad = card.w * 0.08, pw = card.w - pad * 2, ph = card.h - band - pad;
+    const k = room ? Math.min(pw / (room.right - room.left), ph / (room.bottom - room.top)) : card.w / canvas.width;
+    const cx = room ? (room.left + room.right) / 2 : canvas.width / 2, cy = room ? (room.top + room.bottom) / 2 : canvas.height / 2;
     const map = (x: number, y: number): [number, number] => {
       const [px, py] = toCanvas(view, guide, x, y);
-      return [card.x + card.w / 2 + (px - canvas.width / 2) * k, card.y + card.h * 0.45 + (py - canvas.height / 2) * k];
+      return [card.x + card.w / 2 + (px - cx) * k, card.y + pad + ph / 2 + (py - cy) * k];
     };
     const torso = puppetClip(guide).torso;
     const unit = (torso !== null ? torso * view.scale : canvas.height * 0.15) * k;
     drawKeyJoints(ctx, landmarks, map, unit, style.color);
-    ctx.fillText("Tap to follow", card.x + card.w / 2, card.y + card.h - labelPx * 0.3);
+    ctx.restore();
+    lines.forEach((l, i) => ctx.fillText(l, card.x + card.w / 2, card.y + card.h - labelPx * 0.3 - (lines.length - 1 - i) * lineH));
   } else {
-    ctx.fillText("Tap to follow", card.x + card.w / 2, card.y + card.h / 2);
-    ctx.fillText("the jester", card.x + card.w / 2, card.y + card.h / 2 + labelPx * 1.1);
+    const top = card.y + card.h / 2 - ((lines.length - 1) * lineH) / 2 + labelPx * 0.4;
+    lines.forEach((l, i) => ctx.fillText(l, card.x + card.w / 2, top + i * lineH));
   }
   ctx.restore();
 }
