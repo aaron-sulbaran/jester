@@ -223,35 +223,63 @@ body:not(.solo) #solo { display: none; }
 .clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 body[data-mode="blind"] .clip-pic img { display: none; }
 body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
-.clip-credit { font-size: 12px; color: #6B5A48; min-height: 1em; }
+.clip-credit { font-size: 13px; color: #6B5A48; min-height: 1em; }
 .clip.surprise .clip-pic { background: var(--stamp) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
 .bank-note { max-width: 46ch; }
 
-/* The start screen reads top to bottom as one page: the wordmark and the Jester's note, how to play (Blind or
-   Normal), the library with Surprise me first, then Play, playing online, and sending in a clip. On a laptop it
-   all fits one screen (1440 by 900, 1024 by 768): the library scrolls inside itself, one whole row at a time. */
-#screen-start .start-mode { display: grid; justify-items: center; gap: 8px; }
+/* The start screen reads top to bottom as one page: the wordmark, what Jester is and how it works, how you play (how
+   many of you, Blind or Normal), then the choice between Surprise me and the library, then Play, playing online
+   and sending in a clip. On a laptop it all fits one screen (1440 by 900, 1024 by 768): the library scrolls inside
+   itself, one whole row at a time, and its head says how many clips fit. */
 #screen-start .masthead { grid-area: mast; }
 #startMode { grid-area: mode; }
-#libraryHead { grid-area: head; }
 #surpriseCard { grid-area: surp; }
+#startOr { grid-area: or; }
+#libraryHead { grid-area: head; }
 #bank { grid-area: bank; }
 #libraryNone { grid-area: bank; align-self: start; justify-self: center; margin-top: 40px; }
 #startFoot { grid-area: foot; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 30px; }
 #startProblem { grid-area: prob; justify-self: center; }
 #screen-start > .dev-only { grid-area: dev; }
+.start-how { font-size: 16px; max-width: none; text-wrap: balance; }
 
-/* Find a clip by name, and how many players. A visible label on each, per the house rules for fields. */
-.library-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 22px; text-align: left; }
-.library-find { flex: 1 1 260px; max-width: 470px; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 12px; }
-.library-find > span, .library-players-label { font-size: 15px; }
-.library-find input { min-height: 44px; padding: 6px 12px; border: 0; border-radius: 0; background: var(--photo); box-shadow: var(--lift); font: 700 22px var(--hand); color: var(--pen); }
-.library-find input::-webkit-search-cancel-button { cursor: pointer; }
-.library-players { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.library-players-label { margin-right: 4px; }
-.library-players .chip { min-width: 44px; padding: 7px 12px; }
-.library-players .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+/* How you play: three short questions, each label beside its pick and each pick's line directly under it. */
+#startMode { display: grid; grid-template-columns: auto auto; justify-content: center; align-items: start; gap: 10px 44px; }
+#countRow { grid-area: 1 / 1; }
+#modeRow { grid-area: 1 / 2; }
+#howPick { grid-area: 2 / 1 / 3 / 3; justify-self: center; }
+.start-q { display: grid; grid-template-columns: auto auto; column-gap: 14px; row-gap: 4px; align-items: center; text-align: left; }
+.start-ask { justify-self: end; font: 700 24px/1 var(--hand); letter-spacing: -.045em; white-space: nowrap; }
+.start-pick { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.start-pick .chip { min-width: 44px; padding: 7px 14px; font-size: 16px; }
+#countRow .chip { font-size: 18px; }
+.start-pick .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+#screen-start .start-q .modes-pick { justify-self: start; }
+.start-says { grid-column: 2; margin: 0; max-width: none; font-size: 15px; min-height: 0; }
+
+/* The choice: Surprise me, a handwritten "or", then the library. */
+.start-or { margin: 0; align-self: center; justify-self: center; font: 700 30px/1 var(--hand); letter-spacing: -.04em; color: var(--pen); }
+#libraryHead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; text-align: left; }
+.library-title { margin: 0; font: 700 30px/1 var(--hand); letter-spacing: -.045em; }
+.library-count { font-size: 15px; color: #6B5A48; }
+/* The label sits a clear gap from its field, on the same line (the base .field rule would close it up). */
+#libraryHead .library-find { display: flex; align-items: center; gap: 12px; flex: 1 1 300px; justify-content: flex-end; margin: 0 0 0 auto; }
+#libraryHead .library-find > span { font-size: 15px; white-space: nowrap; }
+#libraryHead .library-find input { width: min(260px, 100%); min-height: 44px; padding: 6px 12px; border: 0; border-radius: 0; background: var(--photo); box-shadow: var(--lift); font: 700 22px var(--hand); color: var(--pen); }
 .library-none { font-size: 16px; }
+.library-more { min-height: 44px; font-size: 15px; }
+/* Each on your own device: the room has its own clip pick, so the library and the small Play online tag step aside. */
+#screen-start[data-how="online"] :is(#surpriseCard, #startOr, #libraryHead, #bank, #libraryNone, #playOnline) { display: none; }
+@media (min-width: 761px) { #screen-start[data-how="online"] { grid-template-rows: auto auto auto auto auto auto auto; row-gap: 28px; } }
+/* On the cast screen: a clip with a thing in it plays the thing as a part, or people only. */
+.cast-thing { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.cast-thing .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+
+/* Blind cards: the clip stays hidden, and its performers stand in a spotlight on the card's own colour, one per
+   person and a ball for a thing. Normal shows the poster over them. */
+#bank .clip-pic { background: radial-gradient(ellipse 58% 75% at 50% 100%, rgba(255, 255, 255, .5), transparent 70%), repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px), var(--pic, #2E4593); }
+.clip-cast { position: absolute; left: 10%; right: 10%; bottom: 7%; height: 70%; width: 80%; color: var(--ink); opacity: .85; }
+body[data-mode="normal"] .clip-pic:has(img) .clip-cast { display: none; }
 
 /* The clips: a grid of small taped photos that scrolls up and down, snapping to whole rows so a photo is never
    cut in half at rest. The padding leaves room for the tape, the picked clip's star and the hard shadows. */
@@ -270,7 +298,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 #bank .clip-star { top: -18px; right: -16px; width: 52px; height: 52px; }
 
 /* Surprise me: the first choice, a bigger photo beside the library. */
-#surpriseCard { width: 100%; align-self: start; rotate: -1.2deg; padding: 10px 10px 12px; }
+#surpriseCard { width: 100%; rotate: -1.2deg; padding: 10px 10px 12px; }
 #surpriseCard .clip-name { font-size: 34px; }
 #surpriseCard .clip-hint { font-size: 15px; }
 #surpriseCard .clip-q { font-size: 84px; }
@@ -286,41 +314,67 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .send-card-name { font: 700 32px/1 var(--hand); letter-spacing: -.045em; }
 .send-card-text { font: 700 20px/1.2 var(--hand); letter-spacing: -.03em; color: var(--pen); }
 .send-card:hover { transform: translateY(-2px) rotate(-.6deg); box-shadow: 7px 9px 0 var(--shade); }
+/* Play online and Send in a clip: two matching cards, each with its icon at the left in place of the punched hole. */
+.start-door { grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; padding-left: 18px; align-self: stretch; }
+.start-door::before { display: none; }
+.start-door .start-door-ico { grid-row: 1 / 3; width: 46px; height: 46px; }
+.start-door .send-card-name, .start-door .send-card-text { grid-column: 2; }
+#playOnline { rotate: -.5deg; }
+.start-door .washi { top: -9px; }
 .send-card:active { transform: translateY(2px); box-shadow: 1px 1px 0 var(--shade); }
 #startActions { justify-content: flex-start; gap: 18px; }
 
 @media (min-width: 761px) {
   #screen-start {
-    display: grid; height: 100vh; height: 100dvh; min-height: 620px; padding-top: 18px; padding-bottom: 20px;
-    grid-template-columns: minmax(200px, 236px) minmax(0, 980px); justify-content: center;
+    display: grid; height: 100vh; height: 100dvh; min-height: 620px; padding-top: 16px; padding-bottom: 18px;
+    grid-template-columns: minmax(190px, 236px) 40px minmax(0, 960px); justify-content: center;
     grid-template-rows: auto auto auto minmax(auto, 1fr) auto auto auto;
-    grid-template-areas: "mast mast" "mode mode" "head head" "surp bank" "foot foot" "prob prob" "dev dev";
-    gap: 10px 30px; align-items: start; align-content: center;
+    grid-template-areas: "mast mast mast" "mode mode mode" "surp or head" "surp or bank" "foot foot foot" "prob prob prob" "dev dev dev";
+    gap: 10px 22px; align-items: start; align-content: center;
   }
   /* Once game.ts has cut the library to whole rows, the page closes up around it instead of leaving a gap. */
   #screen-start[data-library="fitted"] { grid-template-rows: auto auto auto auto auto auto auto; }
   #screen-start .masthead { gap: 4px; }
   #screen-start .wordmark { font-size: clamp(56px, min(7.5vw, 9vh), 96px); padding-bottom: 4px; }
-  #screen-start .masthead .note { --lh: 32px; font-size: 26px; padding: 16px 22px 10px 54px; }
-  /* The picked mode's line sits beside the switch, so the two read as one setting. */
-  #screen-start #startMode { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 22px; }
-  #startMode .mode-says { margin: 0; text-align: left; max-width: 30ch; }
+  #screen-start .masthead .note { --lh: 32px; font-size: 26px; padding: 14px 22px 8px 54px; }
+  #screen-start .mode { min-width: 104px; padding: 8px 14px 10px; }
+  #screen-start .mode b { font-size: 26px; }
+  /* Room above the wordmark for the hat on the J. */
+  #screen-start .masthead { padding-top: 14px; }
   #bank { align-self: stretch; }
-  #surpriseCard { margin-top: 8px; }
+  #surpriseCard { align-self: center; }
   /* Room for the Send in a clip card's tape under the library's last row. */
   #startFoot { flex-wrap: nowrap; margin-top: 10px; }
   #startActions { flex-wrap: nowrap; }
-  .send-card { flex: 0 1 420px; min-width: 260px; }
+  .send-card { flex: 1 1 0; min-width: 0; max-width: 450px; }
   /* The ticket keeps a short name on one line; the Send in a clip card gives way first. */
   #startActions { flex: 0 0 auto; }
   #play .ticket-text { max-width: 14em; text-wrap: balance; }
-  #playOnline { white-space: nowrap; }
+}
+/* Short laptop screens (1024 by 768): everything above the library a little tighter, so a whole row of clips and the
+   Play ticket still fit with How? showing. */
+@media (min-width: 761px) and (max-height: 820px) {
+  #screen-start { padding-top: 6px; padding-bottom: 10px; row-gap: 6px; }
+  #screen-start .masthead { padding-top: 14px; gap: 2px; }
+  #screen-start .wordmark { font-size: clamp(52px, min(7.5vw, 8vh), 96px); padding-bottom: 2px; }
+  #screen-start .masthead .note { --lh: 28px; font-size: 22px; padding: 12px 20px 6px 50px; }
+  .start-how, .start-says { font-size: 14px; line-height: 1.3; }
+  #startMode { row-gap: 4px; }
+  #screen-start .mode { min-height: 46px; padding: 6px 14px 8px; }
+  .start-pick .chip { min-height: 40px; padding-top: 5px; padding-bottom: 5px; }
+  #startFoot { margin-top: 20px; }
+  /* Cards stop holding a second line for every name, so a whole row fits. */
+  #bank .clip-name { min-height: 0; font-size: 20px; }
+  .btn-main .ticket { min-height: 74px; }
 }
 @media (min-width: 761px) and (max-width: 1180px) {
-  .send-card { padding-left: 46px; }
-  .send-card::before { left: 17px; }
-  .send-card-name { font-size: 28px; }
-  .send-card-text { font-size: 18px; }
+  #libraryHead { row-gap: 6px; }
+  #libraryHead .library-find { flex-basis: 100%; justify-content: flex-start; margin: 0; }
+  .send-card { padding: 10px 14px 12px; }
+  .send-card-name { font-size: 26px; }
+  .send-card-text { font-size: 16px; }
+  .start-door { column-gap: 10px; }
+  .start-door .start-door-ico { width: 38px; height: 38px; }
 }
 
 /* Its own screen: how it works as four steps, then one form card. On laptops the fields fill its left half and
@@ -848,6 +902,40 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   @keyframes strip-small { to { background-position-x: calc(-24 * 120px); } }
 }
 
+/* Surprise me's merry-go-round (ui/ride.ts): the Home tent's stripes on the canopy, photos on gold poles going round
+   a mast on a wooden platform. One clock in ride.ts turns the ring, bobs the photos and lifts the picked one; the
+   canopy and the platform stand still. In Blind every photo is the same question mark with no name. */
+.ride { position: fixed; inset: 0; z-index: 30; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(205, 168, 130, .92) var(--grain); opacity: 0; transition: opacity .2s ease-out; cursor: pointer; }
+/* The cast screen comes in whole under the ride as it fades, instead of its usual piece by piece entrance. */
+#screen-cast.ride-arrive > * { animation: none; }
+.ride.ride-open { opacity: 1; }
+.ride-stage { --card-w: 150px; position: relative; width: min(800px, 94vw); height: 540px; perspective: 1300px; perspective-origin: 50% 30%; }
+.ride-canopy { position: absolute; z-index: 3; left: 50%; top: 0; width: 80%; translate: -50% 0; filter: drop-shadow(5px 6px 0 var(--shade)); }
+.ride-floor { position: absolute; left: 50%; bottom: 6px; width: 84%; height: 92px; translate: -50% 0; border-radius: 50%; background: var(--wood); box-shadow: inset 0 0 0 5px var(--ink), 5px 6px 0 var(--shade); }
+.ride-ring { position: absolute; left: 50%; top: 292px; width: 0; height: 0; transform-style: preserve-3d; }
+.ride-mast { position: absolute; left: -8px; top: -190px; height: 330px; width: 16px; background: var(--gold); box-shadow: inset 0 0 0 3px var(--ink); }
+.ride-slot { position: absolute; left: calc(var(--card-w) / -2); top: -40px; width: var(--card-w); transform-style: preserve-3d; }
+.ride-pole { position: absolute; left: 50%; top: -84px; height: 296px; width: 7px; margin-left: -3.5px; background: var(--gold); box-shadow: inset 0 0 0 2px var(--ink); transform: translateZ(-3px); }
+.ride-card { position: relative; transform-style: preserve-3d; }
+.ride-face, .ride-back { display: grid; gap: 2px; padding: 6px 6px 8px; background: var(--photo); box-shadow: 4px 5px 0 var(--shade); backface-visibility: hidden; -webkit-backface-visibility: hidden; text-align: left; }
+.ride-back { position: absolute; inset: 0; transform: rotateY(180deg); background: #FFFEFA; }
+.ride-face .clip-q { font-size: 48px; -webkit-text-stroke-width: 3px; }
+.ride-name { min-height: 1.1em; font: 700 20px/1.1 var(--hand); letter-spacing: -.04em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ride-star { position: absolute; z-index: 2; top: -20px; right: -18px; width: 52px; height: 52px; rotate: 12deg; filter: drop-shadow(3px 4px 0 var(--shade)); transform: scale(0); }
+.ride-note-wrap { opacity: 0; max-width: min(520px, 92vw); }
+@media (prefers-reduced-motion: reduce) { .ride { transition: none; } }
+@media (max-width: 760px) {
+  /* Small enough that the photos at the sides stay inside a 390 px screen as they come round. */
+  .ride-stage { --card-w: 80px; height: 330px; perspective: 900px; }
+  .ride-ring { top: 172px; }
+  .ride-mast { top: -100px; height: 196px; }
+  .ride-mast { left: -7px; width: 14px; }
+  .ride-pole { top: -60px; height: 212px; }
+  .ride-floor { height: 60px; }
+  .ride-face .clip-q { font-size: 30px; }
+  .ride-name { font-size: 15px; }
+}
+
 /* ---------- Phone ---------- */
 @media (max-width: 760px) {
   body { font-size: 16px; }
@@ -878,7 +966,18 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .send-card { flex: 0 0 auto; }
   #screen-start > * { width: 100%; }
   #screen-start .masthead { width: auto; }
-  #surpriseCard .clip-star { right: -8px; }
+  #surpriseCard .clip-star { right: 0; }
+  /* On a phone each question stacks: its label, its pick full width, its line. */
+  #startMode { grid-template-columns: minmax(0, 1fr); }
+  #countRow, #modeRow, #howPick { grid-area: auto; justify-self: stretch; }
+  /* On a phone each question stacks, tight: its label, its pick (the mode switch full width), its line. */
+  #startMode { row-gap: 10px; }
+  .start-q { grid-template-columns: minmax(0, 1fr); justify-items: center; row-gap: 6px; text-align: center; }
+  .start-ask { justify-self: center; font-size: 19px; }
+  .start-pick { justify-content: center; gap: 6px; }
+  .start-pick .chip { padding: 6px 10px; font-size: 15px; }
+  .start-says { grid-column: 1; font-size: 14px; }
+  #screen-start .start-q .modes-pick { justify-self: stretch; }
   #startActions { justify-content: center; }
   #screen-submit .send-form { padding: 20px 18px 22px; }
   #submitForm { grid-template-columns: minmax(0, 1fr); }
@@ -1008,3 +1107,29 @@ body[data-screen="turn"] #clipReady { display: none; }
   to { translate: 5px 10px; transform: rotate(5deg); }
 }
 @media (max-width: 1100px) { .home-drift { display: none !important; } }
+
+/* ---------- Settings (#screen-settings; logic in settings.ts) ---------- */
+#screen-settings { justify-content: flex-start; gap: 24px; }
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px 26px; width: min(100%, 1080px); text-align: left; }
+.set-card { position: relative; display: grid; gap: 12px; align-content: start; padding: 26px 22px 18px; background: var(--photo); box-shadow: var(--lift); rotate: -.6deg; }
+.set-card:nth-child(even) { rotate: .5deg; }
+.set-card .washi { top: -13px; left: 26px; width: 86px; height: 24px; rotate: -3deg; }
+.set-card h3 { margin: 0; display: flex; align-items: center; gap: 10px; font: 700 26px/1 var(--hand); letter-spacing: -.045em; }
+.set-card h3 .ico { width: 30px; height: 30px; flex: none; }
+.set-card .aside { justify-content: flex-start; text-align: left; color: #6B5A48; }
+.set-card .how { font-size: 15px; }
+/* What Jester saves spans the first row, so it is the first thing anyone opening settings reads. */
+.set-saved { grid-column: 1 / -1; }
+.set-rules .ico { width: 18px; height: 18px; vertical-align: -3px; margin-right: 6px; }
+.set-rules { list-style: none; padding-left: 0; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 44px; font: 400 16px var(--type); cursor: pointer; }
+.set-switch { appearance: none; position: relative; flex: none; width: 58px; height: 32px; margin: 0; border: 3px solid var(--ink); background: var(--photo); box-shadow: 2px 3px 0 var(--shade); cursor: pointer; }
+.set-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: var(--ink); transition: translate .18s var(--ease); }
+.set-switch:checked { background: var(--ticket); }
+.set-switch:checked::after { translate: 26px 0; }
+.set-range { width: 55%; accent-color: var(--pen); }
+.set-select { min-height: 44px; padding: 6px 10px; border: 0; background: #FFFEFA; box-shadow: inset 0 0 0 2px #C9B497; font: 400 16px var(--type); color: var(--ink); }
+:is(.set-switch, .set-range, .set-select):focus-visible { outline: 3px solid var(--pen); outline-offset: 3px; }
+html[data-motion="calm"] .drift-prop { animation: none !important; }
+html[data-motion="full"] .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .set-switch::after { transition: none; } }
