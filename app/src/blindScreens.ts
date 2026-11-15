@@ -1,6 +1,7 @@
 // Plain blind mode screens: a stand-in `BlindUi` on the ids in index.html (#blind and the stage), so the
 // game runs end to end before Aaron's look (app/src/ui/) replaces it. The game itself is in blind.ts.
 
+import { escapeHtml, safeColor } from "./escape.ts";
 import type { BodyPart } from "../../engine/src/index.ts";
 import { demoScene, dribbleScene, runBlindGame, videoScene, type BlindDeps, type BlindUi, type Scene } from "./blind.ts";
 import { Room, broadcastChannelTransport, makeRoomCode, normalizeCode } from "../../spikes/pose-match/rooms.mjs";
@@ -96,7 +97,7 @@ export function initBlindScreens(deps: ScreenDeps) {
       show("turnReveal", false);
       $("turnText").textContent = (role.problem ? role.problem + " " : "") + role.text;
       const select = $<HTMLSelectElement>("turnPart");
-      select.replaceChildren(...role.parts.map((p) => { const o = document.createElement("option"); o.value = p.key; o.textContent = p.label; return o; }));
+      select.innerHTML = role.parts.map((p) => `<option value="${escapeHtml(p.key)}">${escapeHtml(p.label)}</option>`).join("");
       show("turnPartRow", true);
       show("turnStart", true); show("turnPreview", true);
       // Watching once is unscored; Start stays available the whole time.
@@ -126,7 +127,7 @@ export function initBlindScreens(deps: ScreenDeps) {
       $("blindBoard").innerHTML = rows.map((r) => {
         const crown = r.winner ? (r.tied ? " <b>ties for first</b>" : " <b>wins</b>") : "";
         const score = r.score == null ? "no score" : `${r.score} ${r.tier ?? ""}`;
-        return `<tr><td><span class="dot" style="background:${r.color}"></span>${r.name}${crown}</td><td>${r.role} (${r.look === "outline" ? "outline" : "stick figure"})</td><td>${score}</td></tr>`;
+        return `<tr><td><span class="dot" style="background:${safeColor(r.color)}"></span>${escapeHtml(r.name)}${crown}</td><td>${escapeHtml(r.role)} (${r.look === "outline" ? "outline" : "stick figure"})</td><td>${escapeHtml(score)}</td></tr>`;
       }).join("");
     },
     revealReady(url) {
@@ -173,7 +174,7 @@ export function initBlindScreens(deps: ScreenDeps) {
     if (!room) return;
     const host = room.isHost as boolean;
     $("onlineRoster").innerHTML = (room.roster() as { id: string; name: string }[])
-      .map((p) => `<li>${p.name}${p.id === room.hostId ? " (host)" : ""}${p.id === room.me ? " (you)" : ""}</li>`).join("");
+      .map((p) => `<li>${escapeHtml(p.name)}${p.id === room.hostId ? " (host)" : ""}${p.id === room.me ? " (you)" : ""}</li>`).join("");
     show("onlineHostRow", host); show("onlineGuestRow", !host);
     $<HTMLButtonElement>("onlineDeal").disabled = !host || online || !sceneId;
     $("onlineHostRow").title = sceneId ? "" : "Online rooms use Dribble or Dancer and a ball (a picked video stays on this laptop).";
@@ -225,7 +226,7 @@ export function initBlindScreens(deps: ScreenDeps) {
     $("blindBoard").innerHTML = standings.map((r) => {
       const crown = r.score === top && top >= 0 ? (tied ? " <b>ties for first</b>" : " <b>wins</b>") : "";
       const color = PLAYER_COLORS[roles.findIndex((x) => x.name?.startsWith(r.name + " (")) % PLAYER_COLORS.length] ?? "#888";
-      return `<tr><td><span class="dot" style="background:${color}"></span>${r.name}${crown}</td><td>${r.extra?.role ?? ""}</td><td>${r.score ?? "no score"}</td></tr>`;
+      return `<tr><td><span class="dot" style="background:${safeColor(color)}"></span>${escapeHtml(r.name)}${crown}</td><td>${escapeHtml(r.extra?.role ?? "")}</td><td>${escapeHtml(r.score ?? "no score")}</td></tr>`;
     }).join("");
     show("blindTurn", false); show("blindEnd", true);
     show("blindCanvas", true); show("blindVideo", false); show("blindDownload", false);

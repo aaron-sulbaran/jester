@@ -111,3 +111,66 @@ test("ready flags travel, late joiners see them, and allReady needs everyone", a
   b.setReady(false); await tick();
   assert.equal(c.allReady, false);
 });
+
+// ---- sturdier rooms: presence, host handoff, late joiners, clock sync ----
+function clockRoom(bus, id, clock, joinedAt) {
+  const r = new Room({ transport: bus.transport(), code: "STRD", playerId: id, name: id, now: () => clock.t, heartbeatMs: 0 });
+  r.joinedAt = joinedAt; r.players.get(id).joinedAt = joinedAt;
+  return r;
+}
+
+test("someone silent for 10 s is dropped, the round stops waiting for them, and the host role passes on", async () => {
+  const bus = new MemoryBus();
+  const ca = { t: 1000 }, cb = { t: 1000 }, cc = { t: 1000 };
+  const a = clockRoom(bus, "ana", ca, 1), b = clockRoom(bus, "ben", cb, 2), c = clockRoom(bus, "cy", cc, 3);
+  a.join(); b.join(); c.join(); await tick();
+  assert.equal(b.isHost, false);
+  a.start("clip"); await tick();
+  b.submitResult({ score: 70 }); c.submitResult({ score: 60 }); await tick();
+  assert.equal(b.allDone, false);                         // Ana has not finished
+  // Ana's tab closes without saying goodbye (no leave message, she just stops hearing and talking): only Cy keeps pinging
+  a.transport.close();
+  cb.t += 11000; cc.t += 11000;
+  c.tick(); await tick();                                 // Cy's ping reaches Ben, so Ben knows Cy is alive
+  b.tick();                                               // Ben prunes: Ana has been silent for 11 s
+  assert.deepEqual(b.roster().map((p) => p.id), ["ben", "cy"]);
+  assert.equal(b.isHost, true);                           // the next player present is host now
+  assert.equal(b.allDone, true);                          // the round no longer waits for Ana
+});
+
+test("a player who joins during a round sits it out and does not hold it up", async () => {
+  const bus = new MemoryBus();
+  const clock = { t: 1000 };
+  const a = clockRoom(bus, "ana", clock, 1), b = clockRoom(bus, "ben", clock, 2);
+  a.join(); b.join(); await tick();
+  a.start("clip"); await tick();
+  const c = clockRoom(bus, "cy", clock, 3);
+  c.join(); await tick();
+  assert.equal(a.standings().find((r) => r.id === "cy").sittingOut, true);
+  assert.equal(a.standings().find((r) => r.id === "ana").sittingOut, false);
+  a.submitResult({ score: 80 }); b.submitResult({ score: 90 }); await tick();
+  assert.equal(a.allDone, true);
+  assert.equal(b.allDone, true);
+});
+
+test("start in step: a client 40 s ahead of the host still starts at the host's moment", async () => {
+  const bus = new MemoryBus();
+  const ch = { t: 10_000 }, cg = { t: 50_000 };
+  const host = clockRoom(bus, "host", ch, 1), guest = clockRoom(bus, "guest", cg, 2);
+  host.join(); guest.join(); await tick();
+  guest.tick(); await tick(); await tick();               // ping out, reply back
+  assert.ok(Math.abs(guest.offset - (10_000 - 50_000)) < 1, "offset " + guest.offset);
+  const round = host.start("clip", 3000);                 // 13_000 on the host's clock
+  await tick();
+  assert.equal(round.startAt, 13_000);
+  assert.equal(guest.round.startAt, 53_000);              // 3 s from now on the guest's clock too
+});
+
+test("leaving stops the heartbeat", () => {
+  const bus = new MemoryBus();
+  const r = new Room({ transport: bus.transport(), code: "STOP", playerId: "x", now: () => 1, heartbeatMs: 50 });
+  r.join();
+  assert.ok(r.timer);
+  r.leave();
+  assert.equal(r.timer, null);
+});
