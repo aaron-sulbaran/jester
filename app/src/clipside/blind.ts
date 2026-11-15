@@ -2,7 +2,7 @@
 // comparing, the old stick figure); a thing is its outline. Behind them a stage, or the old plain background.
 // Placement comes from `placeSubject` in ../../../clip.
 
-import { boneLengths, boxFromLandmarks, bodyTurns, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
+import { boneLengths, boxFromLandmarks, bodyTurns, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
 import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
 
@@ -84,25 +84,37 @@ export function puppetClip(guide: Guide): PuppetClip {
 }
 
 const drawn = new WeakMap<Guide, Guide>();
+const steadied = new WeakMap<Guide, Guide>();
 
 /**
- * The guide as the puppet draws it: the tracker's jitter softened, one-frame spikes removed and short gaps
- * filled (the engine's `smoothTimeline`), its depth softened the same way. Only for drawing: the scorer
- * reads the guide as it is.
+ * The guide as the puppet draws it: its depth softened (the engine's `smoothTimeline`, which nothing else
+ * applies to depth). The pose itself is smoothed once, by whoever made the guide (blind mode's steadyRole,
+ * or `steadyGuide` in the labs), never twice here. Only for drawing: the scorer reads the guide as it is.
  */
 export function drawingGuide(guide: Guide): Guide {
   const kept = drawn.get(guide);
   if (kept) return kept;
-  if (!guide.timeline) { drawn.set(guide, guide); return guide; }
-  const timeline = smoothTimeline(guide.timeline);
   let depths = guide.depths;
-  if (depths && depths.length === guide.timeline.frames.length) {
-    // Depth goes through the same smoother, carried in the x of a stand-in timeline.
+  if (guide.timeline && depths && depths.length === guide.timeline.frames.length) {
+    // Depth goes through the smoother carried in the x of a stand-in timeline.
     const asTimeline = { ...guide.timeline, frames: guide.timeline.frames.map((f, i) => ({ tMs: f.tMs, landmarks: depths![i]?.map((z): Landmark => [z, 0, 1]) ?? null })) };
     depths = smoothTimeline(asTimeline).frames.map((f) => f.landmarks?.map((l) => l[0]) ?? null);
   }
-  const out: Guide = { ...guide, timeline, ...(depths ? { depths } : {}) };
+  const out: Guide = depths === guide.depths ? guide : { ...guide, depths };
   drawn.set(guide, out);
+  return out;
+}
+
+/**
+ * For pages that draw a guide straight from the clip side (the labs): the pose made steady the way blind
+ * mode makes its roles, smoothed once (the engine's `smoothTimeline`) and with joints the tracker stays unsure
+ * of hidden (`hideUnsureJoints`). Blind mode does this itself, so the game never calls it.
+ */
+export function steadyGuide(guide: Guide): Guide {
+  const kept = steadied.get(guide);
+  if (kept) return kept;
+  const out = guide.timeline ? { ...guide, timeline: hideUnsureJoints(smoothTimeline(guide.timeline)) } : guide;
+  steadied.set(guide, out);
   return out;
 }
 

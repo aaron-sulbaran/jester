@@ -283,44 +283,63 @@ class Figure {
         this.place(this.joints[s + "pompom"]!, tip, T * 0.065, undefined, undefined, undefined, ink);
       }
     }
-    // The torso: an egg from the hips to the shoulders, as wide as the shoulders, half a torso deep.
-    const ls = j(11), rs = j(12), lh = j(23), rh = j(24);
-    if (ls && rs && lh && rh) {
-      const sm = ls.clone().add(rs).multiplyScalar(0.5), hm = lh.clone().add(rh).multiplyScalar(0.5);
-      const y = sm.clone().sub(hm), height = y.length();
+    // The torso: an egg from the hips to the shoulders, as wide as the shoulders, half a torso deep. A joint
+    // the tracker stays unsure of is hidden (missing here); the body stands in for it rather than vanish or
+    // jump: a missing shoulder or hip mirrors its partner, missing hips hang a torso below the shoulders.
+    const down = new Vector3(0, -1, 0);
+    let ls = j(11), rs = j(12), lh = j(23), rh = j(24);
+    const mirror = (a: Vector3 | null, b: Vector3 | null, aPair: Vector3 | null, bPair: Vector3 | null): [Vector3 | null, Vector3 | null] => {
+      if (a && b) return [a, b];
+      if (a && aPair && bPair) return [a, a.clone().sub(aPair).add(bPair)];
+      if (b && aPair && bPair) return [b.clone().sub(bPair).add(aPair), b];
+      return [a, b];
+    };
+    [ls, rs] = mirror(ls, rs, lh, rh);
+    [lh, rh] = mirror(lh, rh, ls, rs);
+    let sm: Vector3 | null = ls && rs ? ls.clone().add(rs).multiplyScalar(0.5) : null;
+    let hm: Vector3 | null = lh && rh ? lh.clone().add(rh).multiplyScalar(0.5) : null;
+    if (sm && !hm) hm = sm.clone().add(down.clone().multiplyScalar(T));
+    if (!sm && hm) sm = hm.clone().sub(down.clone().multiplyScalar(T));
+    let y = UP.clone();
+    if (sm && hm) {
+      y = sm.clone().sub(hm);
+      const height = Math.max(y.length(), T * 0.5);
       y.normalize();
-      const x = ls.clone().sub(rs);
+      const x = ls && rs ? ls.clone().sub(rs) : lh && rh ? lh.clone().sub(rh) : new Vector3(1, 0, 0);
       x.sub(y.clone().multiplyScalar(x.dot(y)));
       if (x.lengthSq() < 1e-6) x.set(1, 0, 0);
       x.normalize();
       const z = x.clone().cross(y).normalize();
       const q = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z));
-      const width = Math.max(ls.distanceTo(rs), T * 0.6) * 0.55;
+      const width = Math.max(ls && rs ? ls.distanceTo(rs) : T * 0.7, T * 0.6) * 0.55;
       this.place(this.joints.torso!, sm.clone().lerp(hm, 0.48), width, height * 0.62, T * 0.3, q, ink);
       // A soft white collar round the neck: a flattened ball, tipped toward us so it reads from the front.
       const tip = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.35);
       this.place(this.joints.ruff!, sm.clone().add(y.clone().multiplyScalar(T * 0.04)), width * 0.78, T * 0.13, T * 0.36, q.clone().multiply(tip), ink);
-      // The head sits on the neck, leaning with it, turned to face where the body faces.
-      const ears = [j(7), j(8)].filter((p): p is Vector3 => !!p);
-      const headAt = ears.length === 2 ? ears[0]!.clone().add(ears[1]!).multiplyScalar(0.5) : ears[0] ?? j(0) ?? sm.clone().add(y.clone().multiplyScalar(T * 0.55));
-      headAt.z = sm.z;
-      const neck = headAt.clone().sub(sm);
-      const lean = neck.lengthSq() > 1e-6 ? new Vector3(neck.x, neck.y, 0).normalize() : y;
-      const radius = T * 0.5;
-      this.head.visible = true;
-      this.head.position.copy(headAt.add(lean.clone().multiplyScalar(radius * 0.1)));
-      this.head.quaternion.setFromUnitVectors(UP, lean).multiply(new Quaternion().setFromAxisAngle(UP, facing));
-      this.head.scale.setScalar(radius);
-      // Inside the head everything is in head radii, so the outline is the ink over the radius.
-      const hullInk = ink / radius;
-      if (Math.abs(hullInk - this.hullInk) > 0.015) this.rebuildHulls(hullInk);
-      this.place(this.headParts.skull!, new Vector3(), 1, 1, 1, undefined, this.hullInk);
-      const cover = 0.42 + (0.86 - 0.42) * (1 - Math.min(1, Math.max(0, face)));
-      const capGeo = this.capGeometry(cover);
-      this.cap.fill.geometry = capGeo; this.cap.hull.geometry = capGeo;
-      this.place(this.cap, new Vector3(), 1, 1, 1, undefined, this.hullInk);
-      for (const h of this.horns) { h.part.fill.visible = h.part.hull.visible = true; h.bell.fill.visible = h.bell.hull.visible = true; }
     }
+    // The head sits on the neck, leaning with it, turned to face where the body faces. Without a body it
+    // still shows where the ears or nose are.
+    const ears = [j(7), j(8)].filter((p): p is Vector3 => !!p);
+    const found = ears.length === 2 ? ears[0]!.clone().add(ears[1]!).multiplyScalar(0.5) : ears[0] ?? j(0) ?? (sm ? sm.clone().add(y.clone().multiplyScalar(T * 0.55)) : null);
+    if (!found) return;
+    const headAt = found.clone();
+    if (sm) headAt.z = sm.z;
+    const neck = sm ? headAt.clone().sub(sm) : new Vector3();
+    const lean = neck.lengthSq() > 1e-6 ? new Vector3(neck.x, neck.y, 0).normalize() : y;
+    const radius = T * 0.5;
+    this.head.visible = true;
+    this.head.position.copy(headAt.add(lean.clone().multiplyScalar(radius * 0.1)));
+    this.head.quaternion.setFromUnitVectors(UP, lean).multiply(new Quaternion().setFromAxisAngle(UP, facing));
+    this.head.scale.setScalar(radius);
+    // Inside the head everything is in head radii, so the outline is the ink over the radius.
+    const hullInk = ink / radius;
+    if (Math.abs(hullInk - this.hullInk) > 0.015) this.rebuildHulls(hullInk);
+    this.place(this.headParts.skull!, new Vector3(), 1, 1, 1, undefined, this.hullInk);
+    const cover = 0.42 + (0.86 - 0.42) * (1 - Math.min(1, Math.max(0, face)));
+    const capGeo = this.capGeometry(cover);
+    this.cap.fill.geometry = capGeo; this.cap.hull.geometry = capGeo;
+    this.place(this.cap, new Vector3(), 1, 1, 1, undefined, this.hullInk);
+    for (const h of this.horns) { h.part.fill.visible = h.part.hull.visible = true; h.bell.fill.visible = h.bell.hull.visible = true; }
   }
 
   /** Head-space outlines are in head radii; when the head's size changes a lot, their thickness follows. */

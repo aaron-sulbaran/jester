@@ -3,7 +3,7 @@
 // built here, with the tracker's depth or without it. Dev only.
 
 import { boxFromLandmarks, type Guide } from "../../clip/src/index.ts";
-import { blindView, drawBlindBackground, drawBlindSubject, guidePoseAt, guideSliceAt, type BlindStyle } from "./clipside/blind.ts";
+import { blindView, drawBlindBackground, drawBlindSubject, guidePoseAt, guideSliceAt, steadyGuide, type BlindStyle } from "./clipside/blind.ts";
 import { CONSTRUCTIONS, type Construction, type StageLook } from "./clipside/puppet.ts";
 
 const W = 1280, H = 720, HZ = 15, DURATION_S = 12, ASPECT = W / H, SCALE = 0.45;
@@ -98,7 +98,8 @@ function dancerGuide(withDepth: boolean): Guide {
   };
 }
 
-const guides = { depth: dancerGuide(true), flat: dancerGuide(false) };
+// Made steady once, as blind mode does with its roles.
+const guides = { depth: steadyGuide(dancerGuide(true)), flat: steadyGuide(dancerGuide(false)) };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const colorPick = $<HTMLSelectElement>("color"), depthBox = $<HTMLInputElement>("depth"), pauseBox = $<HTMLInputElement>("pause");
 const timeSlider = $<HTMLInputElement>("time");
