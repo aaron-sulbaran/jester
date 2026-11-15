@@ -401,7 +401,10 @@ export function drawPuppet3d(ctx: CanvasRenderingContext2D, frame: Puppet3dFrame
   camera.left = 0; camera.right = w; camera.top = 0; camera.bottom = -h;
   camera.updateProjectionMatrix();
   const T = frame.torso;
-  const ink = Math.max(3, T * 0.065);
+  // Lines are drawn in canvas pixels but must read on screen: on a phone the guide's 640 px canvas shows about
+  // 118 px wide, so the outline keeps at least 2.5 screen pixels and the white edge 3.
+  const perCssPx = ctx.canvas.clientWidth > 0 ? ctx.canvas.width / ctx.canvas.clientWidth : 1;
+  const ink = Math.max(3, T * 0.065, 2.5 * perCssPx);
   // Three's world: y up and z toward the camera.
   const world = frame.lifted.joints.map((p: Vec3 | null) => (p ? new Vector3(p[0], -p[1], -p[2]) : null));
   figure.pose(world, frame.lifted.facing, frame.turn.face, T, ink, frame.suit);
@@ -413,7 +416,7 @@ export function drawPuppet3d(ctx: CanvasRenderingContext2D, frame: Puppet3dFrame
   if (!layer) { layer = document.createElement("canvas"); layers.set(ctx.canvas, layer); }
   if (layer.width !== w || layer.height !== h) { layer.width = w; layer.height = h; }
   const l = layer.getContext("2d")!;
-  const rim = Math.max(3, T * 0.07);
+  const rim = Math.max(3, T * 0.07, 3 * perCssPx);
   l.globalCompositeOperation = "source-over";
   l.clearRect(0, 0, w, h);
   for (let k = 0; k < 16; k++) {

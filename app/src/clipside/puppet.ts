@@ -78,15 +78,16 @@ function mix(color: string, toward: string, t: number): string {
 
 /**
  * The jester colourways players pick from beside their names, each a two-colour suit like the jester
- * sprites. The first four are the skin's player colours (--p1 to --p4) with the partners the sprites give
- * them (art/jester/jester.py, PLAYERS), so the face badges still match. The rest: --stamp with --gold,
+ * sprites. The first four are the skin's player colours (--p1 to --p4) with exactly the partners the sprites
+ * give them (art/jester/jester.py, PLAYERS: p1 F47FA6/6B2FB3, p2 4F7BF0/FFC93C, p3 FFC93C/D4243A, p4
+ * 3FBF8F/4F7BF0), so each seat's guide matches its crowning jester. The rest: --stamp with --gold,
  * orange (half --stamp, half --ticket) with --pen, and the jester art's purple with --gold. (The classic
  * purple and red together stay the host's.)
  */
 export const JESTER_COLOURS: readonly { name: string; main: string; second: string }[] = [
   { name: "Pink", main: "#F47FA6", second: "#6B2FB3" },
   { name: "Blue", main: "#4F7BF0", second: "#FFC93C" },
-  { name: "Yellow", main: "#FFC93C", second: "#D93A2B" },
+  { name: "Yellow", main: "#FFC93C", second: "#D4243A" },
   { name: "Green", main: "#3FBF8F", second: "#4F7BF0" },
   { name: "Red", main: "#D93A2B", second: "#F4BE1A" },
   { name: "Orange", main: "#EC8234", second: "#2848C8" },
