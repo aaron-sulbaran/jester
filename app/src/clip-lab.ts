@@ -5,7 +5,7 @@
 
 import type { Box, Guide, Placement, View } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
-import { finishClip, prepareClip, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
+import { finishClip, prepareClip, subjectGuides, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
 import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
@@ -18,6 +18,8 @@ interface LabSummary {
   seconds: number;
   saved: "saved" | "fresh" | null;
   warnings: string[];
+  /** What blind mode would get from subjectGuides: one guide per playable person. */
+  roles: { guides: string[]; skipped: { number: number; reason: string }[] } | null;
   error: string | null;
   guide: { label: string; range: Guide["range"]; channel: Guide["channel"]; pace: Guide["pace"]; keyMoments: number; timelineFrames: number; outlineFrames: number } | null;
 }
@@ -231,16 +233,25 @@ async function run(file: File) {
     seconds,
     saved: result.data ? (result.data.fromSaved ? "saved" : "fresh") : null,
     warnings: result.data?.warnings ?? [],
+    roles: null,
     error: result.error,
     guide: null,
   };
+  if (result.data) {
+    const roles = subjectGuides(result.data);
+    summary.roles = { guides: roles.guides.map((g) => g.subject.label), skipped: roles.skipped };
+  }
   window.__clipLab = summary;
+  const roleText = summary.roles
+    ? [`${summary.roles.guides.length}`, ...summary.roles.skipped.map((s) => `Person ${s.number} skipped: ${s.reason}`)].join("; ")
+    : "none";
   showFacts([
     ["File", file.name],
     ["Decoder", summary.decoder ?? "not known"],
     ["Frames analysed", String(summary.frames)],
     ["People found", String(summary.candidates.length)],
     ["Cuts", String(summary.cuts.length)],
+    ["Blind mode roles", roleText],
     ["Seconds taken", String(seconds)],
     ["Result", summary.saved ?? "not saved"],
   ]);

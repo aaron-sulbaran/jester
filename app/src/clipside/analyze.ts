@@ -145,11 +145,24 @@ export function finishClip(prepared: Prepared, trackId: number): Result<Guide> {
   };
 }
 
-/** A guide for every candidate, best first. Blind mode gives each player one subject, so it needs them all. */
+const OTHER_SHOT = "This person is in a different shot of the clip.";
+
+/**
+ * A guide for every person in the clip, best first. Blind mode gives each player one subject and
+ * plays them all over the same stretch of the clip, so every guide comes from the top person's shot
+ * and shares its `range`; with no cuts that is everyone. People in other shots, and people a guide
+ * cannot be made for, go to `skipped` with the sentence why.
+ */
 export function subjectGuides(prepared: Prepared): { guides: Guide[]; skipped: { number: number; reason: string }[] } {
   const guides: Guide[] = [];
   const skipped: { number: number; reason: string }[] = [];
+  const shotOf = (trackId: number) => prepared.tracks.find((t) => t.id === trackId)?.shot;
+  const mainShot = prepared.candidates[0] ? shotOf(prepared.candidates[0].trackId) : undefined;
   for (const candidate of prepared.candidates) {
+    if (shotOf(candidate.trackId) !== mainShot) {
+      skipped.push({ number: candidate.number, reason: OTHER_SHOT });
+      continue;
+    }
     const result = finishClip(prepared, candidate.trackId);
     if (result.error !== null) skipped.push({ number: candidate.number, reason: result.error });
     else guides.push(result.data);
