@@ -12,6 +12,7 @@
 // uploaded. Blind mode's reveal reuses this.
 
 import type { BodyPart, LandmarkObject } from "../../engine/src/index.ts";
+import { soundTrack } from "./sound.ts";
 
 /** A binary person mask, as Lisa's tracker gives it: 0/1 per cell over the whole camera image. */
 export interface PersonMask { width: number; height: number; data: Uint8Array }
@@ -346,10 +347,14 @@ export interface Segment {
  * pauses while a segment's clock gets ready (a video seeking), so no dead frames land in the file.
  * Resolves with a video URL, or null if this browser cannot record (the segments still play).
  */
-export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void, control?: PlaybackControl): Promise<string | null> {
+export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void, control?: PlaybackControl, sound?: HTMLMediaElement | null): Promise<string | null> {
   const ctx = canvas.getContext("2d")!;
   const stream = typeof canvas.captureStream === "function" ? canvas.captureStream(30) : null;
-  const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
+  // The clip's own sound goes into the file too, whenever the browser lets it be tapped.
+  const track = stream && sound ? await soundTrack(sound) : null;
+  if (stream && track) stream.addTrack(track);
+  const types = track ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"] : ["video/webm;codecs=vp9", "video/webm", "video/mp4"];
+  const type = types.find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
   const recorder = stream && type ? new MediaRecorder(stream, { mimeType: type }) : null;
   const chunks: Blob[] = [];
   const total = segments.reduce((sum, seg) => sum + seg.durationMs, 0) || 1;

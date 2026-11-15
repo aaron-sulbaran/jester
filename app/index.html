@@ -8,7 +8,7 @@
 </head>
 <body data-screen="start">
   <!-- Shared media elements: the clip being read and the player's camera. Never shown directly. -->
-  <video id="clip" class="media" playsinline muted></video>
+  <video id="clip" class="media" playsinline></video>
   <video id="cam" class="media" playsinline muted></video>
 
   <!-- Paper bits used everywhere: sticker edges, a gold star. -->
@@ -237,7 +237,7 @@
         <h2 class="wins" id="resultsHeadline"></h2>
       </div>
       <div class="results-grid">
-        <div class="print film"><video id="resultsVideo" playsinline muted loop controls hidden></video><span class="washi w-dots" aria-hidden="true"></span></div>
+        <div class="print film"><video id="resultsVideo" playsinline loop controls hidden></video><span class="washi w-dots" aria-hidden="true"></span></div>
         <ol class="podium" id="podium"></ol>
       </div>
       <div class="row-actions">

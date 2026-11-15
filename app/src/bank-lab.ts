@@ -107,9 +107,9 @@ async function useFolder(handle: FileSystemDirectoryHandle) {
   dir = handle;
   await rememberFolder(handle);
   $("reuseFolder").classList.add("hidden");
-  // jester-deploy/bank is copied into every deploy of the public site; the private bank never leaves this laptop.
-  if (handle.name === "bank") say("folderStatus", `Writing to "bank". If this is jester-deploy/bank, everything added here goes out with the next deploy of the public site. For clips saved from TikTok or Instagram, pick jester-private-bank instead.`, "bad");
-  else say("folderStatus", `Writing to the folder "${handle.name}".`, "good");
+  // jester-deploy/bank is copied into every deploy of the public site; jester-private-bank stays on this laptop.
+  const deploys = handle.name === "bank" ? " If this is jester-deploy/bank, it goes out with the next deploy of the public site." : "";
+  say("folderStatus", `Writing to the folder "${handle.name}".${deploys}`, "good");
   syncButtons();
   await showBank();
 }
