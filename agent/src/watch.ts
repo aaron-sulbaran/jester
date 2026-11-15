@@ -10,11 +10,10 @@
 // which shows up as its own trace, tagged "watch". It runs on a laptop with agent/.env.local, never on the site.
 
 // Imported first: it decides what LangSmith may keep before any client exists.
-import { TRACING } from "./tracing.ts";
+import { shapeOnlyClient, TRACING } from "./tracing.ts";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Client } from "langsmith";
 import { getCurrentRunTree, traceable } from "langsmith/traceable";
 import { SCORER_VERSION } from "../../engine/src/index.ts";
 import { judge, rescore, type Rescored } from "../../eval/src/judge.ts";
@@ -23,6 +22,7 @@ import { currentEngineHash, isFrozen, loadCases, loadDataRounds, localRoundIds, 
 import { fetchRecords, listRoundIds, settings } from "../../eval/src/supabase.ts";
 import type { RoundRecord } from "../../eval/src/record.ts";
 import { missingKeys } from "./models.ts";
+import { isRealPlayer, mayRead, MODE_LINE } from "./real-rounds.ts";
 
 // ---- Options ----
 
@@ -55,10 +55,27 @@ const STATE_FILE = join(WORKSPACE, "watch-state.json");
 interface CoachRun { at: string; cases: number; costUsd: number | null; exitCode: number | null; report: string | null }
 interface State { looked: string[]; coachRuns: CoachRun[] }
 mkdirSync(WORKSPACE, { recursive: true });
-const state: State = existsSync(STATE_FILE) ? (JSON.parse(readFileSync(STATE_FILE, "utf8")) as State) : { looked: [], coachRuns: [] };
+/** The saved state, or a fresh one when the file is missing or damaged (a damaged file is kept beside it as .bad). */
+function loadState(): State {
+  if (!existsSync(STATE_FILE)) return { looked: [], coachRuns: [] };
+  try {
+    const s = JSON.parse(readFileSync(STATE_FILE, "utf8")) as Partial<State>;
+    if (Array.isArray(s.looked) && s.looked.every((id) => typeof id === "string") && Array.isArray(s.coachRuns)) return { looked: s.looked, coachRuns: s.coachRuns };
+  } catch {
+    // falls through to a fresh state
+  }
+  renameSync(STATE_FILE, STATE_FILE + ".bad");
+  console.log(`The saved watch state was damaged; kept it as ${STATE_FILE}.bad and started fresh.`);
+  return { looked: [], coachRuns: [] };
+}
+const state = loadState();
 /** Failing case ids that a coach run has already been given (or that --baseline set aside). */
 const looked = new Set(state.looked);
-const save = () => writeFileSync(STATE_FILE, JSON.stringify({ looked: [...looked].sort(), coachRuns: state.coachRuns }, null, 2));
+/** Writes the state to a temporary file first, so an interrupted write never leaves a damaged file. */
+const save = () => {
+  writeFileSync(STATE_FILE + ".tmp", JSON.stringify({ looked: [...looked].sort(), coachRuns: state.coachRuns }, null, 2));
+  renameSync(STATE_FILE + ".tmp", STATE_FILE);
+};
 
 // ---- Scoring, kept in memory so each check only scores what is new ----
 
@@ -77,9 +94,22 @@ function failuresOf(fresh: readonly Rescored[], all: readonly Rescored[]) {
   };
 }
 
+/** Tagged rounds are judged against other rounds (a "nailed" round sets the bar for its clip), so a new round can change an old verdict. */
+function rejudgeTagged(all: readonly Rescored[], failing: Set<string>) {
+  for (const it of all) {
+    if (it.record.tag === null) continue;
+    if (judge(it, all)?.holds === false) failing.add(it.record.id);
+    else failing.delete(it.record.id);
+  }
+}
+
 const engineHash = currentEngineHash();
 console.log(`${clock()}  Scoring every round on ${SCORER_VERSION} once (about a minute)...`);
-const items: Rescored[] = [...loadCases().rounds, ...loadDataRounds().rounds.filter((r) => !isFrozen(r.id))].map(toItem);
+console.log(MODE_LINE);
+const everyRound = [...loadCases().rounds, ...loadDataRounds().rounds.filter((r) => !isFrozen(r.id))];
+const items: Rescored[] = everyRound.filter(mayRead).map(toItem);
+const keptLocal = everyRound.length - items.length;
+if (keptLocal) console.log(`${clock()}  ${keptLocal} real players' rounds stay on this laptop, unread by the agent.`);
 const first = failuresOf(items, items);
 let derivedCount = first.derived;
 const failing = new Set(first.failing);
@@ -89,22 +119,29 @@ console.log(`${clock()}  ${items.length} rounds, ${derivedCount} derived cases, 
 
 // ---- One check ----
 
-type Pulled = { data: RoundRecord[]; error: null } | { data: null; error: string };
+/** What was downloaded and saved, even when a later batch failed, plus the error if any. */
+type Pulled = { data: RoundRecord[]; error: string | null };
 
 /** Downloads the rounds in Supabase that this laptop does not have yet into eval/data/rounds. */
 async function pull(): Promise<Pulled> {
   const s = await settings();
-  if (s.error !== null) return { data: null, error: s.error };
+  if (s.error !== null) return { data: [], error: s.error };
   const ids = await listRoundIds(s.data);
-  if (ids.error !== null) return { data: null, error: ids.error };
+  if (ids.error !== null) return { data: [], error: ids.error };
   const have = localRoundIds();
   const fresh: RoundRecord[] = [];
   const got = await fetchRecords(s.data, ids.data.filter((id) => !have.has(id)), (r) => {
     if (saveDataRound(r)) fresh.push(r);
   });
-  if (got.error !== null) return { data: null, error: got.error };
-  return { data: fresh.filter((r) => r.mode !== "selftest"), error: null };
+  // Rounds saved before a failed batch are kept and scored now; the next pull would skip them otherwise.
+  return { data: fresh.filter((r) => r.mode !== "selftest"), error: got.error };
 }
+
+/** A run that ends without printing its cost counts as this much against the budget, so a crash never spends for free. */
+const UNKNOWN_RUN_COST_USD = 2;
+/** A coach run that takes longer than this is stopped. */
+const COACH_TIMEOUT_MS = 30 * 60_000;
+const REPO_DIR = join(AGENT_DIR, "..");
 
 /** Runs `npm run coach` with a question about these cases, streams its output, and reads its cost and report path. */
 function runCoach(cases: string[], newRounds: string[], watchRunId: string | undefined): Promise<CoachRun> {
@@ -123,36 +160,46 @@ function runCoach(cases: string[], newRounds: string[], watchRunId: string | und
       stdio: ["ignore", "pipe", "inherit"],
     });
     let out = "";
+    let done = false;
+    const finish = (code: number | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      // The last match: the totals line is printed once, at the very end.
+      const cost = [...out.matchAll(/Total about \$([\d.]+)/g)].at(-1);
+      const report = [...out.matchAll(/Report: (agent\/workspace\/reports\/\S+?\.md)/g)].at(-1)?.[1] ?? null;
+      // The coach prints the report path before it starts, so only a file that exists after the run counts.
+      const written = report !== null && existsSync(join(REPO_DIR, report));
+      resolve({ at: new Date().toISOString(), cases: cases.length, costUsd: cost ? Number(cost[1]) : null, exitCode: code, report: written ? report : null });
+    };
+    const timer = setTimeout(() => { console.log(`${clock()}  The coach ran past ${COACH_TIMEOUT_MS / 60_000} minutes; stopping it.`); child.kill("SIGTERM"); }, COACH_TIMEOUT_MS);
+    child.on("error", (e) => { console.log(`${clock()}  The coach could not start: ${e.message}`); finish(null); });
     child.stdout.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       out += text;
       process.stdout.write(text.replace(/^(?=.)/gm, "    coach | "));
     });
-    child.on("close", (code) => {
-      const cost = /Total about \$([\d.]+)/.exec(out);
-      const report = /Report: (\S+?\.md)/.exec(out);
-      resolve({ at: new Date().toISOString(), cases: cases.length, costUsd: cost ? Number(cost[1]) : null, exitCode: code, report: report?.[1] ?? null });
-    });
+    child.on("close", (code) => finish(code));
   });
 }
 
-// The checks' own runs hold counts only (no round ids, no scores), so this client shows them as they are.
-const client = new Client({ hideInputs: false, hideOutputs: false });
+// Checks are traced through the same shape-only client as the coach; their outputs are counts under `watchCounts`.
+const client = shapeOnlyClient;
 let spentUsd = 0;
 let lastCoachAt = 0;
 
 const check = traceable(
   async (input: { roundsBefore: number; scorerVersion: string }) => {
     const pulled = await pull();
-    if (pulled.error !== null) {
-      console.log(`${clock()}  Could not pull rounds: ${pulled.error}`);
-      return { error: "could not pull rounds", ...input };
-    }
-    const fresh = pulled.data.map(toItem);
+    // A failed pull still scores what arrived, and the local cases still get their coach run.
+    if (pulled.error !== null) console.log(`${clock()}  Pulling rounds failed (${pulled.error}); going on with ${pulled.data.length} that arrived.`);
+    const fresh = pulled.data.filter(mayRead).map(toItem);
+    const freshReal = pulled.data.filter(isRealPlayer).length;
     items.push(...fresh);
     const found = failuresOf(fresh, items);
     derivedCount += found.derived;
     for (const id of found.failing) failing.add(id);
+    if (fresh.some((f) => f.record.tag !== null)) rejudgeTagged(items, failing);
     const notLooked = [...failing].filter((id) => !looked.has(id)).sort();
     const engineChanged = currentEngineHash() !== engineHash;
 
@@ -164,10 +211,11 @@ const check = traceable(
       else if (waitMinutes > 0) coach = `waits ${Math.ceil(waitMinutes)} more minutes (gap between coach runs)`;
       else {
         console.log(`${clock()}  ${notLooked.length} failing cases no coach run has seen: starting the referee coach.`);
-        lastCoachAt = Date.now();
         const run = await runCoach(notLooked, fresh.map((f) => f.record.id), getCurrentRunTree(true)?.id);
-        spentUsd += run.costUsd ?? 0;
-        // Cases count as looked at once a report exists; a crashed run leaves them for the next one (the gap and budget still apply).
+        // The gap runs from the end of a coach run, so a long run does not use up its own cooldown.
+        lastCoachAt = Date.now();
+        spentUsd += run.costUsd ?? UNKNOWN_RUN_COST_USD;
+        // Cases count as looked at only when the report file exists; otherwise the next run gets them (gap and budget still apply).
         if (run.report) for (const id of notLooked) looked.add(id);
         state.coachRuns.push(run);
         save();
@@ -187,9 +235,11 @@ const check = traceable(
       engineChanged,
     };
     const coachText = typeof coach === "string" ? coach : `ran, about ${coach.costUsd ?? "?"} USD, report ${coach.report ?? "missing"}`;
+    if (freshReal && fresh.length < pulled.data.length) console.log(`${clock()}  ${freshReal} new real players' rounds stay on this laptop, unread by the agent.`);
     console.log(`${clock()}  ${fresh.length} new rounds (${items.length} in all), ${found.failing.length} newly failing, ${summary.notLookedAt} not looked at. Coach: ${coachText}.`);
     if (engineChanged) console.log(`${clock()}  The engine files changed on disk. Restart npm run watch to score every round with them.`);
-    return summary;
+    // Numbers only reach LangSmith: the shape-only client keeps `watchCounts` and drops every string.
+    return { watchCounts: { pullFailed: pulled.error === null ? 0 : 1, newRounds: summary.newRounds, rounds: summary.rounds, derivedCases: summary.derivedCases, notHolding: summary.notHolding, newlyFailing: summary.newlyFailing, notLookedAt: summary.notLookedAt, coachRuns: state.coachRuns.length, coachSpendUsd: summary.coachSpendUsd } };
   },
   { name: "watch check", run_type: "chain", client, tags: ["watch"], metadata: { scorerVersion: SCORER_VERSION, engineHash } },
 );

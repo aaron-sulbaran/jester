@@ -16,6 +16,7 @@ import { todoListMiddleware, type HITLRequest } from "langchain";
 import { Command, MemorySaver } from "@langchain/langgraph";
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import { costUsd, missingKeys, orchestratorModel, subagentModel, usage } from "./models.ts";
+import { MODE_LINE, SEND_REAL_PLAYER_ROUNDS } from "./real-rounds.ts";
 import {
   WORKSPACE, checkNumbersTool, engineConstantsTool, evalSummaryTool, getRoundTool, overlaySummaryTool, proposeConstantsChangeTool, replayWithTool, toolCalls, unsupportedNumbers,
 } from "./tools.ts";
@@ -36,7 +37,7 @@ const SYSTEM = `You are the referee coach for Jester, a party game built at Hack
 
 Your job has two parts. You advise; you change nothing.
 A. Scoring: find where the scorer's behaviour and these expectations disagree, explain why with evidence, and say what, if anything, should change. This part is for Alex.
-B. The overlay: during a round the game shows the subject's outline on the mirrored camera view, and an outline fit (0 to 100, shown to players, not scored) with hints to step closer or back and move left or right. Use overlay_summary to find, per clip, whether camera players can line up with it, and whether a hint most players share points at the overlay's size or place for that clip, or at how laptop cameras frame people, rather than at the players. Simulated rounds always line up perfectly and say nothing here. This part is for the team that owns the game screens.
+B. The overlay: during a round the game shows the subject's outline on the mirrored camera view, and an outline fit (0 to 100, shown to players, not scored) with hints to step closer or back and move left or right. Use overlay_summary to find, per clip, whether camera players can line up with it, and whether a hint most players share points at the overlay's size or place for that clip, or at how laptop cameras frame people, rather than at the players. Simulated rounds always line up perfectly and say nothing here. This part is for the team that owns the game screens.${SEND_REAL_PLAYER_ROUNDS ? "" : "\n\nIn this run only the simulated stand-in player's rounds and the cases derived from them are available; real players' rounds are off. Say so in the report's Summary, and write \"not measured\" for the overlay part."}
 
 Hard rules:
 1. You never score anything and never invent a number. Every number you write must come from a tool result in this run. If no tool answers a question, write "not measured".
@@ -118,6 +119,7 @@ const config = {
 };
 const started = Date.now();
 console.log(`Referee coach: Opus 5.5 orchestrator, ${investigator.name} subagents. Report: agent/workspace${reportPath}`);
+console.log(MODE_LINE);
 
 let result = await agent.invoke({ messages: [{ role: "user", content: task }] }, config);
 

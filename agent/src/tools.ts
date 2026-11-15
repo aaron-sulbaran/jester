@@ -8,12 +8,17 @@ import { join } from "node:path";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { SCORER_VERSION, constants, type PoseRoundResult, type TrajectoryRoundResult } from "../../engine/src/index.ts";
-import { clipName, judge, rescore, setConstant, type Rescored, type Verdict } from "../../eval/src/judge.ts";
+import { judge, rescore, setConstant, type Rescored, type Verdict } from "../../eval/src/judge.ts";
 import { deriveAll, deriveCase, TRANSFORMS, type Transform } from "../../eval/src/derive.ts";
 import { isFrozen, loadCases, loadDataRounds } from "../../eval/src/store.ts";
 import { unpackPose, type AnyPackedPose } from "../../eval/src/record.ts";
+import { mayRead, SEND_REAL_PLAYER_ROUNDS } from "./real-rounds.ts";
 
 export const WORKSPACE = join(import.meta.dirname, "..", "workspace");
+
+/** The clip as the agent sees it: the bank id and subject label, or a short hash. Never a title, which could name a person or a channel. */
+const clipName = (r: Rescored["record"]): string =>
+  r.clip.bankId ? r.clip.bankId + (r.clip.subject ? ` (${r.clip.subject})` : "") : "clip " + r.clip.key.slice(0, 8);
 
 // ---- What every tool said this run ----
 
@@ -36,8 +41,9 @@ const playerSource = (r: Rescored["record"]) => (r.device.camera ? "camera" : "s
 interface Item { id: string; frozenCase: boolean; record: Rescored["record"]; now: Rescored["now"]; was: number | null; verdict: Verdict | null; source?: Rescored; transform?: Transform }
 
 function loadAll(): { items: Rescored[]; derived: ReturnType<typeof deriveAll> } {
-  const frozen = loadCases().rounds;
-  const local = loadDataRounds().rounds.filter((r) => !isFrozen(r.id));
+  // Real players' rounds only when JESTER_SEND_REAL_PLAYER_ROUNDS_TO_MODELS is on (see real-rounds.ts).
+  const frozen = loadCases().rounds.filter(mayRead);
+  const local = loadDataRounds().rounds.filter((r) => !isFrozen(r.id) && mayRead(r));
   const items: Rescored[] = [...frozen, ...local].map((record) => ({ record, now: rescore(record), was: record.result.score }));
   return { items, derived: deriveAll(items) };
 }
@@ -187,6 +193,9 @@ function bodyInFrame(frames: readonly { readonly landmarks: Lm }[]) {
  * scored), which hints they got, and where and how big the subject and the players are in frame.
  */
 export function overlaySummary() {
+  if (!SEND_REAL_PLAYER_ROUNDS) {
+    return { note: "Not measured: the overlay needs real players' camera rounds, and those are off in this run (JESTER_SEND_REAL_PLAYER_ROUNDS_TO_MODELS).", clips: [] };
+  }
   const { items } = loadAll();
   const byClip = new Map<string, Rescored[]>();
   for (const it of items) {

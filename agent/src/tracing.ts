@@ -10,9 +10,12 @@ import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 process.env.LANGSMITH_HIDE_INPUTS = "true";
 process.env.LANGSMITH_HIDE_OUTPUTS = "true";
 
-export const TRACING = process.env.LANGSMITH_TRACING === "true";
+// Any of the names LangChain and LangSmith read for "trace this". When one is on, our tracer is attached and
+// LangChain adds none of its own. LANGSMITH_TRACING=false (with none of the others set) turns tracing off.
+export const TRACING = ["LANGSMITH_TRACING", "LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING", "LANGCHAIN_TRACING_V2"].some((name) => process.env[name] === "true");
 
-const COUNT_KEY = /usage|token|cache/i;
+// Token and usage numbers, and the watch's own counts (`watchCounts`, numbers only).
+const COUNT_KEY = /usage|token|cache|^watchCounts$/i;
 
 /** Keeps only number leaves that sit under a token or usage key. Every string, and every other number, is dropped. */
 export function tokenCountsOnly(value: unknown, underCountKey = false): unknown {
@@ -32,10 +35,16 @@ export function tokenCountsOnly(value: unknown, underCountKey = false): unknown 
   return undefined;
 }
 
-/** The client every coach and spike trace goes through: inputs dropped, outputs cut down to token counts. */
-const shapeOnlyClient = new Client({
+const METADATA_KEPT = /^(ls_provider|ls_model_name|ls_model_type|ls_run_depth|usage_metadata|langgraph_node|langgraph_step|trigger|watchRunId|scorerVersion|engineHash)$/;
+
+/** The one client every trace goes through (coach, spike, watch): inputs dropped, outputs cut down to counts. */
+export const shapeOnlyClient = new Client({
   hideInputs: true,
   hideOutputs: (outputs) => (tokenCountsOnly(outputs) as Record<string, unknown> | undefined) ?? {},
+  // Error text can quote a request (a prompt, a round, a header), so every error becomes one fixed line.
+  anonymizer: () => ({ error: "error (text hidden by agent/src/tracing.ts)" }),
+  // Metadata keeps what LangSmith needs to name the model and price the run, and the coach's and watch's own keys.
+  hideMetadata: (metadata) => Object.fromEntries(Object.entries(metadata).filter(([key]) => METADATA_KEPT.test(key))),
 });
 
 /** Callbacks to add to an agent's invoke config. LangChain adds no tracer of its own when one is already present. */
