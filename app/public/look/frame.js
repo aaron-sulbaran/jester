@@ -39,7 +39,7 @@ function fit() {
 function buildGallery(id) {
   const d = DIRECTIONS.find((x) => x.id === id);
   document.title = `Jester look: ${d.name}`;
-  const nav = el("nav", {}, el("a", { href: "./" }, "All three"), ...DIRECTIONS.map((x) => el("a", { href: `${x.id}.html`, ...(x.id === id ? { "aria-current": "page" } : {}) }, x.name)));
+  const nav = el("nav", {}, el("a", { href: "./" }, "All three"), ...DIRECTIONS.map((x) => el("a", { href: `${x.id}.html`, ...(x.id === id ? { "aria-current": "page" } : {}) }, x.name)), el("a", { href: "research.html" }, "Research"));
   const head = el("header", {}, nav, el("h1", {}, d.name), el("p", {}, d.line),
     el("p", { class: "open" }, "Open the screens on their own: ", ...SCREENS.flatMap((sc, i) => [el("a", { href: `${id}-screens.html?s=${sc.s}`, target: "_blank" }, sc.title), i < SCREENS.length - 1 ? ", " : ""])));
   const main = el("main");
@@ -61,7 +61,7 @@ function buildIndex() {
     thumb.dataset.w = "1440"; thumb.dataset.h = "900";
     main.append(el("a", { class: "pick", href: `${d.id}.html` }, el("figure", {}, thumb), el("h2", {}, `${d.id.toUpperCase()}. ${d.name}`), el("p", {}, d.line)));
   }
-  document.body.append(el("header", {}, el("h1", {}, "Jester: three looks"), el("p", {}, "Each one shows the same three screens at laptop and phone width. Pick one, or tell me which parts to mix.")), main);
+  document.body.append(el("header", {}, el("h1", {}, "Jester: three looks"), el("p", {}, "Each one shows the same three screens at laptop and phone width. Pick one, or tell me which parts to mix."), el("p", {}, el("a", { href: "research.html" }, "What the research says"), ": the references behind them, and what to steal.")), main);
   fit();
   addEventListener("resize", fit);
 }

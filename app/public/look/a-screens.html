@@ -125,7 +125,7 @@ svg { display: block; }
 .chip.now { background: var(--card); color: var(--ink); }
 .chip.now i { background: var(--gold); }
 .role { align-self: start; padding: 18px; aspect-ratio: 5 / 7.6; display: flex; flex-direction: column; }
-.role .art { margin: 30px 6px 0; flex: 1; border-radius: 90px 90px 6px 6px; background: var(--table); display: grid; place-items: center; overflow: hidden; }
+.role .art { margin: 30px 6px 0; flex: 1; border-radius: 90px 90px 6px 6px; background: var(--gold); display: grid; place-items: center; overflow: hidden; }
 .role .art svg { width: 82%; }
 .role h3 { margin: 18px 0 2px; font: 400 32px/1 var(--display); text-align: center; }
 .role p { margin: 0 0 22px; text-align: center; font-size: 14px; color: #5A544C; font-weight: 550; }
@@ -244,6 +244,12 @@ svg { display: block; }
       <feFlood flood-color="#F3ECDF" />
       <feComposite in2="ring" operator="in" />
     </filter>
+    <filter id="outline-ink" x="-10%" y="-10%" width="120%" height="120%">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="grown" />
+      <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+      <feFlood flood-color="#1D1B19" />
+      <feComposite in2="ring" operator="in" />
+    </filter>
     <!-- A cutout glued into the clip: card white border, ink edge, hard shadow. -->
     <filter id="cut" x="-15%" y="-15%" width="130%" height="130%">
       <feMorphology in="SourceAlpha" operator="dilate" radius="9" result="edge" />
@@ -333,7 +339,8 @@ svg { display: block; }
   <div>
     <div class="card role">
       <span class="idx tl">3<small>of 3</small></span>
-      <div class="art"><svg viewBox="-20 -20 340 220" style="color:#E8B931"><use href="art.svg#dog" filter="url(#outline)"/></svg></div>
+      <div class="art"><svg viewBox="-20 -20 340 220" style="color:#1D1B19"><use href="art.svg#dog"/>
+        <g><ellipse cx="262" cy="36" rx="8" ry="9" fill="#F3ECDF"/><circle cx="264" cy="37" r="4" fill="#1D1B19"/><ellipse cx="248" cy="38" rx="7" ry="8" fill="#F3ECDF"/><circle cx="250" cy="39" r="3.5" fill="#1D1B19"/></g></svg></div>
       <h3>The dog</h3>
       <p>Your secret part</p>
     </div>
@@ -350,9 +357,14 @@ svg { display: block; }
         <path d="M120 560 V250" stroke="#151B33" stroke-width="8"/><path d="M80 250 H160 L140 200 H100 Z" fill="#C9B27A" opacity=".75"/>
         <ellipse cx="120" cy="300" rx="120" ry="80" fill="#C9B27A" opacity=".08"/>
         <svg x="250" y="130" width="450" height="600" viewBox="0 0 300 400" style="color:#11162B"><g transform="translate(300 0) scale(-1 1)"><use href="art.svg#player"/></g></svg>
-        <svg x="160" y="380" width="600" height="360" viewBox="-12 -12 324 204" style="color:#F3ECDF">
-          <use href="art.svg#dog" opacity=".12"/>
-          <use href="art.svg#dog" filter="url(#outline)"/>
+        <!-- The part is a hole cut in a card-stock wall: you see yourself clearly through it, dimly elsewhere. -->
+        <mask id="hole" maskUnits="userSpaceOnUse" x="0" y="0" width="960" height="720">
+          <rect width="960" height="720" fill="#fff"/>
+          <svg x="160" y="380" width="600" height="360" viewBox="-12 -12 324 204" style="color:#000"><use href="art.svg#dog"/></svg>
+        </mask>
+        <rect width="960" height="720" fill="#F3ECDF" opacity=".86" mask="url(#hole)"/>
+        <svg x="160" y="380" width="600" height="360" viewBox="-12 -12 324 204" style="color:#1D1B19">
+          <use href="art.svg#dog" filter="url(#outline-ink)"/>
         </svg>
       </svg>
       <div class="count" aria-live="polite"><span>3</span></div>
