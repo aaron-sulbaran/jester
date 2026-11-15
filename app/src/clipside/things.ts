@@ -3,7 +3,7 @@
 // "person" category is dropped. prepareClip in ./analyze.ts runs it on every third frame.
 
 import type { ThingDetection } from "../../../clip/src/index.ts";
-import { MP_BUNDLE, MP_WASM } from "../../../spikes/pose-match/webcam.mjs";
+import { cachedModelOptions, MP_BUNDLE, MP_WASM } from "../../../spikes/pose-match/webcam.mjs";
 import type { FrameCanvas } from "./frames.ts";
 
 const SCORE_THRESHOLD = 0.5;
@@ -40,8 +40,8 @@ export async function createThingDetector(): Promise<{ data: ThingDetector; erro
   let detector: any;
   try {
     const { mp, vision } = await loadVision();
-    const make = (delegate: "GPU" | "CPU") => mp.ObjectDetector.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate },
+    const make = async (delegate: "GPU" | "CPU") => mp.ObjectDetector.createFromOptions(vision, {
+      baseOptions: { ...(await cachedModelOptions(MODEL_URL)), delegate },
       runningMode: "VIDEO",
       scoreThreshold: SCORE_THRESHOLD,
       maxResults: MAX_RESULTS,

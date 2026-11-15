@@ -87,3 +87,39 @@ test("downsample keeps shape and buildFrame fills every field", () => {
   assert.ok(frame.mask && frame.outline.length > 8);
   assert.equal(buildFrame({ t: 1, landmarks: null, aspect: 1 }).outline, null);
 });
+
+import { HandSmoother, buildFrame as buildFrame2, HAND_HOLD_MS } from "./webcam.mjs";
+import { FINGER_BONES } from "./skeleton.mjs";
+
+const hand = (x) => ({ label: "Left", landmarks: Array.from({ length: 21 }, (_, i) => ({ x: x + i * 0.001, y: 0.5, z: 0 })) });
+
+test("hand smoother keeps 21 points per hand and reduces jitter", () => {
+  const s = new HandSmoother();
+  const noise = ((seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5)(11);
+  const raw = [], out = [];
+  for (let i = 0; i < 150; i++) {
+    const h = hand(0.5 + noise() * 0.02);
+    raw.push(h.landmarks[8].x);
+    const r = s.smooth([h], i * 33);
+    assert.equal(r[0].landmarks.length, 21);
+    out.push(r[0].landmarks[8].x);
+  }
+  const sd = (a) => { const m = a.reduce((x, y) => x + y) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
+  assert.ok(sd(out.slice(20)) < sd(raw.slice(20)) * 0.6);
+});
+
+test("a hand that was gone for a while starts fresh; two hands keep separate filters", () => {
+  const s = new HandSmoother();
+  s.smooth([hand(0.2)], 0);
+  const back = s.smooth([hand(0.8)], HAND_HOLD_MS + 100);
+  assert.ok(Math.abs(back[0].landmarks[0].x - 0.8) < 1e-9, "fresh filter returns the raw value");
+  const two = s.smooth([{ ...hand(0.3), label: "Left" }, { ...hand(0.7), label: "Right" }], HAND_HOLD_MS + 133);
+  assert.equal(two.length, 2);
+  assert.ok(Math.abs(two[1].landmarks[0].x - 0.7) < 1e-9);
+});
+
+test("frames carry hands, and finger bones stay inside the 21 points", () => {
+  assert.deepEqual(buildFrame2({ t: 1, landmarks: null, aspect: 1 }).hands, []);
+  assert.equal(buildFrame2({ t: 1, landmarks: null, aspect: 1, hands: [hand(0.5)] }).hands.length, 1);
+  for (const [a, b] of FINGER_BONES) assert.ok(a >= 0 && b <= 20);
+});
