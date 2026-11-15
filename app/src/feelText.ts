@@ -62,13 +62,31 @@ export interface AwardInput {
 }
 
 /**
+ * The winners as the scores say: rows marked winner that also hold the top score. A winner flag beside a lower
+ * score (41 against 12) never makes two winners.
+ */
+export function winnersOf<T extends { winner: boolean; score: number | null }>(rows: readonly T[]): T[] {
+  const top = Math.max(-1, ...rows.map((r) => r.score ?? -1));
+  return rows.filter((r) => r.winner && r.score !== null && r.score === top);
+}
+
+/** The crowning's and the results' headline. One player is cheered on their own; nobody wins among one. */
+export function headlineFor(rows: readonly { name: string; winner: boolean; score: number | null }[]): string {
+  if (rows.length === 1) return rows[0]!.score === null ? `Thanks for playing, ${rows[0]!.name}!` : `Well done, ${rows[0]!.name}!`;
+  const winners = winnersOf(rows);
+  return winners.length === 0 ? "Everyone played!" : winners.length === 1 ? `${winners[0]!.name} wins!` : `${winners.map((w) => w.name).join(" and ")} tie!`;
+}
+
+/**
  * One award per player, all different where possible: winner (joint when tied), then most movement, close
- * second (within 10 of the top score), stillest, gave it a go (lowest score), and good sport.
+ * second (within 10 of the top score), stillest, gave it a go (lowest score), and good sport. A player on
+ * their own gets their score's rank title instead, since nobody wins among one.
  */
 export function awardsFor(players: readonly AwardInput[]): string[] {
+  if (players.length === 1) return [players[0]!.score === null ? "Not seen by the camera" : rankFor(players[0]!.score).title];
   const awards: (string | null)[] = players.map(() => null);
-  const winners = players.filter((p) => p.winner).length;
-  players.forEach((p, i) => { if (p.winner) awards[i] = winners > 1 ? "Joint winner" : "Winner"; });
+  const winners = new Set(winnersOf(players));
+  players.forEach((p, i) => { if (winners.has(p)) awards[i] = winners.size > 1 ? "Joint winner" : "Winner"; });
   const top = Math.max(...players.map((p) => p.score ?? -1));
   const open = () => players.map((p, i) => ({ p, i })).filter(({ i }) => awards[i] === null);
   const give = (title: string, pickFrom: { p: AwardInput; i: number }[], better: (a: AwardInput, b: AwardInput) => number) => {
@@ -108,7 +126,7 @@ export function motionOf(timeline: { frames: readonly { t: number; landmarks: re
 
 // ---- The host: canned lines, spoken by the browser ----
 
-export type HostEvent = "beat" | "roll" | "crown" | "tie" | "nobody" | "results";
+export type HostEvent = "beat" | "roll" | "crown" | "tie" | "nobody" | "solo" | "results";
 
 const HOST_LINES: Record<HostEvent, readonly string[]> = {
   beat: ["That's everyone. Here comes the reveal."],
@@ -116,6 +134,7 @@ const HOST_LINES: Record<HostEvent, readonly string[]> = {
   crown: ["{winner} wins!"],
   tie: ["It's a tie. {winner} share the win."],
   nobody: ["Everyone played!"],
+  solo: ["Well done, {winner}!"],
   results: ["Here are the scores. {winner}: {title}."],
 };
 
