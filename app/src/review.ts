@@ -6,7 +6,7 @@
 // turning away by hand need only the Supabase key; the Chamberlain also needs the model key.
 
 import type { Guide } from "../../clip/src/index.ts";
-import { addClip, analyseClip, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
+import { addClip, analyseClip, bankLock, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
 import { cleanText, withClip } from "./bankIndex.ts";
 import { jesterBars } from "./ui/jesterBar.ts";
 
@@ -411,11 +411,16 @@ async function showBank() {
       if (title === clip.title) { note.textContent = "That is already its name."; return; }
       save.disabled = true;
       try {
-        const latest = await readIndex(folder);
-        if (latest.error !== null) { note.textContent = latest.error; return; }
-        const now = latest.data.clips.find((c) => c.id === clip.id);
-        if (!now) { note.textContent = "That clip is not in the bank any more."; return; }
-        await writeIndex(folder, withClip(latest.data, { ...now, title }));
+        // One bank change at a time, so a rename and an approval never overwrite each other's index.json.
+        const saved = await bankLock(async (): Promise<string | null> => {
+          const latest = await readIndex(folder);
+          if (latest.error !== null) return latest.error;
+          const now = latest.data.clips.find((c) => c.id === clip.id);
+          if (!now) return "That clip is not in the bank any more.";
+          await writeIndex(folder, withClip(latest.data, { ...now, title }));
+          return null;
+        });
+        if (saved !== null) { note.textContent = saved; return; }
         await api("publish", {});
         clip.title = title;
         input.value = title;

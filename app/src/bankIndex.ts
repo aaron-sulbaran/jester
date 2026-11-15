@@ -100,12 +100,21 @@ export function bankIdFor(title: string, fingerprint: string, taken: Iterable<st
   const used = new Set(taken);
   const base = slugFor(title, []).slice(0, 26).replace(/-+$/g, "") || "clip";
   const hash = fingerprint.toLowerCase().replace(/[^a-f0-9]/g, "") || "0";
-  for (let n = 6; n <= hash.length; n += 2) {
+  // The index accepts ids of at most 40 characters, so the hash grows only as far as that allows.
+  const room = MAX_ID - base.length - 1;
+  for (let n = 6; n <= Math.min(room, hash.length); n += 2) {
     const id = `${base}-${hash.slice(0, n)}`;
     if (!used.has(id)) return id;
   }
-  return slugFor(`${base}-${hash.slice(0, 12)}`, used);
+  // The same clip sent again and again under one name: a counter, still within 40 characters.
+  const stem = `${base.slice(0, 20).replace(/-+$/g, "")}-${hash.slice(0, 6)}`;
+  for (let k = 2; ; k++) {
+    const id = `${stem}-${k}`;
+    if (!used.has(id)) return id;
+  }
 }
+
+const MAX_ID = 40;
 
 /** A slug for a new clip from its title, made unique against the ids already taken ("dog-fetch", "dog-fetch-2"). */
 export function slugFor(title: string, taken: Iterable<string>): string {

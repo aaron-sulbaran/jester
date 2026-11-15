@@ -111,3 +111,19 @@ test("bankIdFor: a plain slug from the title plus a short fingerprint, unique an
     assert.equal(readBankIndex({ schema: "bank/1", clips: [entry(id)] }).data?.length, 1, id);
   }
 });
+
+test("bankIdFor: the same clip under the same name, again and again, keeps unique ids the index accepts", () => {
+  const fp = "9c23e4027445aee3" + "0".repeat(48);
+  const title = "a long dance name that fills the whole slug";
+  const ids: string[] = [];
+  for (let i = 0; i < 12; i++) ids.push(bankIdFor(title, fp, ids));
+  assert.equal(new Set(ids).size, ids.length);
+  for (const id of ids) {
+    assert.ok(id.length <= 40, id);
+    assert.equal(readBankIndex({ schema: "bank/1", clips: [entry(id)] }).data?.length, 1, id);
+  }
+});
+
+test("cleanText: a name of only invisible characters cleans to empty, which the writers refuse", () => {
+  assert.equal(cleanText("\u200b\u200b \u202e", 80), "");
+});
