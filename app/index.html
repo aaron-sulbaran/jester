@@ -258,6 +258,7 @@
     <nav class="side-nav" id="sideNav" aria-label="Help and sound">
       <button type="button" class="btn btn-quiet" id="howtoLink"><svg class="ico" aria-hidden="true"><use href="#ico-howto" /></svg>How to play</button>
       <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true"><svg class="ico ico-on" aria-hidden="true"><use href="#ico-sound-on" /></svg><svg class="ico ico-off" aria-hidden="true"><use href="#ico-sound-off" /></svg><span id="soundSay">Sound: on</span></button>
+      <button type="button" class="btn btn-quiet" id="settingsOpen">Settings</button>
     </nav>
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
       <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
@@ -313,6 +314,19 @@
     </section>
 
     <!-- Start: pick a mode and a clip from the bank, play in one click. -->
+    <!-- Settings: settings.ts binds the controls by id and remembers them in this browser. The look is the frontend agent's. -->
+    <section class="screen" id="screen-settings" hidden>
+      <div class="masking"><h2 class="tape">Settings</h2></div>
+      <div class="settings" id="settingsList">
+        <label class="consent"><input type="checkbox" id="setSound" /><span>Sound effects</span></label>
+        <label class="field"><span>Sound effects volume</span><input type="range" id="setVolume" min="0" max="100" step="5" /></label>
+        <label class="field"><span>Motion</span><select id="setMotion"><option value="system">Follow this device</option><option value="calm">Calm</option><option value="full">Full</option></select></label>
+        <label class="field"><span>Announcer</span><select id="setVoice"><option value="off">Off</option><option value="browser">This browser's voice</option></select></label>
+        <label class="consent"><input type="checkbox" id="setDev" /><span>Developer mode: the team's tools, the build stamp and the refresh notice</span></label>
+      </div>
+      <button type="button" class="btn btn-main" id="settingsBack"><span class="ticket"><span class="ticket-text">Done</span></span></button>
+    </section>
+
     <section class="screen" id="screen-start">
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
