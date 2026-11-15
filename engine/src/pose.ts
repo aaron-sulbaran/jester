@@ -1,7 +1,7 @@
 // Pose channel: compare the player's limbs to the clip subject's limbs, frame by frame,
 // at one global lag, and turn it into a round score. Pure functions only.
 
-import { GRID_MS, LAG, PLACEMENT, POSE, ROUND, SCORER_VERSION } from "./constants.ts";
+import { GRID_MS, LAG, MOTION, PLACEMENT, POSE, ROUND, SCORER_VERSION } from "./constants.ts";
 import { scorePlacement } from "./placement.ts";
 import { LIMBS, LIMB_NAMES, limbDirection, mirrorLandmarks, swapSide, type Direction } from "./geometry.ts";
 import { gridLength, resamplePoses } from "./resample.ts";
@@ -161,6 +161,81 @@ const STILL_DIRS: Dirs = LIMB_NAMES.map((name) => {
   return { x: 0, y: 1, visibility: 1 };
 });
 
+/** How a limb's direction changes over MOTION.spanMs: the difference of two unit vectors. */
+export interface Turn { x: number; y: number }
+
+/**
+ * Per frame and limb, the limb's turn from frame i to i + MOTION.spanMs, measured on directions smoothed over
+ * MOTION.smoothFrames. null where the limb is not visible at both ends. Used to tell a player who moves like
+ * the clip from one standing still: see the moving credit in scorePoseRound.
+ */
+export function limbTurns(dirs: (Dirs | null)[]): (Turn | null)[][] {
+  const n = dirs.length, L = LIMB_DEFS.length, half = Math.floor(MOTION.smoothFrames / 2);
+  const span = Math.max(1, Math.round(MOTION.spanMs / GRID_MS));
+  const seen = (d: Direction | null | undefined): d is Direction => !!d && d.visibility >= POSE.minVisibility;
+  const smooth: (Turn | null)[][] = Array.from({ length: n }, () => new Array(L).fill(null));
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < L; k++) {
+      if (!seen(dirs[i]?.[k])) continue;
+      let x = 0, y = 0;
+      for (let d = -half; d <= half; d++) {
+        const v = dirs[i + d]?.[k];
+        if (seen(v)) { x += v.x; y += v.y; }
+      }
+      const len = Math.hypot(x, y);
+      if (len > 1e-9) smooth[i]![k] = { x: x / len, y: y / len };
+    }
+  }
+  const out: (Turn | null)[][] = Array.from({ length: n }, () => new Array(L).fill(null));
+  for (let i = 0; i + span < n; i++) {
+    for (let k = 0; k < L; k++) {
+      const a = smooth[i]![k], b = smooth[i + span]![k];
+      if (a && b) out[i]![k] = { x: b.x - a.x, y: b.y - a.y };
+    }
+  }
+  return out;
+}
+
+/**
+ * Motion share 0..1: how much of the clip's limb motion the player reproduces. For every matched frame and
+ * limb where the clip turns by more than MOTION.noiseFloorDeg, the player's turn is projected on the clip's
+ * turn. Per limb, the projections are summed over the round and kept between 0 and the clip's own summed turn
+ * size for that limb; share = weighted sum of those / weighted sum of the clip's turn sizes.
+ * A still body earns 0. Tracker jitter averages out to about 0, because its projection is as often negative
+ * as positive and the sum is only capped per limb over the whole round (a cap per frame would bias noisy
+ * genuine copies toward 0). Moving the wrong way counts against, and moving one limb more than the clip
+ * earns no more than matching it, so it cannot stand in for another limb. Limbs are weighted by their LIMBS
+ * weight, so a new limb joins without retuning.
+ */
+export function motionShare(refTurns: (Turn | null)[][], playerTurns: (Turn | null)[][], frameMatch: readonly number[], valid: readonly boolean[]): number {
+  const minChord = 2 * Math.sin((MOTION.noiseFloorDeg * Math.PI) / 360);
+  const L = LIMB_DEFS.length;
+  const refSum = new Array<number>(L).fill(0), projSum = new Array<number>(L).fill(0);
+  for (let i = 0; i < frameMatch.length; i++) {
+    const j = frameMatch[i]!;
+    if (j < 0 || !valid[i]) continue;
+    for (let b = 0; b < L; b++) {
+      const r = refTurns[j]?.[b];
+      if (!r) continue;
+      const size = Math.hypot(r.x, r.y);
+      if (size < minChord) continue;
+      const p = playerTurns[i]?.[b];
+      // A limb the camera cannot see that is allowed to be unseen (feet) neither helps nor hurts.
+      // Any other unseen limb counts as not moving.
+      if (!p && LIMB_DEFS[b]!.ignoreUnseen) continue;
+      refSum[b]! += size;
+      if (p) projSum[b]! += (p.x * r.x + p.y * r.y) / size;
+    }
+  }
+  let total = 0, matched = 0;
+  for (let b = 0; b < L; b++) {
+    const w = LIMB_DEFS[b]!.weight;
+    total += w * refSum[b]!;
+    matched += w * Math.max(0, Math.min(refSum[b]!, projSum[b]!));
+  }
+  return total > 1e-9 ? clamp01(matched / total) : 0;
+}
+
 export interface PoseRoundOptions {
   /** Apply the mirror rule to the player (default true). Ignored when the player's frames were already flipped. */
   mirror?: boolean;
@@ -188,7 +263,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
 
   const empty = (failure: PoseRoundResult["failure"]): PoseRoundResult => ({
     channel: "pose", scorerVersion: SCORER_VERSION, score: null, tier: null, failure,
-    accuracy: 0, stillBaseline: 0, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
+    accuracy: 0, stillBaseline: 0, motion: { share: 0, gate: 0, credit: 0, gainOverStill: 0, gain: 0 }, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
     placement: { used: false, credit: 0, stillBaseline: 0, gain: 0, worst: null, outlineFit: null, outlineHints: { distance: null, side: null } },
   });
   if (n === 0 || refDirs.every((d) => d === null)) return empty("no-reference");
@@ -269,7 +344,14 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
   const accuracy = valid > 0 ? sum / valid : 0;
   const stillBaseline = valid > 0 ? stillSum / valid : 0;
   const headroom = 1 - stillBaseline;
-  const gain = headroom >= ROUND.minHeadroom ? clamp01((accuracy - stillBaseline) / headroom) : accuracy;
+  const gainOverStill = headroom >= ROUND.minHeadroom ? clamp01((accuracy - stillBaseline) / headroom) : accuracy;
+
+  // 2b. Moving credit (0.9.0): absolute accuracy, unlocked by moving like the clip.
+  //     A clip that never moves leaves nothing to tell a copier from a statue: the share is 0.
+  const share = motionShare(limbTurns(refDirs), limbTurns(playerDirs), frameMatch, frameCredits.map((c) => c !== null));
+  const gate = clamp01((share - MOTION.gateLow) / (MOTION.gateHigh - MOTION.gateLow));
+  const absoluteCredit = clamp01((accuracy - MOTION.accuracyFloor) / (MOTION.accuracyFull - MOTION.accuracyFloor));
+  const gain = Math.max(gainOverStill, gate * absoluteCredit);
   const lagMs = Math.round(lag * GRID_MS);
   const timing = timingCredit(lagMs);
 
@@ -347,6 +429,7 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
     failure: failed ? "low-tracking" : null,
     accuracy: clamp01(accuracy),
     stillBaseline,
+    motion: { share, gate, credit: absoluteCredit, gainOverStill, gain },
     timing,
     lagMs,
     validShare,

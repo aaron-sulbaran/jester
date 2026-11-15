@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.8.0";
+export const SCORER_VERSION = "jester-engine/0.9.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -83,6 +83,35 @@ export const ROUND = {
   hiddenCap: 50,
   /** If standing still already earns more than 1 - this, the clip has little to copy: use plain accuracy. */
   minHeadroom: 0.1,
+} as const;
+
+/**
+ * 0.9.0 moving credit. Before 0.9.0 the round scored only accuracy above what a perfect standing-still pose
+ * earns. On low-motion dance clips that pose already earns 0.80 to 0.85, and a real webcam player (tracker
+ * noise, loose timing) lands below it, so every blind round scored 0. Now the round also earns an absolute
+ * accuracy credit, gated by how much the player moves like the clip: the gain is
+ * max(gain over still, gate * absolute credit). Standing still does not move, so its gate stays shut.
+ *
+ * Motion is measured per limb as the angle a limb direction turns over `motionSpanMs`, after a short
+ * smoothing and minus a noise floor, so tracker jitter on a still body does not count as moving. Each limb's
+ * player motion is capped at the clip's motion for that limb, so flailing the arms cannot stand in for
+ * legs the clip moves. Motion share = sum of capped player motion / sum of clip motion, over the round.
+ */
+export const MOTION = {
+  /** Directions are averaged over this many grid frames (centered, odd) before motion is measured. */
+  smoothFrames: 5,
+  /** Motion is the angle a limb turns between t and t + this (ms). */
+  spanMs: 250,
+  /** Turning less than this over the span counts as no motion (degrees): covers tracker jitter. */
+  noiseFloorDeg: 6,
+  /** Motion share at or below this opens no gate ... */
+  gateLow: 0.15,
+  /** ... and at or above this opens it fully (linear in between). */
+  gateHigh: 0.5,
+  /** Absolute accuracy credit: 0 at or below this accuracy ... */
+  accuracyFloor: 0.55,
+  /** ... and 1 at or above this accuracy (linear in between). */
+  accuracyFull: 1.0,
 } as const;
 
 /**

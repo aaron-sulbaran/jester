@@ -93,6 +93,12 @@ export interface PoseRoundResult {
   accuracy: number;
   /** What standing still would have earned on the same frames, 0..1. The score rewards accuracy above this. */
   stillBaseline: number;
+  /**
+   * 0.9.0: how much the player moved like the clip, and the absolute accuracy credit that motion unlocks.
+   * share: capped player limb motion over the clip's limb motion, 0..1. gate: 0..1 from share (MOTION.gateLow
+   * to gateHigh). credit: absolute accuracy credit 0..1. gain: the gain used, max(gain over still, gate * credit).
+   */
+  motion: { share: number; gate: number; credit: number; gainOverStill: number; gain: number };
   /** Timing credit 0..1 from the global lag. */
   timing: number;
   /** Player lag in ms; positive means the player was behind the clip. */
