@@ -19,7 +19,8 @@ import { boxFromLandmarks, hideUnsureJoints, type Guide, type Outline } from "..
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { blindView, busierHand, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { addHands } from "./clipside/hands.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
@@ -581,6 +582,8 @@ function guideAt(g: Guide, ms: number): Guide {
     boxTrack: { ...g.boxTrack, frames: [{ tMs: ms, box }] },
     outlines: [outline],
     timeline: g.timeline && { ...g.timeline, frames: [{ tMs: ms, landmarks }] },
+    // Fingers do not blend: the nearer of the two samples, and the busier-hand pick still looks at the whole clip.
+    ...(g.hands ? { handFocus: busierHand(g), hands: [(u < 0.5 ? g.hands[i] : g.hands[j]) ?? g.hands[i] ?? g.hands[j] ?? null] } : {}),
   };
 }
 
@@ -700,10 +703,12 @@ export function dribbleScene(): Scene {
 
 /** A video read by the clip side. Returns the sentence why not when it has no one to copy. */
 export async function videoScene(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<Scene | string> {
-  const prepared = await prepareVideo(file, video, onProgress);
+  const prepared = await prepareVideo(file, video, (share) => onProgress(share * 0.8));
   if (prepared.error !== null) return prepared.error;
-  const { guides, skipped } = subjectGuides(prepared.data);
-  if (guides.length === 0) return skipped[0]?.reason ?? "No one to copy in this clip.";
+  const found = subjectGuides(prepared.data);
+  if (found.guides.length === 0) return found.skipped[0]?.reason ?? "No one to copy in this clip.";
+  // Finger detail for the hands the player has to copy; a failure here leaves the guides as they were.
+  const guides = await addHands(found.guides, file, video, (share) => onProgress(0.8 + share * 0.2));
   const g = guides[0]!;
   return {
     name: file.name, width: g.source.width, height: g.source.height,
