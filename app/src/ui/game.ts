@@ -182,10 +182,12 @@ export function initGame(deps: GameDeps) {
   // The library's two filters: a name to look for, and how many players (0 is any number).
   let query = "";
   let players = 0;
-  /** The bank clips the library shows right now. Surprise me picks from these too. */
+  /** The bank clips the library shows right now. */
   // The last chip is 4 or more: a game takes four players at most, and a bigger clip leaves some parts out.
   const fits = (c: BankClip) => !players || (players === 4 ? playersFor(c) >= 4 : playersFor(c) === players);
   const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query)));
+  /** Surprise me draws from every clip for this many players; the name search is for finding one clip. */
+  const surprises = () => bank.filter(fits);
   /** "for 2 players", "for 4 or more players", or nothing when any number will do. */
   const forPlayers = () => (!players ? "" : ` for ${players === 4 ? "4 or more" : players} ${players === 1 ? "player" : "players"}`);
 
@@ -222,7 +224,7 @@ export function initGame(deps: GameDeps) {
     bankBox.replaceChildren(...picks.map(card));
     // Surprise me needs the bank: the starters are only two, and nobody needs a surprise between two.
     surpriseCard.hidden = bank.length === 0;
-    surpriseCard.disabled = list.length === 0;
+    surpriseCard.disabled = surprises().length === 0;
     $("surpriseHint").textContent = mode === "blind" ? `Any clip${forPlayers()}. Nobody sees it until the end.` : `Any clip${forPlayers() || " in the library"}.`;
     $("libraryHead").hidden = bank.length === 0;
     const none = $("libraryNone");
@@ -267,6 +269,14 @@ export function initGame(deps: GameDeps) {
     for (const b of $("screen-start").querySelectorAll<HTMLButtonElement>(".clip")) b.setAttribute("aria-pressed", String(!!p && b.dataset.key === keyOf(p)));
     $("playLabel").textContent = !p ? "Play" : p.kind === "surprise" ? "Play a surprise clip" : `Play ${p.kind === "bank" ? p.clip.title : p.starter.title}`;
     $<HTMLButtonElement>("play").disabled = !p;
+  }
+
+  function clearFilters() {
+    query = "";
+    players = 0;
+    $<HTMLInputElement>("clipSearch").value = "";
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(o.dataset.players === "0"));
+    renderBank();
   }
 
   // The library's filters redraw it as you type or tap; a pick that drops out of view falls back to Surprise me.
@@ -329,6 +339,8 @@ export function initGame(deps: GameDeps) {
     $("clipReady").hidden = true;
     if (!clip) return;
     if (document.body.dataset.screen !== "start") show("start");
+    // The library's filters are cleared, so the new clip is on screen when it is picked.
+    clearFilters();
     choose({ kind: "bank", clip });
   });
   $("clipReadyLater").addEventListener("click", () => {
@@ -340,8 +352,8 @@ export function initGame(deps: GameDeps) {
     if (!pick) return;
     $("startProblem").hidden = true;
     if (pick.kind === "starter") { scene = pick.starter.make(); openCast(); return; }
-    // A surprise comes from the clips the library shows, so the players filter holds for it too.
-    const from = shown().length ? shown() : bank;
+    // A surprise comes from the clips for this many players.
+    const from = surprises().length ? surprises() : bank;
     const clip = pick.kind === "bank" ? pick.clip : from[Math.floor(Math.random() * from.length)];
     if (!clip) return;
     const r = await bankScene(clip, deps.clipVideo);
