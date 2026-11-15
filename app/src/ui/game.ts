@@ -3,7 +3,9 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
-import { demoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
+import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
+// STAND-IN until aaron/video-bank lands: then import listBank, bankScene from "../bank.ts" and submitClip from "../submit.ts".
+import { bankScene, listBank, submitClip, type BankClip } from "./bankStandIn.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
 /** A CSS custom property from the skin, or the fallback. */
@@ -28,7 +30,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Resolves on the next click of `el`. */
 const clicked = (el: HTMLElement) => new Promise<void>((r) => el.addEventListener("click", () => r(), { once: true }));
 
-const SCREENS = ["start", "reading", "cast", "handover", "turn", "drumroll", "reveal", "results", "oops"] as const;
+const SCREENS = ["start", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 
 /** Shows one screen and hides the rest. The body carries the name too, so the look can theme per screen. */
@@ -40,6 +42,18 @@ function show(name: ScreenName) {
 
 interface StarterClip { id: string; title: string; hint: string; make: () => Scene }
 
+/** Blind: you only see your shape, everyone finds out at the end. Watch first: everyone watches the clip, then plays it. */
+type Mode = "blind" | "watch";
+/** What the Play ticket will start. A surprise is a random bank clip nobody sees first. */
+type Pick = { kind: "bank"; clip: BankClip } | { kind: "starter"; starter: StarterClip } | { kind: "surprise" };
+
+/** "1 person and 1 thing, 20 s" */
+function castLine(people: number, things: number, durationMs: number) {
+  const parts = [people ? `${people} ${people === 1 ? "person" : "people"}` : "", things ? `${things} ${things === 1 ? "thing" : "things"}` : ""].filter(Boolean);
+  return `${parts.join(" and ")}, ${Math.round(durationMs / 1000)} s`;
+}
+
+// The built-in clips work offline. They show only when the bank is empty.
 // Titles hint at the clip without saying who is what: in blind mode nobody sees the clip until the reveal.
 const STARTERS: StarterClip[] = [
   { id: "dribble", title: "Pickup game", hint: "Someone, and something they keep bouncing", make: dribbleScene },
@@ -79,7 +93,9 @@ const MAX_PLAYERS = 4;
 
 export function initGame(deps: GameDeps) {
   let scene: Scene | null = null;
-  let picked: StarterClip | null = STARTERS[0] ?? null;
+  let mode: Mode = "blind";
+  let bank: BankClip[] = [];
+  let pick: Pick | null = null;
   let names: string[] = ["", "", ""];
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
@@ -92,30 +108,97 @@ export function initGame(deps: GameDeps) {
 
   // ---- Start ----
 
-  const clipList = $("clips");
-  for (const c of STARTERS) {
+  const bankBox = $("bank");
+  document.body.dataset.mode = mode;
+
+  const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
+
+  /** One taped photo per clip. In blind mode the picture stays under a question mark. */
+  function card(p: Pick, i: number): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "clip";
-    b.dataset.clip = c.id;
-    b.innerHTML = `<span class="washi w-${["pink", "mint", "dots"][STARTERS.indexOf(c) % 3]}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
-    b.querySelector(".clip-name")!.textContent = c.title;
-    b.querySelector(".clip-hint")!.textContent = c.hint;
-    b.addEventListener("click", () => pickStarter(c));
-    clipList.appendChild(b);
+    b.className = "clip" + (p.kind === "surprise" ? " surprise" : "");
+    b.dataset.key = keyOf(p);
+    const tape = ["pink", "mint", "dots"][i % 3];
+    const poster = p.kind === "bank" && p.clip.poster ? `<img src="${p.clip.poster}" alt="" />` : "";
+    b.innerHTML = `<span class="washi w-${tape}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true">${poster}<span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><span class="clip-credit"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
+    const [name, hint, credit] = p.kind === "surprise" ? ["Surprise me", "A clip from the bank. Nobody sees it until the end.", ""]
+      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? `by ${p.clip.credit}` : ""]
+      : [p.starter.title, p.starter.hint, ""];
+    b.querySelector(".clip-name")!.textContent = name;
+    b.querySelector(".clip-hint")!.textContent = hint;
+    b.querySelector(".clip-credit")!.textContent = credit;
+    b.addEventListener("click", () => choose(p));
+    return b;
   }
 
-  function pickStarter(c: StarterClip) {
-    picked = c;
-    for (const b of clipList.querySelectorAll<HTMLButtonElement>(".clip")) b.setAttribute("aria-pressed", String(b.dataset.clip === c.id));
-    $("playLabel").textContent = `Play ${c.title}`;
+  function renderBank() {
+    const picks: Pick[] = bank.length
+      ? [...(mode === "blind" && bank.length > 1 ? [{ kind: "surprise" } as Pick] : []), ...bank.map((clip): Pick => ({ kind: "bank", clip }))]
+      : STARTERS.map((starter): Pick => ({ kind: "starter", starter }));
+    bankBox.replaceChildren(...picks.map(card));
+    const note = $("bankNote");
+    note.hidden = bank.length > 0;
+    note.textContent = "The bank is empty. Add clips with the bank tool. Until then, here are the starter clips.";
+    // Keep the pick if it is still on screen, else the first card.
+    const keep = pick && picks.find((p) => keyOf(p) === keyOf(pick!));
+    choose(keep ?? picks[0] ?? null);
   }
-  if (picked) pickStarter(picked);
 
-  $("play").addEventListener("click", () => {
-    if (!picked) return;
-    scene = picked.make();
+  function choose(p: Pick | null) {
+    pick = p;
+    for (const b of bankBox.querySelectorAll<HTMLButtonElement>(".clip")) b.setAttribute("aria-pressed", String(!!p && b.dataset.key === keyOf(p)));
+    $("playLabel").textContent = !p ? "Play" : p.kind === "surprise" ? "Play a surprise clip" : `Play ${p.kind === "bank" ? p.clip.title : p.starter.title}`;
+    $<HTMLButtonElement>("play").disabled = !p;
+  }
+
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode")) {
+    b.addEventListener("click", () => {
+      mode = b.dataset.mode as Mode;
+      document.body.dataset.mode = mode;
+      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode")) o.setAttribute("aria-checked", String(o === b));
+      renderBank();
+    });
+  }
+
+  void listBank().then((r) => {
+    bank = r.data ?? [];
+    renderBank();
+    if (r.error) startProblem(`The bank did not load: ${r.error}`);
+  });
+
+  $("play").addEventListener("click", async () => {
+    if (!pick) return;
+    $("startProblem").hidden = true;
+    if (pick.kind === "starter") { scene = pick.starter.make(); openCast(); return; }
+    const clip = pick.kind === "bank" ? pick.clip : bank[Math.floor(Math.random() * bank.length)];
+    if (!clip) return;
+    const r = await bankScene(clip);
+    if (r.error !== null) return startProblem(r.error);
+    scene = r.data;
     openCast();
+  });
+
+  // ---- Submit your own: present but quiet ----
+
+  $("submitForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = $<HTMLInputElement>("submitFile").files?.[0];
+    const problem = $("submitProblem");
+    const say = (text: string) => { problem.textContent = text; problem.hidden = false; };
+    problem.hidden = true;
+    if (!file) return say("Pick a clip to send.");
+    if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
+    const send = $<HTMLButtonElement>("submitSend");
+    const bar = $<HTMLProgressElement>("submitBar");
+    send.disabled = true; bar.hidden = false; bar.value = 0;
+    const title = $<HTMLInputElement>("submitTitle").value.trim();
+    const credit = $<HTMLInputElement>("submitCredit").value.trim();
+    const r = await submitClip(file, { ...(title ? { title } : {}), ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
+    send.disabled = false; bar.hidden = true;
+    if (r.error !== null) return say(r.error);
+    $("submitForm").hidden = true;
+    $("submitThanks").hidden = false;
   });
 
   $("upload").addEventListener("change", async (e) => {
@@ -207,6 +290,7 @@ export function initGame(deps: GameDeps) {
     rows = [];
     videoUrl = null;
     try {
+      if (mode === "watch") await watchFirst(scene);
       await runBlindGame(scene, cast, ui, deps, { speed, colors: playerColors(), theme: revealTheme() });
     } catch (err) {
       // Never stall silently: say what broke and offer a way back.
@@ -214,6 +298,35 @@ export function initGame(deps: GameDeps) {
       $("oopsText").textContent = (err as Error).message;
       show("oops");
     }
+  }
+
+  /** Watch first: the whole group watches the clip once (or more) before the parts are dealt. */
+  async function watchFirst(s: Scene) {
+    show("watch");
+    const canvas = $<HTMLCanvasElement>("watchStage");
+    canvas.height = Math.round(canvas.width * (s.height / s.width));
+    const ctx = canvas.getContext("2d")!;
+    let raf = 0;
+    const play = () => {
+      cancelAnimationFrame(raf);
+      const t0 = performance.now();
+      if (s.video) { s.video.currentTime = s.startMs / 1000; s.video.muted = true; void s.video.play().catch(() => {}); }
+      const frame = () => {
+        const ms = performance.now() - t0;
+        if (s.video) ctx.drawImage(s.video, 0, 0, canvas.width, canvas.height);
+        else drawDemoScene(ctx, canvas.width, canvas.height, s, Math.min(ms, s.durationMs));
+        if (ms < s.durationMs) raf = requestAnimationFrame(frame);
+        else s.video?.pause();
+      };
+      raf = requestAnimationFrame(frame);
+    };
+    const again = $("watchAgain");
+    again.addEventListener("click", play);
+    play();
+    await clicked($("watchGo"));
+    again.removeEventListener("click", play);
+    cancelAnimationFrame(raf);
+    s.video?.pause();
   }
 
   const ui: BlindUi = {
@@ -235,6 +348,7 @@ export function initGame(deps: GameDeps) {
       turn.dataset.state = "part";
       turn.style.setProperty("--who", player.color);
       $("turnName").textContent = `${player.name}'s turn`;
+      $("turnSecret").textContent = mode === "watch" ? "You saw the clip. This shape is your part." : "What are you? You'll find out at the end.";
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       $("partProblem").textContent = role.problem ?? "";

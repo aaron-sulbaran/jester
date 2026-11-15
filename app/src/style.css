@@ -170,6 +170,48 @@ body:not(.solo) #solo { display: none; }
 .clip[aria-pressed="true"] .clip-star { display: block; }
 .start-actions { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; align-items: center; }
 
+/* Two ways to play, as two paper cards; the picked one is taped down in yellow. */
+.modes-pick { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
+.mode {
+  width: min(300px, 100%); min-height: 44px; padding: 14px 18px 16px; cursor: pointer; text-align: left;
+  display: grid; gap: 4px; border: 0; background: var(--photo); box-shadow: var(--lift); rotate: -1deg;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+}
+.mode:nth-child(even) { rotate: 1deg; }
+.mode b { font: 700 30px/1 var(--hand); letter-spacing: -.045em; }
+.mode span { font-size: 15px; line-height: 1.35; }
+.mode:hover { transform: translateY(-2px); box-shadow: 7px 9px 0 var(--shade); }
+.mode[aria-checked="true"] { background: var(--ticket); box-shadow: 7px 9px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+
+/* The bank: taped photos. Posters show in Watch first; in Blind they stay under the question mark. */
+.bank { display: flex; flex-wrap: wrap; gap: 34px; justify-content: center; max-width: 1100px; }
+.clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+body[data-mode="blind"] .clip-pic img { display: none; }
+body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
+.clip-credit { font-size: 12px; color: #6B5A48; min-height: 1em; }
+.clip.surprise .clip-pic { background: var(--stamp) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
+.bank-note { max-width: 46ch; }
+
+/* Submit your own: quiet, folded away under the bank. */
+.submit { width: min(560px, 100%); text-align: left; }
+.submit summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font: 400 17px var(--type); text-decoration: underline; text-underline-offset: 4px; }
+.submit summary::-webkit-details-marker { display: none; }
+.submit summary::before { content: "+"; display: grid; place-items: center; width: 26px; height: 26px; background: var(--photo); box-shadow: 2px 3px 0 var(--shade); font-weight: 700; }
+.submit[open] summary::before { content: "-"; }
+.submit-body { margin-top: 12px; padding: 18px 20px 20px; background: var(--photo); box-shadow: var(--lift); display: grid; gap: 14px; rotate: -.4deg; }
+.how { margin: 0; padding-left: 20px; font-size: 16px; line-height: 1.5; }
+#submitForm { display: grid; gap: 12px; }
+.field { display: grid; gap: 4px; font-size: 15px; }
+.field input[type="text"] { min-height: 44px; padding: 6px 10px; border: 0; background: #FFFEFA; box-shadow: inset 0 0 0 2px #C9B497; font: 700 22px var(--hand); color: var(--pen); }
+.field small { font-size: 13px; color: #6B5A48; }
+.field input[type="file"] { font: 400 14px var(--type); }
+.field input[type="file"]::file-selector-button { min-height: 44px; margin-right: 12px; padding: 8px 16px; border: 0; border-radius: 3px; background: var(--ticket); box-shadow: 3px 4px 0 var(--shade); font: 400 16px var(--type); color: var(--ink); cursor: pointer; }
+.consent { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; font-size: 15px; cursor: pointer; }
+.consent input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--pen); }
+#submitSend { justify-self: start; }
+.aside { display: flex; flex-wrap: wrap; gap: 6px 22px; justify-content: center; }
+.aside .upload { position: relative; overflow: hidden; display: inline-flex; align-items: center; min-height: 44px; }
+
 /* ---------- Cast ---------- */
 .cast { display: grid; gap: 14px; width: min(480px, 100%); }
 .who { display: grid; grid-template-columns: 30px auto 1fr; align-items: center; gap: 12px; text-align: left; }
@@ -327,6 +369,8 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
   .part-panel .row-actions { position: sticky; bottom: 0; padding: 10px 0 14px; width: 100%; background: var(--kraft) var(--grain); }
   /* First play in one tap: on a phone the Play ticket stays at the bottom of the screen. */
   #screen-start .start-actions { position: sticky; bottom: 0; z-index: 6; width: 100%; padding: 12px 0 16px; background: var(--kraft) var(--grain); }
+  .modes-pick { gap: 12px; }
+  .mode b { font-size: 26px; }
   .place { grid-template-columns: 84px 1fr auto; }
   .place-score { font-size: 40px; }
 }

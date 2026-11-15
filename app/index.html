@@ -36,19 +36,74 @@
   </svg>
 
   <main id="game">
-    <!-- Start: pick a clip, play in one click. -->
+    <!-- Start: pick a mode and a clip from the bank, play in one click. -->
     <section class="screen" id="screen-start">
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J</span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
-        <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it, in secret.</p></div>
+        <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
-      <div class="clips" id="clips" role="group" aria-label="Starter clips"></div>
+
+      <div class="modes-pick" role="radiogroup" aria-label="How to play">
+        <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
+        <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
+      </div>
+
+      <div class="bank" id="bank" role="group" aria-label="Clips"></div>
+      <p class="typed bank-note" id="bankNote" hidden></p>
+
       <div class="start-actions">
         <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
-        <label class="btn btn-quiet upload">Use your own video<input id="upload" type="file" accept="video/*" /></label>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
-      <p class="aside"><button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button></p>
+
+      <!-- Submit your own: present but quiet. A person reviews every clip before it joins the bank. -->
+      <details class="submit" id="submit">
+        <summary>Submit your own clip</summary>
+        <div class="submit-body">
+          <ul class="how">
+            <li>Upload a short clip of people moving. Funny is good.</li>
+            <li>A person on the team watches every submission.</li>
+            <li>Approved clips get their moves read once and join the bank.</li>
+            <li>Nothing you submit is public until then.</li>
+          </ul>
+          <form id="submitForm" novalidate>
+            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /></label>
+            <label class="field"><span>Title (optional)</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" /></label>
+            <label class="field"><span>Credit (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" /><small>Your name or handle, shown small under the clip.</small></label>
+            <label class="consent"><input id="submitConsent" type="checkbox" required /><span>I filmed this, and everyone in it is fine with it being used.</span></label>
+            <button type="submit" class="btn btn-quiet" id="submitSend">Send it in</button>
+            <progress id="submitBar" value="0" max="1" hidden></progress>
+            <p class="problem" id="submitProblem" role="alert" hidden></p>
+          </form>
+          <div class="note-wrap" id="submitThanks" hidden><p class="note">Thanks. A person reviews every clip before it joins the bank.</p></div>
+        </div>
+      </details>
+
+      <p class="aside">
+        <label class="link upload">Play a file from this computer (testing)<input id="upload" type="file" accept="video/*" /></label>
+        <button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button>
+      </p>
+    </section>
+
+    <!-- Watch first: the whole group watches the clip once before the parts are dealt. -->
+    <section class="screen" id="screen-watch" hidden>
+      <div class="masking"><h2 class="tape">Everyone, watch this.</h2></div>
+      <div class="stage-wrap reveal-wrap">
+        <div class="box">
+          <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
+          <div class="inside">
+            <div class="walls" aria-hidden="true"></div>
+            <div class="stage"><canvas id="watchStage" width="960" height="540" aria-label="The clip"></canvas></div>
+            <div class="valance" aria-hidden="true"><i></i></div>
+            <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
+            <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="watchAgain">Watch again</button>
+        <button type="button" class="btn btn-main" id="watchGo"><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
+      </div>
     </section>
 
     <!-- Reading an uploaded clip. -->
@@ -92,7 +147,7 @@
     <section class="screen" id="screen-turn" data-state="part" hidden>
       <div class="turn-head">
         <div class="masking"><h2 class="tape" id="turnName"></h2></div>
-        <div class="note-wrap turn-secret"><p class="note">What are you? You'll find out at the end.</p></div>
+        <div class="note-wrap turn-secret"><p class="note" id="turnSecret">What are you? You'll find out at the end.</p></div>
       </div>
       <div class="stage-wrap">
         <div class="box">
