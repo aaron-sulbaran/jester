@@ -25,6 +25,7 @@ import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock } from "./cutout.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
+import { cropFace } from "./ui/faceBadge.ts";
 
 export interface Scene {
   name: string;
@@ -48,6 +49,8 @@ interface Seat {
   look: Look;
   part: BodyPart;
   cutouts: Cutout[];
+  /** A still of the player's face from the start of their turn, for the results badges. Never leaves the device. */
+  face: HTMLCanvasElement | null;
   /** `lagMs` is in the clip's own time. */
   result: { score: number | null; tier: string | null; lagMs: number } | null;
   /** The performance in Lisa's recorder format (pose only), for her stick figure reveal. */
@@ -94,6 +97,8 @@ export interface ResultRow {
   /** The role's guide at the clip's own speed, and the player's pose recording in clip media ms: what Lisa's drawReveal (composite.ts) takes. */
   guide: Guide;
   timeline: { aspect: number; frames: { t: number; landmarks: unknown[] }[] } | null;
+  /** The player's face from the start of their turn (null with no camera). */
+  face: HTMLCanvasElement | null;
 }
 
 export interface GameOptions {
@@ -105,6 +110,15 @@ export interface GameOptions {
   speed?: number;
   /** How far ahead (ms of play time) the faint look-ahead copy of the role runs; 0 turns it off. */
   leadMs?: number;
+  /** Player colours in turn order (default PLAYER_COLORS). Set by the look. */
+  colors?: readonly string[];
+  /** How the recorded reveal looks (default: the dark card). Set by the look. */
+  theme?: Partial<RevealTheme>;
+  /**
+   * Record the reveal video at the end (default true). Online blind mode turns it off: each device plays
+   * one role, so the group reveal is drawn from everyone's results once they are all in.
+   */
+  reveal?: boolean;
 }
 
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -321,14 +335,14 @@ function shuffle<T>(xs: T[]): T[] {
 }
 
 /** Every player gets a role; roles repeat only when there are more players than subjects. */
-export function deal(names: string[], guides: Guide[]): Seat[] {
+export function deal(names: string[], guides: Guide[], colors: readonly string[] = PLAYER_COLORS): Seat[] {
   let pool: Guide[] = [];
   return names.map((name, i) => {
     if (pool.length === 0) pool = shuffle(guides);
     const guide = pool.pop()!;
     const hasOutline = guide.outlines.some((o) => o !== null);
     const look: Look = isThing(guide) || (hasOutline && Math.random() < 0.5) ? "outline" : "stick";
-    return { name, color: PLAYER_COLORS[i % PLAYER_COLORS.length], guide, original: guide, look, part: "body", cutouts: [], result: null, recording: null };
+    return { name, color: colors[i % colors.length]!, guide, original: guide, look, part: "body", cutouts: [], face: null, result: null, recording: null };
   });
 }
 
@@ -429,8 +443,10 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
   await ui.countdown(3);
   // Cutouts at about 15 a second: plenty for the replay, and four players' worth stays small.
   s.cutouts = [];
+  s.face = null;
   let lastCut = -Infinity;
   player.setCapture?.((f) => {
+    if (!s.face && f.source) s.face = cropFace(f.source, f.width, f.height, f.landmarks, 256);
     if (f.clipMs - lastCut < 60) return;
     const image = cutFrame(f.source, f.width, f.height, f.landmarks, s.part, f.mask);
     if (image) { s.cutouts.push({ clipMs: f.clipMs, image }); lastCut = f.clipMs; }
@@ -516,17 +532,20 @@ function busiestWindow(guides: readonly Guide[], windowMs: number): number {
   return at * frameMs;
 }
 
-const CARD_BG = "#16161d", INK = "#f2f2f5", SOFT = "#a0a3b1", GOLD = "#f5c542";
-const font = (H: number, k: number, weight = 600) => `${weight} ${Math.round(H * k)}px system-ui, -apple-system, sans-serif`;
+/** How the recorded reveal looks. The look sets it per game through `GameOptions.theme`. */
+export interface RevealTheme { card: string; ink: string; soft: string; accent: string; font: string; title: string; glow: number }
+export const REVEAL_THEME: RevealTheme = { card: "#16161d", ink: "#f2f2f5", soft: "#a0a3b1", accent: "#f5c542", font: "system-ui, -apple-system, sans-serif", title: "Blind mode", glow: 12 };
+let theme: RevealTheme = { ...REVEAL_THEME };
+const font = (H: number, k: number, weight = 600) => `${weight} ${Math.round(H * k)}px ${theme.font}`;
 
 /** The opening card. */
 function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneName: string, players: number, ms: number) {
-  ctx.fillStyle = CARD_BG; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = Math.min(1, ms / 400);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillStyle = GOLD; ctx.font = font(H, 0.12, 800); ctx.fillText("Blind mode", W / 2, H * 0.4);
-  ctx.fillStyle = INK; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
-  ctx.fillStyle = SOFT; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
+  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4);
+  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
+  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
   ctx.globalAlpha = 1;
 }
 
@@ -534,22 +553,22 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
 function drawSideBySide(ctx: CanvasRenderingContext2D, W: number, H: number, full: HTMLCanvasElement, background: (c: CanvasRenderingContext2D, ms: number) => void, layers: RevealLayer[], ms: number) {
   full.width = W; full.height = H;
   const f = full.getContext("2d")!;
-  ctx.fillStyle = CARD_BG; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   const pad = W * 0.02, w = (W - 3 * pad) / 2, h = w * (H / W), y = (H - h) / 2 + H * 0.04;
   background(f, ms);
   ctx.drawImage(full, pad, y, w, h);
   drawLayers(f, W, H, layers, ms);
   ctx.drawImage(full, 2 * pad + w, y, w, h);
   ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.font = font(H, 0.05, 700);
-  ctx.fillStyle = INK; ctx.fillText("The clip", pad + w / 2, y - H * 0.02);
-  ctx.fillStyle = GOLD; ctx.fillText("Your cast", 2 * pad + 1.5 * w, y - H * 0.02);
+  ctx.fillStyle = theme.ink; ctx.fillText("The clip", pad + w / 2, y - H * 0.02);
+  ctx.fillStyle = theme.accent; ctx.fillText("Your cast", 2 * pad + 1.5 * w, y - H * 0.02);
 }
 
 /** The closing card: who played what, how well, and who won. Each player's picture is their own cutout. */
 function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows: ResultRow[], faces: (HTMLCanvasElement | null)[], ms: number) {
-  ctx.fillStyle = CARD_BG; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "middle";
-  ctx.textAlign = "center"; ctx.fillStyle = GOLD; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
+  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
   const rowH = Math.min(H * 0.17, (H * 0.78) / Math.max(1, rows.length));
   rows.forEach((r, i) => {
     // Rows slide in one after another.
@@ -564,11 +583,11 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
     ctx.strokeStyle = r.color; ctx.lineWidth = 3; ctx.strokeRect(x0, y - face / 2, face, face);
     ctx.textAlign = "left";
     ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15);
-    ctx.fillStyle = INK; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2);
+    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2);
     ctx.textAlign = "right";
-    ctx.fillStyle = r.winner ? GOLD : INK; ctx.font = font(H, 0.07, 800);
+    ctx.fillStyle = r.winner ? theme.accent : theme.ink; ctx.font = font(H, 0.07, 800);
     ctx.fillText(r.score == null ? "-" : String(r.score), W * 0.92, y - rowH * 0.08);
-    ctx.fillStyle = r.winner ? GOLD : SOFT; ctx.font = font(H, 0.032, 600);
+    ctx.fillStyle = r.winner ? theme.accent : theme.soft; ctx.font = font(H, 0.032, 600);
     ctx.fillText(r.winner ? (r.tied ? "Tied for first" : "Winner") : r.tier ?? "", W * 0.92, y + rowH * 0.27);
   });
   ctx.globalAlpha = 1;
@@ -595,7 +614,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     return {
       cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
       boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), spread: shift,
-      color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`,
+      color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`, glow: theme.glow, tagFont: theme.font,
     };
   });
   const video = scene.video;
@@ -647,7 +666,8 @@ function roleOf(s: Seat, scene: Scene, ui: BlindUi, leadMs: number): RoleInfo {
 export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, deps: BlindDeps, options: GameOptions = {}): Promise<ResultRow[]> {
   const speed = options.speed ?? 1, leadMs = options.leadMs ?? 400;
   const scene = slowScene(clip, speed);
-  const seats = deal(names, scene.guides);
+  theme = { ...REVEAL_THEME, ...options.theme };
+  const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
   for (const s of seats) s.original = clip.guides[scene.guides.indexOf(s.guide)]!;
   (window as any).__jesterBlind = { seats, scene, speed };
   for (let i = 0; i < seats.length; i++) {
@@ -674,8 +694,10 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     winner: top !== null && scores[i] === top, tied,
     guide: s.original,
     timeline: mediaTimeline(s, scene, speed),
+    face: s.face,
   }));
   ui.results(rows);
+  if (options.reveal === false) return rows;
   const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share));
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);

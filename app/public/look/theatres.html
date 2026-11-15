@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester: the two theatres</title>
+<link rel="stylesheet" href="gallery.css" />
+<style>
+  .look { margin-bottom: 56px; }
+  .look h2 { font-size: 24px; margin-bottom: 4px; }
+  .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 14px; }
+  .trio figure { margin: 0; }
+  .trio a { color: inherit; display: block; }
+  @media (max-width: 900px) { .trio { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <nav><a href="index.html">All looks</a><a href="research.html">Research</a></nav>
+  <h1>The two theatres</h1>
+  <p>The sketchbook and the scrapbook, each turned into a stage. Same three screens: start, a player's turn (the part stays secret), and the reveal with the drum roll and the spotlight. Click a screen to open it full size; the reveal has a "Watch again" button.</p>
+</header>
+<main>
+  <section class="look" data-id="i">
+    <h2>I. Doodle Stage: the sketch theatre</h2>
+    <p>The sketchbook with a theatre doodled into it: red marker curtains, footlights, a highlighter spotlight, the Jester's notes in the margins.</p>
+  </section>
+  <section class="look" data-id="j">
+    <h2>J. Shoebox Show: the scrapbook theatre</h2>
+    <p>The scrapbook as a shoebox theatre: cardboard, gingham paper curtains, cutouts on craft sticks with googly eyes, a tissue paper spotlight.</p>
+  </section>
+</main>
+<script>
+  const SCREENS = [["start", "Start"], ["play", "A player's turn"], ["reveal", "The reveal"]];
+  for (const section of document.querySelectorAll(".look")) {
+    const id = section.dataset.id;
+    const trio = document.createElement("div");
+    trio.className = "trio";
+    for (const [s, label] of SCREENS) {
+      const src = `${id}-screens.html?s=${s}`;
+      trio.insertAdjacentHTML("beforeend",
+        `<figure><a href="${src}" target="_blank"><div class="device laptop" data-w="1440" data-h="900"><iframe src="${src}" width="1440" height="900" title="${label}" tabindex="-1" style="pointer-events:none"></iframe></div></a><figcaption>${label}</figcaption></figure>`);
+    }
+    section.appendChild(trio);
+  }
+  function fit() {
+    for (const box of document.querySelectorAll(".device")) {
+      const w = Number(box.dataset.w), h = Number(box.dataset.h);
+      const s = Math.min(1, box.parentElement.clientWidth / w);
+      box.firstElementChild.style.transform = `scale(${s})`;
+      box.style.width = `${w * s}px`; box.style.height = `${h * s}px`;
+    }
+  }
+  fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

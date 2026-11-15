@@ -6,99 +6,228 @@
   <title>Jester</title>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
-<body>
-  <header>
-    <h1>Jester</h1>
-    <p class="sub">Copy the clip. Get a score.</p>
-  </header>
+<body data-screen="start">
+  <!-- Shared media elements: the clip being read and the player's camera. Never shown directly. -->
+  <video id="clip" class="media" playsinline muted></video>
+  <video id="cam" class="media" playsinline muted></video>
 
-  <nav class="modes">
-    <button id="modeSolo" class="tab on">Solo</button>
-    <button id="modeBlind" class="tab">Blind mode (pass the laptop)</button>
-  </nav>
-  <div class="row simrow">
-    <label><input id="simPlayer" type="checkbox" /> Simulated player (no camera)</label>
-    <label id="noiseWrap" class="hidden">Wobble <input id="noise" type="range" min="0" max="40" value="10" /> <span id="noiseVal">10</span> deg</label>
-  </div>
-
-  <section id="setup" class="panel">
-    <div class="row">
-      <button id="demoClip">Use the starter clip</button>
-      <label class="file">Or pick a video <input id="clipFile" type="file" accept="video/*" /></label>
-    </div>
-    <div class="row" id="objectButtons">Or copy an object:</div>
-    <div class="row hidden" id="partRow">
-      <label>Be the object with your <select id="bodyPart"></select></label>
-    </div>
-    <progress id="progress" value="0" max="1"></progress>
-    <p id="status">Pick a clip to start.</p>
-    <button id="start" disabled>Start round</button>
-  </section>
-
-  <section id="blind" class="panel hidden">
-    <div id="blindSetup">
-      <p>Everyone gets a secret role from the clip: a person, or a thing like a ball. Nobody is told what they are. You see only a moving outline or stick figure, never the clip, and copy it. At the end, everyone is put back together in one video.</p>
-      <div class="row">
-        <button id="blindDribble">Dribble: one player dribbles, one is the ball</button>
-        <button id="blindDemo">Dancer and a ball</button>
-        <label class="file">Or pick a video <input id="blindFile" type="file" accept="video/*" /></label>
+  <main id="game">
+    <!-- Start: pick a clip, play in one click. -->
+    <section class="screen" id="screen-start">
+      <header class="masthead">
+        <h1 class="wordmark">Jester</h1>
+        <p class="voice">Pick a clip. I'll give each of you a part from it, in secret.</p>
+      </header>
+      <div class="clips" id="clips" role="group" aria-label="Starter clips"></div>
+      <div class="start-actions">
+        <button type="button" class="btn btn-main" id="play"><span id="playLabel">Play</span></button>
+        <label class="btn btn-quiet upload">Use your own video<input id="upload" type="file" accept="video/*" /></label>
       </div>
-      <div class="row">
-        <label>Players <select id="blindCount"><option>2</option><option selected>3</option><option>4</option></select></label>
-        <span id="blindNames"></span>
-      </div>
-      <div class="row">
-        <label>Speed <select id="blindSpeed"><option value="1">100% (the clip's own speed)</option><option value="0.75" selected>75%</option><option value="0.5">50% (first time)</option></select></label>
-      </div>
-      <p id="blindStatus">Pick a clip.</p>
-      <button id="blindDeal" disabled>Deal secret roles</button>
-    </div>
-    <div id="blindTurn" class="hidden">
-      <h2 id="turnTitle"></h2>
-      <p id="turnText"></p>
-      <div class="row hidden" id="turnPartRow"><label>Copy it with your <select id="turnPart"></select></label></div>
-      <button id="turnPreview" class="hidden">Watch it once</button>
-      <button id="turnReveal">Show my role</button>
-      <button id="turnStart" class="hidden">Start my turn</button>
-      <button id="turnNext" class="hidden">Pass the laptop</button>
-    </div>
-    <div id="blindEnd" class="hidden">
-      <h2>The reveal</h2>
-      <table id="blindBoard"></table>
-      <p id="blindEndStatus"></p>
-      <canvas id="blindCanvas" width="960" height="540"></canvas>
-      <video id="blindVideo" class="hidden" controls playsinline></video>
-      <p><a id="blindDownload" class="hidden" download="jester-blind-reveal.webm">Download the reveal</a></p>
-      <button id="blindAgain">Play again</button>
-    </div>
-  </section>
+      <p class="problem" id="startProblem" role="alert" hidden></p>
+      <p class="aside"><button type="button" class="link" id="soloLink">Practice alone, or play online in rooms</button></p>
+    </section>
 
-  <section id="stage" class="stage">
-    <figure>
-      <video id="clip" playsinline muted></video>
-      <canvas id="clipCanvas" width="480" height="360"></canvas>
-      <figcaption id="clipCaption">Clip</figcaption>
-    </figure>
-    <figure>
-      <video id="cam" playsinline muted></video>
-      <canvas id="playerCanvas" width="480" height="360"></canvas>
-      <figcaption>You <span id="live"></span></figcaption>
-    </figure>
-  </section>
-  <div id="countdown" class="countdown hidden"></div>
+    <!-- Reading an uploaded clip. -->
+    <section class="screen" id="screen-reading" hidden>
+      <p class="voice">Finding everyone in <span id="readingName"></span>...</p>
+      <progress id="readingBar" value="0" max="1"></progress>
+    </section>
 
-  <section id="results" class="panel hidden">
-    <h2><span id="score"></span> <small id="tier"></small></h2>
-    <p id="summary"></p>
-    <p id="placement"></p>
-    <table id="limbs"></table>
-    <div id="reveal" class="hidden">
-      <h3 id="revealTitle">Replay</h3>
-      <canvas id="revealCanvas" width="640" height="360"></canvas>
-      <video id="revealVideo" class="hidden" controls playsinline></video>
-      <p><a id="revealDownload" class="hidden" download="jester-replay.webm">Download the replay</a></p>
+    <!-- Cast: who is playing. -->
+    <section class="screen" id="screen-cast" hidden>
+      <h2 class="title">Who's playing?</h2>
+      <p class="voice" id="castParts"></p>
+      <div class="cast" id="castNames"></div>
+      <div class="cast-count">
+        <button type="button" class="btn btn-quiet" id="castLess">One fewer</button>
+        <button type="button" class="btn btn-quiet" id="castMore">Add a player</button>
+      </div>
+      <div class="speed" role="group" aria-label="Speed">
+        <span class="speed-label">Speed</span>
+        <button type="button" class="chip" data-speed="1" aria-pressed="true">Full speed</button>
+        <button type="button" class="chip" data-speed="0.75" aria-pressed="false">A bit slower</button>
+        <button type="button" class="chip" data-speed="0.5" aria-pressed="false">Half speed</button>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="castBack">Back</button>
+        <button type="button" class="btn btn-main" id="deal">Deal the secret parts</button>
+      </div>
+    </section>
+
+    <!-- Pass the laptop. -->
+    <section class="screen" id="screen-handover" hidden>
+      <p class="voice" id="handoverDone" hidden></p>
+      <p class="pass">Pass the laptop to</p>
+      <h2 class="name" id="handoverName"></h2>
+      <p class="voice">Everyone else, look away.</p>
+      <button type="button" class="btn btn-main" id="handoverGo">I'm ready</button>
+      <div class="jester jester-dance" aria-hidden="true"></div>
+    </section>
+
+    <!-- A turn: first the shape and how to play, then the camera under the shape. -->
+    <section class="screen" id="screen-turn" data-state="part" hidden>
+      <div class="turn-head">
+        <h2 class="title" id="turnName"></h2>
+        <p class="voice turn-secret">What are you? You'll find out at the end.</p>
+      </div>
+      <div class="stage" id="stage">
+        <canvas id="youCanvas" width="640" height="480" aria-label="You, in a mirror"></canvas>
+        <canvas id="guideCanvas" width="640" height="360" aria-label="Your shape to copy"></canvas>
+        <div class="count" id="count" aria-live="assertive" hidden></div>
+      </div>
+      <div class="part-panel">
+        <p class="problem" id="partProblem" role="alert" hidden></p>
+        <p class="voice" id="partText"></p>
+        <p class="part-ask">Copy it with your</p>
+        <div class="chips" id="partChips" role="group" aria-label="Copy it with"></div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-quiet" id="partWatch">Watch it once</button>
+          <button type="button" class="btn btn-main" id="partGo">Start</button>
+        </div>
+      </div>
+      <p class="play-hint">Get inside the shape. Move when it moves.</p>
+    </section>
+
+    <!-- The beat before the reveal. -->
+    <section class="screen" id="screen-drumroll" hidden>
+      <div class="drum" aria-hidden="true"></div>
+      <p class="title">Drum roll, please.</p>
+    </section>
+
+    <!-- The reveal plays live while it records. -->
+    <section class="screen" id="screen-reveal" hidden>
+      <p class="voice">Now see what you actually did.</p>
+      <canvas id="revealStage" width="960" height="540" aria-label="The reveal: everyone in the clip"></canvas>
+      <progress id="revealBar" value="0" max="1"></progress>
+    </section>
+
+    <!-- Results end on sending it to someone. -->
+    <section class="screen" id="screen-results" hidden>
+      <div class="results-head">
+        <h2 class="title" id="resultsHeadline"></h2>
+        <div class="jester jester-win" aria-hidden="true"></div>
+      </div>
+      <div class="results-grid">
+        <video id="resultsVideo" playsinline muted loop controls hidden></video>
+        <ol class="podium" id="podium"></ol>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="again">Play again</button>
+        <button type="button" class="btn btn-quiet" id="newClip">New clip</button>
+        <button type="button" class="btn btn-main" id="send">Send this to someone</button>
+      </div>
+      <p class="voice" id="sendNote" aria-live="polite"></p>
+      <p class="aside"><a id="resultsSave" download="jester.webm" hidden>Save the video</a></p>
+    </section>
+
+    <!-- Something broke: say so and offer a way back. -->
+    <section class="screen" id="screen-oops" hidden>
+      <h2 class="title">That did not work.</h2>
+      <p class="voice" id="oopsText"></p>
+      <button type="button" class="btn btn-main" id="oopsBack">Back to the start</button>
+    </section>
+  </main>
+
+  <!-- Practice and online rooms (main.ts, blindScreens.ts): solo, and blind mode across devices. Off the main path until the rooms get the new look. -->
+  <section id="solo">
+    <p><button type="button" class="link" id="soloBack">Back to the game</button></p>
+    <nav class="modes">
+      <button id="modeSolo" class="tab on">Solo</button>
+      <button id="modeBlind" class="tab">Blind mode (pass the laptop)</button>
+    </nav>
+    <div class="row simrow">
+      <label><input id="simPlayer" type="checkbox" /> Simulated player (no camera)</label>
+      <label id="noiseWrap" class="hidden">Wobble <input id="noise" type="range" min="0" max="40" value="10" /> <span id="noiseVal">10</span> deg</label>
     </div>
-    <button id="again">Try again</button>
+    <section id="setup" class="panel">
+      <div class="row">
+        <button id="demoClip">Use the starter clip</button>
+        <label class="file">Or pick a video <input id="clipFile" type="file" accept="video/*" /></label>
+      </div>
+      <div class="row" id="objectButtons">Or copy an object:</div>
+      <div class="row hidden" id="partRow">
+        <label>Be the object with your <select id="bodyPart"></select></label>
+      </div>
+      <progress id="progress" value="0" max="1"></progress>
+      <p id="status">Pick a clip to start.</p>
+      <button id="start" disabled>Start round</button>
+    </section>
+    <section id="blind" class="panel hidden">
+      <div id="blindSetup">
+        <p>Everyone gets a secret role from the clip: a person, or a thing like a ball. Nobody is told what they are. You see only a moving outline or stick figure, never the clip, and copy it. At the end, everyone is put back together in one video.</p>
+        <div class="row">
+          <button id="blindDribble">Dribble: one player dribbles, one is the ball</button>
+          <button id="blindDemo">Dancer and a ball</button>
+          <label class="file">Or pick a video <input id="blindFile" type="file" accept="video/*" /></label>
+        </div>
+        <div class="row">
+          <label>Players <select id="blindCount"><option>2</option><option selected>3</option><option>4</option></select></label>
+          <span id="blindNames"></span>
+        </div>
+        <div class="row">
+          <label>Speed <select id="blindSpeed"><option value="1">100% (the clip's own speed)</option><option value="0.75" selected>75%</option><option value="0.5">50% (first time)</option></select></label>
+        </div>
+        <p id="blindStatus">Pick a clip.</p>
+        <button id="blindDeal" disabled>Deal secret roles</button>
+        <div id="onlineBlind">
+          <h3>Or play online, each on your own device</h3>
+          <div class="row">
+            <label>Your name <input id="onlineName" size="10" /></label>
+            <button id="onlineCreate">Create a room</button>
+            <label>or code <input id="onlineCode" size="5" maxlength="4" /></label>
+            <button id="onlineJoin">Join</button>
+          </div>
+          <div id="onlineLobby" class="hidden">
+            <p>Room <b id="onlineRoomCode"></b> <span id="onlineWhere"></span></p>
+            <ul id="onlineRoster"></ul>
+            <p id="onlineHostRow" class="hidden">You are the host. Pick Dribble or Dancer and a ball above, and a speed, then <button id="onlineDeal" disabled>Deal and start</button></p>
+            <p id="onlineGuestRow" class="hidden">Waiting for the host to deal the roles.</p>
+          </div>
+        </div>
+      </div>
+      <div id="blindTurn" class="hidden">
+        <h2 id="turnTitle"></h2>
+        <p id="turnText"></p>
+        <div class="row hidden" id="turnPartRow"><label>Copy it with your <select id="turnPart"></select></label></div>
+        <button id="turnPreview" class="hidden">Watch it once</button>
+        <button id="turnReveal">Show my role</button>
+        <button id="turnStart" class="hidden">Start my turn</button>
+        <button id="turnNext" class="hidden">Pass the laptop</button>
+      </div>
+      <div id="blindEnd" class="hidden">
+        <h2>The reveal</h2>
+        <table id="blindBoard"></table>
+        <p id="blindEndStatus"></p>
+        <canvas id="blindCanvas" width="960" height="540"></canvas>
+        <video id="blindVideo" class="hidden" controls playsinline></video>
+        <p><a id="blindDownload" class="hidden" download="jester-blind-reveal.webm">Download the reveal</a></p>
+        <button id="blindAgain">Play again</button>
+      </div>
+    </section>
+    <section id="soloStage" class="solo-stage">
+      <figure>
+        <canvas id="clipCanvas" width="480" height="360"></canvas>
+        <figcaption id="clipCaption">Clip</figcaption>
+      </figure>
+      <figure>
+        <canvas id="playerCanvas" width="480" height="360"></canvas>
+        <figcaption>You <span id="live"></span></figcaption>
+      </figure>
+    </section>
+    <div id="countdown" class="countdown hidden"></div>
+    <section id="results" class="panel hidden">
+      <h2><span id="score"></span> <small id="tier"></small></h2>
+      <p id="summary"></p>
+      <p id="placement"></p>
+      <table id="limbs"></table>
+      <div id="reveal" class="hidden">
+        <h3 id="revealTitle">Replay</h3>
+        <canvas id="revealCanvas" width="640" height="360"></canvas>
+        <video id="revealVideo" class="hidden" controls playsinline></video>
+        <p><a id="revealDownload" class="hidden" download="jester-replay.webm">Download the replay</a></p>
+      </div>
+      <button id="again-solo">Try again</button>
+    </section>
   </section>
 
   <script type="module" src="./src/main.ts"></script>

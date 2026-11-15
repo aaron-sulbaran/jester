@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester, royal court</title>
+<style>
+  @font-face { font-family: "Grenze Gotisch"; src: url("fonts/grenze-gotisch.woff2") format("woff2"); font-weight: 400 900; font-display: block; }
+  @font-face { font-family: "Schibsted Grotesk"; src: url("fonts/schibsted-grotesk.woff2") format("woff2"); font-weight: 400 900; font-display: block; }
+
+  :root {
+    --stone: #3A3550;
+    --stone-deep: #26223A;
+    --red: #C8203A;
+    --gold: #F2B630;
+    --green: #2E9E6B;
+    --parch: #F4E9D0;
+    --ink: #1A1626;
+    --night: #0E0B16;
+    --gothic: "Grenze Gotisch", "Times New Roman", serif;
+    --sans: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--stone-deep); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    color: var(--parch);
+    font: 500 18px/1.4 var(--sans);
+    /* Castle wall: flat stone blocks in running bond, mortar in deep stone, two blocks a shade off. */
+    background: var(--stone-deep) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='136'%3E%3Crect width='256' height='136' fill='%2326223A'/%3E%3Cg fill='%233A3550'%3E%3Crect x='3' y='3' width='122' height='62'/%3E%3Crect x='-61' y='71' width='122' height='62'/%3E%3Crect x='195' y='71' width='122' height='62'/%3E%3C/g%3E%3Crect x='131' y='3' width='122' height='62' fill='%23403A58'/%3E%3Crect x='67' y='71' width='122' height='62' fill='%23342F4A'/%3E%3C/svg%3E") 0 0 / 256px 136px;
+  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--parch); outline-offset: 5px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  .screen { position: relative; min-height: 100vh; min-height: 100svh; overflow-x: clip; }
+  .screen[hidden] { display: none !important; }
+
+  /* ---------- The hall: shared set pieces ---------- */
+
+  /* Harlequin floor in perspective. */
+  .floor {
+    position: absolute; left: 0; right: 0; bottom: 0; height: var(--floor-h, 25%);
+    overflow: hidden; background: var(--ink); perspective: 420px; perspective-origin: 50% -70%;
+  }
+  .floor::before { content: ""; position: absolute; z-index: 1; left: 0; right: 0; top: 0; height: 12px; background: var(--night); }
+  .tiles {
+    position: absolute; left: -150%; width: 400%; bottom: 0; height: 700%;
+    transform-origin: 50% 100%; transform: rotateX(72deg);
+    background: var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='112'%3E%3Crect width='160' height='112' fill='%231A1626'/%3E%3Cpath d='M80 0 L160 56 L80 112 L0 56 Z' fill='%232E9E6B'/%3E%3C/svg%3E") 50% 100% / 160px 112px;
+  }
+
+  /* A cloth banner hanging from a gold rod, swallowtail at the bottom. Gold trim is the outer layer. */
+  .hang { position: relative; display: flex; flex-direction: column; align-items: center; filter: drop-shadow(8px 8px 0 var(--night)); }
+  .rod { position: relative; z-index: 2; width: calc(100% + 36px); height: 14px; border-radius: 7px; background: var(--gold); }
+  .rod::before, .rod::after { content: ""; position: absolute; top: 50%; width: 24px; height: 24px; translate: 0 -50%; border-radius: 50%; background: var(--gold); }
+  .rod::before { left: -10px; }
+  .rod::after { right: -10px; }
+  .cloth {
+    --notch: 44px;
+    width: 100%; margin-top: -4px; padding: 7px; background: var(--gold);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--notch)), 0 100%);
+  }
+  .cloth-in {
+    display: flex; flex-direction: column; align-items: center; height: 100%;
+    padding: 18px 16px calc(var(--notch) + 14px); background: var(--red);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--notch) + 4px), 0 100%);
+  }
+
+  /* Parchment scroll with a rolled end on each side. */
+  .scroll { position: relative; margin: 0 22px; padding: 18px 26px; background: var(--parch); color: var(--ink); filter: drop-shadow(6px 6px 0 var(--night)); }
+  .scroll::before, .scroll::after {
+    content: ""; position: absolute; top: -9px; bottom: -9px; width: 26px; border-radius: 13px;
+    background: linear-gradient(90deg, var(--parch) 0 40%, #D8C69E 40% 70%, var(--parch) 70%);
+    box-shadow: inset 0 0 0 3px var(--ink);
+  }
+  .scroll::before { left: -22px; }
+  .scroll::after { right: -22px; }
+  .scroll p { margin: 0; }
+
+  /* Main action: a red banner plate with a gold seal. */
+  .seal-btn {
+    position: relative; display: inline-flex; align-items: center; padding: 0 0 0 46px; margin: 0;
+    border: 0; background: none; cursor: pointer; color: var(--parch); text-align: left;
+    filter: drop-shadow(7px 7px 0 var(--night));
+  }
+  .seal-body { display: block; padding: 6px; background: var(--gold); clip-path: polygon(0 0, 100% 0, calc(100% - 26px) 50%, 100% 100%, 0 100%); }
+  .seal-inner {
+    display: flex; align-items: center; min-height: 86px; padding: 0 66px 0 62px;
+    background: var(--red); font: 800 34px/1 var(--sans); letter-spacing: -0.015em; white-space: nowrap;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 23px) 50%, 100% 100%, 0 100%);
+  }
+  .seal {
+    position: absolute; left: 0; top: 50%; translate: 0 -50%; display: grid; place-items: center;
+    width: 98px; height: 98px; border-radius: 50%; background: var(--gold);
+    box-shadow: inset 0 0 0 5px var(--ink), inset 0 0 0 11px var(--gold), inset 0 0 0 14px var(--ink);
+  }
+  .seal svg { width: 62px; height: auto; margin-top: -4px; }
+
+  /* Secondary actions: dark plates with a gold edge. */
+  .plain-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 58px; padding: 0 24px 0 20px;
+    font: 650 19px/1.1 var(--sans); color: var(--parch); background: var(--ink); border: 3px solid var(--gold); border-radius: 4px;
+    box-shadow: 5px 5px 0 var(--night); cursor: pointer;
+  }
+  .plain-btn svg { flex: none; width: 22px; height: 22px; }
+
+  .torch { position: absolute; width: 58px; height: auto; overflow: visible; }
+
+  /* ---------- Start ---------- */
+  .start { display: grid; grid-template-columns: 380px minmax(0, 1fr) 540px; column-gap: 40px; padding: 0 56px; height: 100vh; height: 100svh; min-height: 780px; }
+  .start-left { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 34px; padding-bottom: 40px; }
+  .court { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 40px; }
+  .start-right { position: relative; display: flex; flex-direction: column; gap: 28px; padding: 74px 0 40px; }
+
+  .wordbanner { width: 330px; margin-left: 18px; }
+  .wordbanner .cap { width: 132px; height: auto; display: block; }
+  .wordmark { margin: -2px 0 0; font: 800 124px/0.9 var(--gothic); color: var(--gold); letter-spacing: 0.005em; }
+
+  .start .line { max-width: 360px; margin-left: 22px; }
+  .start .line p { font: 600 22px/1.32 var(--sans); text-wrap: balance; }
+
+  .seated {
+    margin-top: auto; display: flex; align-items: center; gap: 18px; padding: 14px 18px 14px 20px;
+    background: var(--ink); border: 3px solid var(--gold); border-radius: 4px; box-shadow: 5px 5px 0 var(--night);
+  }
+  .seated-label { display: block; font: 700 20px/1.2 var(--sans); cursor: pointer; }
+  .seated-help { margin: 3px 0 0; font: 500 15px/1.3 var(--sans); }
+  .switch {
+    position: relative; flex: none; width: 72px; height: 44px; padding: 0; cursor: pointer;
+    background: var(--stone-deep); border: 3px solid var(--gold); border-radius: 22px;
+  }
+  .switch .knob { position: absolute; top: 5px; left: 5px; width: 28px; height: 28px; border-radius: 50%; background: var(--parch); }
+  .switch[aria-checked="true"] { background: var(--green); }
+  .switch[aria-checked="true"] .knob { translate: 28px 0; }
+
+  .backdrop { position: absolute; top: 0; left: 50%; width: 150px; translate: -50% 0; }
+  .backdrop .cloth { --notch: 40px; height: 480px; }
+  .backdrop .cloth-in {
+    padding: 0; background: var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='84'%3E%3Cpath d='M40 4 L64 42 L40 80 L16 42 Z' fill='%23F2B630'/%3E%3Cpath d='M40 26 L50 42 L40 58 L30 42 Z' fill='%231A1626'/%3E%3C/svg%3E") 50% 18px / 80px 84px repeat-y;
+  }
+  .court .torch.l { left: 0; top: 296px; }
+  .court .torch.r { right: 0; top: 296px; }
+  .court .throne { position: relative; width: 250px; height: auto; display: block; margin-bottom: 16px; }
+
+  .clips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 34px 34px; }
+  .painting { position: relative; display: flex; flex-direction: column; align-items: flex-start; padding: 26px 0 0; margin: 0; text-align: left; cursor: pointer; background: none; border: 0; }
+  /* The cord and nail it hangs from. */
+  .painting::before {
+    content: ""; position: absolute; top: 0; left: 50%; width: 92px; height: 30px; translate: -50% 0;
+    background:
+      radial-gradient(circle at 50% 4px, var(--gold) 5px, transparent 5.5px),
+      linear-gradient(to top right, transparent calc(50% - 1.5px), var(--gold) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left bottom / 50% 26px no-repeat,
+      linear-gradient(to top left, transparent calc(50% - 1.5px), var(--gold) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / 50% 26px no-repeat;
+  }
+  .frame { position: relative; display: block; width: 100%; padding: 10px; background: var(--gold); border: 3px solid var(--ink); box-shadow: 7px 7px 0 var(--night); }
+  .frame .pic { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; box-shadow: 0 0 0 3px var(--ink); }
+  .frame::after { content: ""; position: absolute; inset: 10px; background: var(--ink); opacity: 0.42; }
+  .painting .name { margin-top: 12px; font: 700 34px/0.95 var(--gothic); color: var(--parch); }
+  .painting .parts { margin-top: 4px; font: 500 15px/1.3 var(--sans); color: var(--parch); }
+  .painting[aria-pressed="true"] .frame { box-shadow: 0 0 0 6px var(--red), 11px 11px 0 6px var(--night); }
+  .painting[aria-pressed="true"] .frame::after { opacity: 0; }
+  .painting[aria-pressed="true"] .name { color: var(--gold); }
+
+  .own { margin-top: auto; display: flex; gap: 18px; }
+  .own .plain-btn { flex: 1; }
+
+  /* ---------- Blind play ---------- */
+  .play { display: grid; grid-template-columns: minmax(0, 1fr) 400px; column-gap: 64px; align-items: center; padding: 30px 56px 40px; height: 100vh; height: 100svh; min-height: 760px; }
+  .cam-wrap { position: relative; justify-self: end; width: min(100%, calc((100vh - 190px) * 4 / 3 + 34px)); }
+  .gold { padding: 14px; background: var(--gold); border: 4px solid var(--ink); box-shadow: 10px 10px 0 var(--night); }
+  .cam { position: relative; overflow: hidden; aspect-ratio: 4 / 3; background: #57668A; box-shadow: 0 0 0 4px var(--ink); }
+  .cam > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .room { scale: -1 1; } /* the camera is mirrored */
+  .plaque {
+    display: block; width: fit-content; margin: 22px auto 0; padding: 12px 26px;
+    font: 700 22px/1.25 var(--sans); color: var(--ink); background: var(--gold);
+    border: 3px solid var(--ink); box-shadow: 5px 5px 0 var(--night);
+  }
+
+  .turn { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 26px; }
+  .herald { display: flex; align-items: baseline; gap: 22px; }
+  .herald .who { font: 800 38px/1 var(--sans); letter-spacing: -0.02em; }
+  .herald .of { font: 700 18px/1 var(--sans); }
+  .you { display: flex; align-items: center; gap: 22px; }
+  .shield { flex: none; width: 118px; height: auto; filter: drop-shadow(6px 6px 0 var(--night)); }
+  .you h1 { margin: 0; font: 700 64px/0.92 var(--gothic); color: var(--parch); }
+  .count-banner { width: 200px; margin-left: 96px; }
+  .count-banner .cloth-in { padding: 4px 0 calc(var(--notch) + 6px); }
+  .count-banner span { font: 900 214px/0.92 var(--sans); color: var(--gold); letter-spacing: -0.04em; }
+  .away { margin: -6px 0 0 22px; font: 650 22px/1.25 var(--sans); }
+
+  /* ---------- Reveal ---------- */
+  .reveal { display: grid; grid-template-columns: minmax(0, 1fr) 420px; column-gap: 56px; padding: 30px 56px 30px; height: 100vh; height: 100svh; min-height: 840px; }
+  .reveal .floor { --floor-h: 14%; }
+  .show { position: relative; display: flex; flex-direction: column; gap: 18px; width: min(100%, calc((100vh - 470px) * 16 / 9 + 36px)); }
+  .head-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 66px; }
+  .headline { margin: 0; font: 800 64px/1 var(--gothic); color: var(--gold); }
+  .again {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px 0 12px; cursor: pointer;
+    font: 650 16px/1 var(--sans); color: var(--gold); background: var(--ink); border: 2px solid var(--gold); border-radius: 4px;
+  }
+  .again svg { width: 18px; height: 18px; }
+  .painting-wrap .gold { background: linear-gradient(var(--ink), var(--ink)) content-box, var(--gold); }
+  .canvas { position: relative; z-index: 6; overflow: hidden; aspect-ratio: 16 / 9; box-shadow: 0 0 0 4px var(--ink); }
+  .canvas > svg { display: block; width: 100%; height: 100%; }
+  /* The spotlight: a clear circle in a dark sheet. Rests on Lisa. */
+  .spot {
+    position: absolute; left: 23%; top: 61%; width: 38%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(242, 182, 48, 0.12) 0 58%, rgba(14, 11, 22, 0.88) 100%);
+    box-shadow: 0 0 0 3000px rgba(14, 11, 22, 0.88);
+    opacity: 0.5; pointer-events: none;
+  }
+
+  .ranks { position: relative; list-style: none; margin: 4px 0 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .ranks::before { content: ""; position: absolute; left: 0; top: -14px; bottom: -8px; width: 12px; border-radius: 6px; background: var(--gold); box-shadow: 4px 4px 0 var(--night); }
+  .ranks::after { content: ""; position: absolute; left: -5px; top: -28px; width: 22px; height: 22px; border-radius: 50%; background: var(--gold); }
+  .rank { display: flex; filter: drop-shadow(5px 5px 0 var(--night)); }
+  .flag {
+    display: flex; align-items: center; gap: 14px; width: calc(var(--score) * 1%); min-height: 50px; padding: 0 44px 0 16px;
+    background: var(--who); color: var(--fg); transform-origin: 0 50%;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 50%, 100% 100%, 0 100%);
+  }
+  .flag .pos { font: 800 18px/1 var(--sans); width: 14px; }
+  .flag b { font: 800 26px/1 var(--sans); letter-spacing: -0.015em; }
+  .flag .part { font: 550 15px/1 var(--sans); }
+  .flag .pts { margin-left: auto; font: 900 32px/1 var(--sans); letter-spacing: -0.02em; }
+
+  .seat-col { position: relative; display: flex; flex-direction: column; gap: 24px; padding-top: 8px; }
+  .seat-col .line { margin-top: 14px; }
+  .seat-col .line p { font: 650 21px/1.32 var(--sans); }
+  .actions { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+  .actions .seal-btn { width: 100%; }
+  .actions .seal-body { flex: 1; }
+  .actions .seal-inner { font-size: 25px; min-height: 76px; padding: 0 44px 0 56px; }
+  .actions .seal { width: 86px; height: 86px; }
+  .actions .seal svg { width: 54px; }
+  .throne-stage { position: relative; margin-top: auto; display: flex; justify-content: center; }
+  .throne-stage .big { width: 300px; height: auto; display: block; overflow: visible; }
+  .throne-stage .torch.l { left: -6px; top: 120px; }
+  .throne-stage .torch.r { right: -6px; top: 120px; }
+
+  /* Lights down: a sheet over the hall, a drum roll in front of it. Both rest hidden. */
+  .dim { position: fixed; inset: 0; z-index: 5; background: var(--night); opacity: 0; visibility: hidden; pointer-events: none; }
+  .drumroll {
+    position: fixed; z-index: 8; left: 50%; top: 50%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    opacity: 0; visibility: hidden; pointer-events: none;
+  }
+  .drumroll .drum { width: 240px; height: auto; overflow: visible; }
+  .drumroll p { margin: 0; font: 800 76px/1 var(--gothic); color: var(--parch); white-space: nowrap; }
+
+  .cut, .queen, .crown { transform-box: fill-box; }
+
+  /* ---------- Motion ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .seal-btn, .plain-btn, .painting, .again, .switch .knob { transition: translate 0.14s ease-out, filter 0.14s ease-out, box-shadow 0.14s ease-out; }
+    .seal-btn:hover, .plain-btn:hover, .painting:hover, .again:hover { translate: -2px -2px; }
+    .seal-btn:active { translate: 4px 4px; filter: drop-shadow(3px 3px 0 var(--night)); }
+    .plain-btn:active { translate: 3px 3px; box-shadow: 2px 2px 0 var(--night); }
+    .painting:hover .frame::after { opacity: 0.2; }
+
+    /* Start: the torches burn. */
+    .start .flame { transform-box: fill-box; transform-origin: 50% 100%; animation: flicker 1.3s ease-in-out infinite alternate; }
+    .start .torch.r .flame { animation-delay: -0.6s; }
+    @keyframes flicker { 0% { scale: 1 1; } 45% { scale: 0.92 1.08; } 100% { scale: 1.05 0.95; } }
+
+    /* Blind play: the countdown banner unrolls. */
+    .count-banner .cloth { transform-origin: 50% 0; animation: unfurl 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.15) 0.2s backwards; }
+    @keyframes unfurl { from { scale: 1 0; } }
+
+    /* Reveal: the show. About four seconds, then it rests. */
+    .reveal.run .dim { animation: lights 3.5s linear both; }
+    @keyframes lights { 0% { opacity: 0; visibility: visible; } 6% { opacity: 0.9; } 86% { opacity: 0.9; } 100% { opacity: 0; visibility: hidden; } }
+    .reveal.run .drumroll { animation: drum-in 2.05s ease-out 0.1s both; }
+    @keyframes drum-in { 0% { opacity: 0; visibility: visible; scale: 0.9; } 10% { opacity: 1; scale: 1; } 88% { opacity: 1; scale: 1; } 100% { opacity: 0; visibility: hidden; scale: 1.04; } }
+    .reveal.run .drum { transform-origin: 50% 80%; animation: shake 0.07s linear 0.2s 26 alternate; }
+    @keyframes shake { from { rotate: -3deg; translate: -2px 0; } to { rotate: 3deg; translate: 2px 0; } }
+    .reveal.run .canvas { animation: appear 0.4s ease-out 1.85s backwards; }
+    @keyframes appear { from { opacity: 0; } }
+    .reveal.run .spot { animation: sweep 1.05s cubic-bezier(0.45, 0, 0.3, 1) 2s backwards, settle 0.6s ease-out 3.15s backwards; }
+    @keyframes sweep {
+      0% { left: 98%; top: 18%; opacity: 1; }
+      26% { left: 76%; top: 70%; opacity: 1; }
+      50% { left: 57%; top: 31%; opacity: 1; }
+      80% { left: 14%; top: 56%; opacity: 1; }
+      100% { left: 23%; top: 61%; opacity: 1; }
+    }
+    @keyframes settle { from { opacity: 1; } }
+    .reveal.run .headline { animation: proclaim 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 3.1s backwards; }
+    @keyframes proclaim { from { opacity: 0; scale: 1.25; } }
+    .reveal.run .queen { animation: rise 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 3.2s backwards; }
+    @keyframes rise { from { opacity: 0; translate: 0 60px; } }
+    .reveal.run .crown { animation: crown 0.5s cubic-bezier(0.3, 1.4, 0.5, 1) 3.45s backwards; }
+    @keyframes crown { from { opacity: 0; translate: 0 -90px; rotate: -14deg; } }
+    .reveal.run .flag { animation: grow 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) backwards; animation-delay: calc(3.25s + var(--i) * 0.1s); }
+    @keyframes grow { from { scale: 0 1; } }
+    .reveal.run .seat-col .line, .reveal.run .actions, .reveal.run .again { animation: appear 0.4s ease-out 3.6s backwards; }
+  }
+
+  /* ---------- Phone ---------- */
+  @media (max-width: 760px) {
+    body { font-size: 16px; background-size: 192px 102px; }
+    .scroll { padding: 14px 18px; margin: 0 18px; }
+    .scroll::before, .scroll::after { width: 22px; }
+    .scroll::before { left: -18px; }
+    .scroll::after { right: -18px; }
+
+    .start {
+      height: auto; min-height: 100svh; padding: 0 16px 34px; align-content: start;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); column-gap: 12px; row-gap: 20px;
+      grid-template-areas: "word throne" "line line" "clips clips" "play play" "own own" "seated seated";
+    }
+    .start .floor { --floor-h: 210px; }
+    .start-left, .court, .start-right { display: contents; }
+    .wordbanner { grid-area: word; width: auto; margin: 0 12px; align-self: start; }
+    .wordbanner .rod { height: 12px; }
+    .wordbanner .cloth { --notch: 30px; }
+    .wordbanner .cloth-in { padding: 10px 8px calc(var(--notch) + 8px); }
+    .wordbanner .cap { width: 70px; }
+    .wordmark { font-size: 56px; }
+    .backdrop, .court .torch { display: none; }
+    .court .throne { grid-area: throne; align-self: end; justify-self: center; width: 100%; max-width: 132px; margin: 0; }
+    .start .line { grid-area: line; max-width: none; margin: 0 18px; }
+    .start .line p { font-size: 18px; }
+    .clips { grid-area: clips; gap: 18px 14px; }
+    .painting { padding-top: 18px; }
+    .painting::before { width: 64px; height: 20px; background-size: auto, 50% 17px, 50% 17px; }
+    .frame { padding: 6px; border-width: 2px; box-shadow: 5px 5px 0 var(--night); }
+    .frame::after { inset: 6px; }
+    .painting[aria-pressed="true"] .frame { box-shadow: 0 0 0 4px var(--red), 8px 8px 0 4px var(--night); }
+    .painting .name { margin-top: 8px; font-size: 27px; }
+    .painting .parts { font-size: 13px; }
+    .start .seal-btn { grid-area: play; width: 100%; }
+    .seal-btn { padding-left: 36px; }
+    .seal-body { flex: 1; }
+    .seal-inner { min-height: 72px; padding: 0 40px 0 52px; font-size: 27px; }
+    .seal { width: 80px; height: 80px; }
+    .seal svg { width: 50px; }
+    .own { grid-area: own; margin: 0; gap: 12px; }
+    .own .plain-btn { flex: 1; min-width: 0; padding: 0 10px; font-size: 16px; gap: 8px; }
+    .seated { grid-area: seated; margin: 0; justify-content: space-between; }
+    .seated-label { font-size: 18px; }
+    .seated-help { font-size: 14px; }
+
+    .play {
+      height: auto; min-height: 100svh; padding: 18px 16px 30px; align-items: start; align-content: start;
+      grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 16px;
+      grid-template-areas: "herald herald" "away away" "you count" "cam cam";
+    }
+    .play .floor { --floor-h: 150px; }
+    .turn { display: contents; }
+    .herald { grid-area: herald; justify-self: start; }
+    .herald .who { font-size: 28px; }
+    .herald .of { font-size: 15px; }
+    .you { grid-area: you; gap: 12px; align-self: center; }
+    .shield { width: 74px; }
+    .you h1 { font-size: 40px; }
+    .count-banner { grid-area: count; width: 96px; margin: 0 24px 0 0; }
+    .count-banner .rod { height: 10px; }
+    .count-banner .cloth { --notch: 22px; padding: 5px; }
+    .count-banner span { font-size: 100px; }
+    .cam-wrap { grid-area: cam; width: 100%; justify-self: stretch; }
+    .gold { padding: 8px; border-width: 3px; box-shadow: 6px 6px 0 var(--night); }
+    .cam { aspect-ratio: 1 / 1; box-shadow: 0 0 0 3px var(--ink); }
+    .plaque { margin-top: 16px; padding: 10px 14px; font-size: 17px; text-align: center; }
+    .away { grid-area: away; margin: -4px 0 0 18px; font-size: 18px; }
+
+    .reveal {
+      height: auto; min-height: 100svh; padding: 18px 16px 34px; grid-template-columns: minmax(0, 1fr); row-gap: 18px; align-content: start;
+    }
+    .reveal .floor { display: none; }
+    .show, .seat-col { display: contents; }
+    .head-row { order: 1; min-height: 0; flex-wrap: wrap; gap: 10px; }
+    .headline { font-size: 44px; }
+    .painting-wrap { order: 2; }
+    .throne-stage { order: 3; margin: 0; }
+    .throne-stage .big { width: 200px; }
+    .throne-stage .torch { width: 40px; }
+    .throne-stage .torch.l { left: 18px; top: 70px; }
+    .throne-stage .torch.r { right: 18px; top: 70px; }
+    .ranks { order: 4; margin-top: 14px; padding-left: 12px; }
+    .ranks::before { width: 10px; }
+    .ranks::after { left: -5px; width: 20px; height: 20px; }
+    .flag { min-height: 46px; gap: 8px; padding: 0 30px 0 10px; }
+    .flag .pos { font-size: 15px; width: 10px; }
+    .flag b { font-size: 21px; }
+    .flag .part { font-size: 12px; }
+    .flag .pts { font-size: 24px; }
+    .seat-col .line { order: 5; margin: 6px 18px 0; }
+    .seat-col .line p { font-size: 18px; }
+    .actions { order: 6; }
+    .actions .seal-inner { font-size: 22px; min-height: 68px; padding: 0 36px 0 50px; }
+    .actions .seal { width: 76px; height: 76px; }
+    .actions .seal svg { width: 46px; }
+    .drumroll .drum { width: 170px; }
+    .drumroll p { font-size: 46px; white-space: normal; text-align: center; width: calc(100vw - 32px); }
+  }
+</style>
+</head>
+<body>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- The throne: gold posts and arch, red velvet back and cushion, on a step. -->
+    <symbol id="throne" viewBox="0 0 300 400">
+      <rect x="0" y="372" width="300" height="28" fill="#0E0B16" />
+      <rect x="0" y="364" width="300" height="12" fill="#C8203A" />
+      <path d="M50 2 L59 30 H41 Z" fill="#F2B630" /><path d="M250 2 L259 30 H241 Z" fill="#F2B630" />
+      <circle cx="50" cy="42" r="17" fill="#F2B630" /><circle cx="250" cy="42" r="17" fill="#F2B630" />
+      <rect x="34" y="54" width="32" height="312" fill="#F2B630" /><rect x="234" y="54" width="32" height="312" fill="#F2B630" />
+      <rect x="54" y="54" width="12" height="312" fill="#1A1626" opacity=".22" /><rect x="254" y="54" width="12" height="312" fill="#1A1626" opacity=".22" />
+      <path d="M66 300 V128 C66 92 110 56 150 14 C190 56 234 92 234 128 V300 Z" fill="#F2B630" />
+      <path d="M82 300 V136 C82 106 118 78 150 42 C182 78 218 106 218 136 V300 Z" fill="#C8203A" />
+      <path d="M150 104 L182 164 L150 224 L118 164 Z" fill="#F2B630" />
+      <path d="M150 134 L166 164 L150 194 L134 164 Z" fill="#1A1626" />
+      <rect x="10" y="226" width="78" height="22" rx="11" fill="#F2B630" /><rect x="212" y="226" width="78" height="22" rx="11" fill="#F2B630" />
+      <rect x="22" y="246" width="22" height="64" fill="#F2B630" /><rect x="256" y="246" width="22" height="64" fill="#F2B630" />
+      <rect x="54" y="280" width="192" height="32" rx="15" fill="#C8203A" />
+      <rect x="22" y="306" width="256" height="26" fill="#F2B630" />
+      <rect x="22" y="326" width="256" height="6" fill="#1A1626" opacity=".22" />
+      <rect x="38" y="332" width="28" height="34" fill="#F2B630" /><rect x="234" y="332" width="28" height="34" fill="#F2B630" />
+    </symbol>
+
+    <!-- A wall torch, without its flame (the flame is drawn per torch so it can burn). -->
+    <symbol id="torch-body" viewBox="0 0 80 200">
+      <path d="M14 82 H66 L57 106 H23 Z" fill="#F2B630" />
+      <path d="M34 106 H46 L44 168 H36 Z" fill="#1A1626" />
+      <rect x="28" y="140" width="24" height="56" rx="5" fill="#1A1626" />
+    </symbol>
+
+    <!-- The crown. -->
+    <symbol id="crown" viewBox="0 0 124 88">
+      <path d="M12 78 L6 22 L36 48 L62 8 L88 48 L118 22 L112 78 Z" fill="#F2B630" stroke="#1A1626" stroke-width="5" stroke-linejoin="round" />
+      <rect x="12" y="62" width="100" height="18" fill="#F2B630" stroke="#1A1626" stroke-width="5" stroke-linejoin="round" />
+      <circle cx="6" cy="20" r="7" fill="#F2B630" stroke="#1A1626" stroke-width="4" />
+      <circle cx="62" cy="7" r="7" fill="#F2B630" stroke="#1A1626" stroke-width="4" />
+      <circle cx="118" cy="20" r="7" fill="#F2B630" stroke="#1A1626" stroke-width="4" />
+      <circle cx="62" cy="71" r="6" fill="#C8203A" /><circle cx="36" cy="71" r="5" fill="#2E9E6B" /><circle cx="88" cy="71" r="5" fill="#2E9E6B" />
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============ Screen 1: start ============ -->
+<section class="screen start" id="start" aria-label="Start">
+  <div class="floor" aria-hidden="true"><div class="tiles"></div></div>
+
+  <div class="start-left">
+    <div class="hang wordbanner">
+      <span class="rod" aria-hidden="true"></span>
+      <div class="cloth"><div class="cloth-in">
+        <svg class="cap" viewBox="0 0 200 150" aria-hidden="true"><use href="art.svg#cap" width="200" height="150" style="--p1:#2E9E6B;--p2:#F2B630;--p3:#2E9E6B;--band:#1A1626;--bell:#F2B630" /></svg>
+        <h1 class="wordmark">Jester</h1>
+      </div></div>
+    </div>
+
+    <div class="scroll line"><p>Pick a clip. I'll give each of you a part from it, in secret.</p></div>
+
+    <div class="seated">
+      <div>
+        <label class="seated-label" id="seated-label" for="seated">Playing seated</label>
+        <p class="seated-help" id="seated-help">Only your upper body is scored.</p>
+      </div>
+      <button class="switch" id="seated" type="button" role="switch" aria-checked="false" aria-labelledby="seated-label" aria-describedby="seated-help"><span class="knob"></span></button>
+    </div>
+  </div>
+
+  <div class="court">
+    <div class="hang backdrop" aria-hidden="true"><span class="rod"></span><div class="cloth"><div class="cloth-in"></div></div></div>
+    <svg class="torch l" viewBox="0 0 80 200" aria-hidden="true">
+      <g class="flame"><path d="M40 6 C58 32 68 52 63 70 C59 86 21 86 17 70 C12 52 26 34 40 6 Z" fill="#C8203A" /><path d="M40 34 C50 48 55 60 51 72 C48 82 32 82 29 72 C25 60 31 48 40 34 Z" fill="#F2B630" /></g>
+      <use href="#torch-body" width="80" height="200" />
+    </svg>
+    <svg class="torch r" viewBox="0 0 80 200" aria-hidden="true">
+      <g class="flame"><path d="M40 6 C58 32 68 52 63 70 C59 86 21 86 17 70 C12 52 26 34 40 6 Z" fill="#C8203A" /><path d="M40 34 C50 48 55 60 51 72 C48 82 32 82 29 72 C25 60 31 48 40 34 Z" fill="#F2B630" /></g>
+      <use href="#torch-body" width="80" height="200" />
+    </svg>
+    <svg class="throne" viewBox="0 0 300 400" role="img" aria-label="The empty throne"><use href="#throne" width="300" height="400" /></svg>
+
+    <button class="seal-btn" id="play-btn" type="button">
+      <span class="seal-body"><span class="seal-inner" id="play-label">Play Fetch</span></span>
+      <span class="seal" aria-hidden="true"><svg viewBox="0 0 200 150"><use href="art.svg#cap" width="200" height="150" style="--p1:#C8203A;--p2:#1A1626;--p3:#C8203A;--band:#1A1626;--bell:#1A1626" /></svg></span>
+    </button>
+  </div>
+
+  <div class="start-right">
+    <div class="clips" role="group" aria-label="Starter clips">
+      <button class="painting" type="button" aria-pressed="true" data-name="Fetch">
+        <span class="frame">
+          <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+            <rect width="320" height="180" fill="#BFD8EA" />
+            <path d="M0 116 C70 100 140 104 200 112 C250 118 290 106 320 108 V180 H0 Z" fill="#9CCB7E" />
+            <path d="M0 132 C90 126 200 130 320 126 V180 H0 Z" fill="#7DB862" />
+            <use href="art.svg#throw" x="34" y="42" width="66" height="99" style="color:#1A1626" />
+            <use href="art.svg#ball" x="150" y="40" width="24" height="24" style="color:#C8203A;--seam:#fff" />
+            <use href="art.svg#dog" x="192" y="104" width="100" height="60" style="color:#1A1626" />
+          </svg>
+        </span>
+        <span class="name">Fetch</span>
+        <span class="parts">3 parts: a thrower, a dog, a ball</span>
+      </button>
+
+      <button class="painting" type="button" aria-pressed="false" data-name="Handshake">
+        <span class="frame">
+          <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+            <rect width="320" height="180" fill="#EFD3A8" />
+            <rect x="226" y="26" width="64" height="48" fill="#FFF7E6" /><rect x="232" y="32" width="52" height="36" fill="#9CC4E0" />
+            <rect y="146" width="320" height="34" fill="#B98A5E" />
+            <use href="art.svg#player" x="66" y="20" width="120" height="160" style="color:#1A1626" />
+            <use href="art.svg#player" x="134" y="20" width="120" height="160" style="color:#7A4E2D" />
+          </svg>
+        </span>
+        <span class="name">Handshake</span>
+        <span class="parts">2 parts: two people</span>
+      </button>
+
+      <button class="painting" type="button" aria-pressed="false" data-name="Bounce">
+        <span class="frame">
+          <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+            <rect width="320" height="180" fill="#D9E8D2" />
+            <rect y="140" width="320" height="40" fill="#E2B279" />
+            <path d="M0 152 H320" stroke="#C99559" stroke-width="3" />
+            <path d="M28 142 Q78 26 128 142 Q152 98 176 92" fill="none" stroke="#1A1626" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" />
+            <ellipse cx="176" cy="146" rx="15" ry="3.5" fill="#1A1626" opacity=".5" />
+            <use href="art.svg#ball" x="158" y="74" width="36" height="36" style="color:#C8203A;--seam:#fff" />
+          </svg>
+        </span>
+        <span class="name">Bounce</span>
+        <span class="parts">1 part: a ball</span>
+      </button>
+
+      <button class="painting" type="button" aria-pressed="false" data-name="Wave">
+        <span class="frame">
+          <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+            <rect width="320" height="180" fill="#BFD8EA" />
+            <rect y="98" width="320" height="34" fill="#79AEDB" />
+            <path d="M0 98 Q20 92 40 98 T80 98 T120 98 T160 98 T200 98 T240 98 T280 98 T320 98" fill="none" stroke="#fff" stroke-width="3" />
+            <rect y="128" width="320" height="52" fill="#EBD3A0" />
+            <use href="art.svg#throw" x="122" y="28" width="82" height="123" style="color:#1A1626" />
+          </svg>
+        </span>
+        <span class="name">Wave</span>
+        <span class="parts">1 part: a person</span>
+      </button>
+    </div>
+
+    <div class="own">
+      <button class="plain-btn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15 V4 M7 9 L12 4 L17 9" fill="none" stroke="#F2B630" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M4 15 V20 H20 V15" fill="none" stroke="#F2B630" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        Upload a video
+      </button>
+      <button class="plain-btn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="#F2B630" stroke-width="2.6" /><circle cx="12" cy="12" r="4.5" fill="#C8203A" /></svg>
+        Record one now
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Screen 2: blind play, Aaron's turn ============ -->
+<section class="screen play" id="play" aria-label="Blind play">
+  <div class="floor" aria-hidden="true"><div class="tiles"></div></div>
+
+  <div class="cam-wrap">
+    <div class="gold">
+      <div class="cam">
+        <svg class="room" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Aaron's camera">
+          <rect width="1200" height="620" fill="#57668A" />
+          <rect x="800" y="110" width="290" height="290" fill="#E9E1CF" />
+          <rect x="818" y="128" width="118" height="118" fill="#F8DC94" /><rect x="954" y="128" width="118" height="118" fill="#F8DC94" />
+          <rect x="818" y="264" width="118" height="118" fill="#F8DC94" /><rect x="954" y="264" width="118" height="118" fill="#F8DC94" />
+          <rect x="780" y="396" width="330" height="20" fill="#E9E1CF" />
+          <rect x="400" y="130" width="150" height="110" fill="#E9E1CF" /><rect x="414" y="144" width="122" height="82" fill="#7DB862" />
+          <rect x="20" y="452" width="250" height="168" fill="#E9E1CF" />
+          <rect x="40" y="474" width="210" height="56" fill="none" stroke="#1A1626" stroke-width="6" />
+          <rect x="40" y="544" width="210" height="56" fill="none" stroke="#1A1626" stroke-width="6" />
+          <rect x="120" y="424" width="50" height="28" fill="#1A1626" /><rect x="140" y="330" width="10" height="96" fill="#1A1626" />
+          <path d="M88 250 H202 L230 340 H60 Z" fill="#E98A7A" />
+          <rect y="604" width="1200" height="18" fill="#E9E1CF" />
+          <rect y="620" width="1200" height="280" fill="#A97E58" />
+          <use href="art.svg#player" x="360" y="250" width="480" height="640" style="color:#F2B630" />
+        </svg>
+
+        <!-- A harlequin curtain hangs over the camera with the dog's shape cut out of it. -->
+        <svg class="curtain" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <pattern id="harl" width="150" height="200" patternUnits="userSpaceOnUse">
+              <rect width="150" height="200" fill="#C8203A" />
+              <path d="M75 0 L150 100 L75 200 L0 100 Z" fill="#F2B630" />
+              <path d="M75 0 L150 100 L75 200 L0 100 Z" fill="none" stroke="#1A1626" stroke-opacity=".45" stroke-width="4" />
+            </pattern>
+            <mask id="dog-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="900">
+              <rect width="1200" height="900" fill="#fff" />
+              <use href="art.svg#dog" x="230" y="390" width="740" height="444" style="color:#000" />
+            </mask>
+            <filter id="hole-edge" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="900" color-interpolation-filters="sRGB">
+              <feOffset in="SourceAlpha" dx="12" dy="14" result="shifted" />
+              <feComposite in="SourceAlpha" in2="shifted" operator="out" result="crescent" />
+              <feFlood flood-color="#0E0B16" flood-opacity="0.55" /><feComposite in2="crescent" operator="in" result="shadow" />
+              <feMorphology in="SourceAlpha" operator="dilate" radius="11" result="outer" />
+              <feComposite in="outer" in2="SourceAlpha" operator="out" result="outer-ring" />
+              <feFlood flood-color="#1A1626" /><feComposite in2="outer-ring" operator="in" result="ink" />
+              <feMorphology in="SourceAlpha" operator="dilate" radius="7" result="inner" />
+              <feComposite in="inner" in2="SourceAlpha" operator="out" result="inner-ring" />
+              <feFlood flood-color="#FFFFFF" /><feComposite in2="inner-ring" operator="in" result="trim" />
+              <feMerge><feMergeNode in="shadow" /><feMergeNode in="ink" /><feMergeNode in="trim" /></feMerge>
+            </filter>
+          </defs>
+          <g mask="url(#dog-hole)" opacity=".86">
+            <rect width="1200" height="900" fill="url(#harl)" />
+            <g fill="#1A1626" opacity=".18">
+              <rect x="120" width="70" height="900" /><rect x="420" width="70" height="900" /><rect x="720" width="70" height="900" /><rect x="1020" width="70" height="900" />
+            </g>
+            <rect width="1200" height="46" fill="#C8203A" />
+            <g fill="#C8203A">
+              <circle cx="40" cy="46" r="38" /><circle cx="120" cy="46" r="38" /><circle cx="200" cy="46" r="38" /><circle cx="280" cy="46" r="38" />
+              <circle cx="360" cy="46" r="38" /><circle cx="440" cy="46" r="38" /><circle cx="520" cy="46" r="38" /><circle cx="600" cy="46" r="38" />
+              <circle cx="680" cy="46" r="38" /><circle cx="760" cy="46" r="38" /><circle cx="840" cy="46" r="38" /><circle cx="920" cy="46" r="38" />
+              <circle cx="1000" cy="46" r="38" /><circle cx="1080" cy="46" r="38" /><circle cx="1160" cy="46" r="38" />
+            </g>
+            <rect width="1200" height="20" fill="#F2B630" />
+          </g>
+          <use href="art.svg#dog" x="230" y="390" width="740" height="444" style="color:#000" filter="url(#hole-edge)" />
+        </svg>
+      </div>
+    </div>
+    <p class="plaque">Get inside the outline. Move when it moves.</p>
+  </div>
+
+  <div class="turn">
+    <div class="scroll herald"><span class="who">Aaron's turn</span><span class="of">3 of 3</span></div>
+    <p class="away">Everyone else, look away.</p>
+
+    <div class="you">
+      <svg class="shield" viewBox="0 0 160 190" aria-hidden="true">
+        <path d="M6 6 H154 V92 C154 142 118 172 80 186 C42 172 6 142 6 92 Z" fill="#C8203A" stroke="#1A1626" stroke-width="5" stroke-linejoin="round" />
+        <path d="M20 20 H140 V90 C140 132 110 156 80 168 C50 156 20 132 20 90 Z" fill="#F2B630" />
+        <use href="art.svg#dog" x="14" y="62" width="132" height="79" style="color:#1A1626" />
+        <circle cx="121" cy="76" r="5" fill="#fff" /><circle cx="132" cy="75" r="5" fill="#fff" />
+        <circle cx="122.5" cy="77" r="2.4" fill="#1A1626" /><circle cx="133.5" cy="76" r="2.4" fill="#1A1626" />
+      </svg>
+      <h1>You are the dog.</h1>
+    </div>
+
+    <div class="hang count-banner" aria-label="Starting in 3" role="img">
+      <span class="rod" aria-hidden="true"></span>
+      <div class="cloth" aria-hidden="true"><div class="cloth-in"><span>3</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Screen 3: reveal and results ============ -->
+<section class="screen reveal" id="reveal" aria-label="Reveal and results">
+  <div class="floor" aria-hidden="true"><div class="tiles"></div></div>
+  <div class="dim" aria-hidden="true"></div>
+  <div class="drumroll" aria-hidden="true">
+    <svg class="drum" viewBox="0 0 240 200">
+      <g stroke="#F2B630" stroke-width="10" stroke-linecap="round"><path d="M34 18 L118 86" /><path d="M206 18 L122 86" /></g>
+      <circle cx="34" cy="18" r="10" fill="#F4E9D0" /><circle cx="206" cy="18" r="10" fill="#F4E9D0" />
+      <path d="M22 104 V164 A98 26 0 0 0 218 164 V104 Z" fill="#C8203A" />
+      <path d="M22 116 L55 158 L88 120 L120 162 L152 120 L185 158 L218 116" fill="none" stroke="#F2B630" stroke-width="5" stroke-linejoin="round" />
+      <path d="M22 160 A98 26 0 0 0 218 160" fill="none" stroke="#F2B630" stroke-width="10" />
+      <ellipse cx="120" cy="104" rx="98" ry="26" fill="#F4E9D0" stroke="#F2B630" stroke-width="10" />
+    </svg>
+    <p>Drum roll, please.</p>
+  </div>
+
+  <div class="show">
+    <div class="head-row">
+      <h1 class="headline">Lisa takes the throne.</h1>
+      <button class="again" id="again" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10 A6 6 0 1 1 13.2 4.9" fill="none" stroke="#F2B630" stroke-width="2.4" stroke-linecap="round" /><path d="M10.5 2.5 L14.6 4.4 L12.6 8.4" fill="none" stroke="#F2B630" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        Watch again
+      </button>
+    </div>
+
+    <div class="painting-wrap">
+      <div class="gold">
+        <div class="canvas">
+          <svg viewBox="0 0 1600 900" role="img" aria-label="The Fetch clip, with Lisa cut out where the thrower was, Alex where the ball was, and Aaron where the dog was">
+            <defs>
+              <filter id="cutout" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900" color-interpolation-filters="sRGB">
+                <feMorphology in="SourceAlpha" operator="dilate" radius="12" result="grown" />
+                <feOffset in="grown" dx="13" dy="15" result="dropped" />
+                <feFlood flood-color="#1A1626" flood-opacity="0.75" /><feComposite in2="dropped" operator="in" result="shadow" />
+                <feFlood flood-color="#FFFFFF" /><feComposite in2="grown" operator="in" result="rim" />
+                <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+              </filter>
+            </defs>
+            <rect width="1600" height="900" fill="#BFD8EA" />
+            <circle cx="1450" cy="96" r="56" fill="#F8DC94" />
+            <g fill="#ffffff"><circle cx="560" cy="120" r="40" /><circle cx="616" cy="98" r="54" /><circle cx="676" cy="120" r="38" /><rect x="524" y="120" width="190" height="40" /></g>
+            <path d="M0 590 C200 530 420 520 640 560 C820 592 980 534 1180 524 C1360 516 1480 552 1600 570 V900 H0 Z" fill="#9CCB7E" />
+            <path d="M0 668 C300 646 700 656 1000 646 C1250 638 1450 656 1600 650 V900 H0 Z" fill="#7DB862" />
+            <path d="M1494 700 L1500 420 L1530 420 L1536 700 Z" fill="#7A5233" />
+            <g fill="#5E9E52"><circle cx="1514" cy="330" r="104" /><circle cx="1446" cy="392" r="66" /><circle cx="1584" cy="392" r="74" /></g>
+            <g class="cut" filter="url(#cutout)" style="color:#C8203A"><use href="art.svg#throw" x="230" y="350" width="280" height="420" /></g>
+            <g class="cut" filter="url(#cutout)" style="color:#2E9E6B"><use href="art.svg#tuck" x="840" y="210" width="150" height="150" /></g>
+            <g class="cut" filter="url(#cutout)" style="color:#F2B630"><use href="art.svg#crawl" x="1050" y="540" width="330" height="198" /></g>
+          </svg>
+          <div class="spot" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+
+    <ol class="ranks" aria-label="Scores">
+      <li class="rank" style="--i:0;--score:91;--who:#C8203A;--fg:#F4E9D0"><span class="flag"><span class="pos">1</span><b>Lisa</b><span class="part">the thrower</span><span class="pts">91</span></span></li>
+      <li class="rank" style="--i:1;--score:82;--who:#F2B630;--fg:#1A1626"><span class="flag"><span class="pos">2</span><b>Aaron</b><span class="part">the dog</span><span class="pts">82</span></span></li>
+      <li class="rank" style="--i:2;--score:64;--who:#2E9E6B;--fg:#1A1626"><span class="flag"><span class="pos">3</span><b>Alex</b><span class="part">the ball</span><span class="pts">64</span></span></li>
+    </ol>
+  </div>
+
+  <div class="seat-col">
+    <div class="scroll line"><p>Lisa wins. Alex, that was a brave ball.</p></div>
+
+    <div class="actions">
+      <button class="seal-btn" type="button">
+        <span class="seal-body"><span class="seal-inner">Send this to someone</span></span>
+        <span class="seal" aria-hidden="true"><svg viewBox="0 0 200 150"><use href="art.svg#cap" width="200" height="150" style="--p1:#C8203A;--p2:#1A1626;--p3:#C8203A;--band:#1A1626;--bell:#1A1626" /></svg></span>
+      </button>
+      <button class="plain-btn" type="button">Play again</button>
+    </div>
+
+    <div class="throne-stage">
+      <svg class="torch l" viewBox="0 0 80 200" aria-hidden="true">
+        <g class="flame"><path d="M40 6 C58 32 68 52 63 70 C59 86 21 86 17 70 C12 52 26 34 40 6 Z" fill="#C8203A" /><path d="M40 34 C50 48 55 60 51 72 C48 82 32 82 29 72 C25 60 31 48 40 34 Z" fill="#F2B630" /></g>
+        <use href="#torch-body" width="80" height="200" />
+      </svg>
+      <svg class="torch r" viewBox="0 0 80 200" aria-hidden="true">
+        <g class="flame"><path d="M40 6 C58 32 68 52 63 70 C59 86 21 86 17 70 C12 52 26 34 40 6 Z" fill="#C8203A" /><path d="M40 34 C50 48 55 60 51 72 C48 82 32 82 29 72 C25 60 31 48 40 34 Z" fill="#F2B630" /></g>
+        <use href="#torch-body" width="80" height="200" />
+      </svg>
+      <svg class="big" viewBox="0 0 340 470" role="img" aria-label="Lisa on the throne, crowned">
+        <defs>
+          <filter id="cutout-small" filterUnits="userSpaceOnUse" x="0" y="0" width="340" height="470" color-interpolation-filters="sRGB">
+            <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="grown" />
+            <feOffset in="grown" dx="7" dy="8" result="dropped" />
+            <feFlood flood-color="#0E0B16" flood-opacity="0.8" /><feComposite in2="dropped" operator="in" result="shadow" />
+            <feFlood flood-color="#FFFFFF" /><feComposite in2="grown" operator="in" result="rim" />
+            <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <use href="#throne" x="20" y="70" width="300" height="400" />
+        <g class="queen" filter="url(#cutout-small)" style="color:#C8203A"><use href="art.svg#throw" x="95" y="142" width="150" height="225" /></g>
+        <use class="crown" href="#crown" x="142" y="114" width="58" height="41" />
+      </svg>
+    </div>
+  </div>
+</section>
+
+<script>
+  const which = new URLSearchParams(location.search).get("s");
+  if (["start", "play", "reveal"].includes(which)) {
+    for (const screen of document.querySelectorAll(".screen")) screen.hidden = screen.id !== which;
+  }
+
+  const seatedSwitch = document.getElementById("seated");
+  seatedSwitch.addEventListener("click", () => {
+    seatedSwitch.setAttribute("aria-checked", String(seatedSwitch.getAttribute("aria-checked") !== "true"));
+  });
+
+  const playLabel = document.getElementById("play-label");
+  const paintings = document.querySelectorAll(".painting");
+  for (const painting of paintings) {
+    painting.addEventListener("click", () => {
+      for (const other of paintings) other.setAttribute("aria-pressed", String(other === painting));
+      playLabel.textContent = "Play " + painting.dataset.name;
+    });
+  }
+
+  // The reveal plays once on load, and again on request. Without motion it simply rests on the end.
+  const reveal = document.getElementById("reveal");
+  function runShow() {
+    reveal.classList.remove("run");
+    void reveal.offsetWidth;
+    reveal.classList.add("run");
+  }
+  if (which === "reveal") runShow();
+  document.getElementById("again").addEventListener("click", runShow);
+</script>
+</body>
+</html>
