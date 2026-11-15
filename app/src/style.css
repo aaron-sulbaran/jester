@@ -106,6 +106,8 @@ body:not(.solo) #solo { display: none; }
 /* Alphabet stickers: each letter its own colour, one white backing, one hard shadow. */
 .letters { display: inline-flex; flex-wrap: wrap; justify-content: center; filter: url(#die-cut); }
 .letters span { display: inline-block; color: var(--c); rotate: var(--r); translate: 0 var(--y); margin-right: -.02em; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
+/* A word of letters stays on one line; the line breaks only between words. */
+.letters .word { display: inline-flex; color: inherit; rotate: none; translate: none; margin-right: 0; }
 .wordmark { margin: 0; font: 400 clamp(72px, 10vw, 128px)/1 var(--sticker); padding: 6px 14px 16px; }
 
 /* ---------- Buttons ---------- */

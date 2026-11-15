@@ -1098,14 +1098,14 @@ export const REVEAL_THEME: RevealTheme = { card: "#16161d", ink: "#f2f2f5", soft
 let theme: RevealTheme = { ...REVEAL_THEME };
 const font = (H: number, k: number, weight = 600) => `${weight} ${Math.round(H * k)}px ${theme.font}`;
 
-/** The opening card. */
+/** The opening card. Every line is held to the card's width (fillText's last argument): a tall clip makes a narrow card. */
 function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneName: string, players: number, ms: number) {
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = Math.min(1, ms / 400);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4);
-  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
-  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
+  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4, W * 0.9);
+  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
+  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66, W * 0.9);
   ctx.globalAlpha = 1;
 }
 
@@ -1113,7 +1113,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
 function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows: ResultRow[], faces: (HTMLCanvasElement | null)[], ms: number) {
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "middle";
-  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
+  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13, W * 0.9);
   const rowH = Math.min(H * 0.17, (H * 0.78) / Math.max(1, rows.length));
   rows.forEach((r, i) => {
     // Rows slide in one after another.
@@ -1127,8 +1127,8 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
     if (img) ctx.drawImage(img, x0, y - face / 2, face, face);
     ctx.strokeStyle = r.color; ctx.lineWidth = 3; ctx.strokeRect(x0, y - face / 2, face, face);
     ctx.textAlign = "left";
-    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15);
-    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2);
+    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15, W * 0.92 - (x0 + face + W * 0.025) - W * 0.14);
+    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2, W * 0.92 - (x0 + face + W * 0.025) - W * 0.14);
     ctx.textAlign = "right";
     ctx.fillStyle = r.winner ? theme.accent : theme.ink; ctx.font = font(H, 0.07, 800);
     ctx.fillText(r.score == null ? "-" : String(r.score), W * 0.92, y - rowH * 0.08);

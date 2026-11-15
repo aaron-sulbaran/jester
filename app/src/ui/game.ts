@@ -111,14 +111,19 @@ function letters(el: HTMLElement, text: string, color?: string) {
   const wrap = document.createElement("span");
   wrap.className = "letters";
   wrap.setAttribute("aria-hidden", "true");
+  // Letters are grouped by word (each word keeps its trailing space), so a long line such as "Lisa and Aaron
+  // tie!" wraps between words on a phone, never in the middle of one.
+  let word: HTMLSpanElement | null = null;
   [...text].forEach((ch, i) => {
+    if (!word) { word = document.createElement("span"); word.className = "word"; wrap.appendChild(word); }
     const span = document.createElement("span");
     span.textContent = ch === " " ? "\u00a0" : ch;
     span.style.setProperty("--c", ch === " " ? "transparent" : color ?? STICKER_COLORS[i % STICKER_COLORS.length]!);
     span.style.setProperty("--r", `${TILT[i % TILT.length]}deg`);
     span.style.setProperty("--y", `${BOB[i % BOB.length]}px`);
     span.style.setProperty("--n", String(i));
-    wrap.appendChild(span);
+    word.appendChild(span);
+    if (ch === " ") word = null;
   });
   el.removeAttribute("aria-label");
   el.replaceChildren(said, wrap);
@@ -179,7 +184,7 @@ export function initGame(deps: GameDeps) {
       b.querySelector(".clip-pic")!.prepend(img);
     }
     const [name, hint, credit] = p.kind === "surprise" ? ["Surprise me", "A clip from the bank. Nobody sees it until the end.", ""]
-      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? `by ${p.clip.credit}` : ""]
+      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? (/^sent in/i.test(p.clip.credit) ? p.clip.credit : `by ${p.clip.credit}`) : ""]
       : [p.starter.title, p.starter.hint, ""];
     b.querySelector(".clip-name")!.textContent = name;
     b.querySelector(".clip-hint")!.textContent = hint;
