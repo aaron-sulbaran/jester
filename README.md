@@ -34,7 +34,7 @@ And one honest line about who it is for: it gets a group of friends moving aroun
 - **3, 2, 1, copy.** Your part plays on the left, your camera on the right, and clips made from a video play their sound. On one laptop you can play at full speed, a bit slower, or at half speed.
 - **The reveal.** After a drum roll, the original clip and your cast play side by side, with every player's cutout drawn on their part and their names and scores, and then the curtains close. It is recorded in the browser as a video you can save or send.
 - **The crown.** Each player's face goes on a jester, the spotlight settles on the winner, and everyone leaves with an award.
-- **Play online.** Make a room or join one with its 4-letter code or a QR code; the lobby shows everyone's jester, who is ready, and a chat. Each player plays their own part on their own device, and everyone sees the reveal and results together, with real faces and cutouts. The host picks one of our drawn clips, a clip from the bank, or a video from their own laptop, which stays on that laptop while the others get only its shapes.
+- **Play online.** Make a room or join one with its 4-letter code or a QR code; the lobby shows everyone's jester, who is ready, and a chat. Each player plays their own part on their own device, and everyone sees the reveal and results together, with real faces and cutouts. The host picks a clip from the bank, Surprise me, or a video from their own laptop, which stays on that laptop while the others get only its shapes.
 - **Settings say what Jester saves:** each round's moves as points on a body, with the score and timing, never video or a picture of you, plus a random id for the browser, the browser and graphics chip, the camera's size and frame rate, and which clip was played.
 - **Send in a clip** and name it with a hint. The Chamberlain, our deep agent ([below](#deep-agents-for-a-fairer-judge-without-retraining-a-model)), reviews it and lets it into the bank, turns it away, or asks a person when it is unsure; four short steps on the screen show the whole path.
 
@@ -134,7 +134,7 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 
 | Part | What we used |
 | --- | --- |
-| Language and build | TypeScript 5.7, Vite 6 |
+| Language and build | TypeScript 5.9, Vite 6 |
 | Body tracking | MediaPipe Tasks Vision 0.10.14: Pose Landmarker (lite, full), Hand Landmarker |
 | Things in clips | MediaPipe Object Detector with EfficientDet-Lite0 |
 | Video decoding | Mediabunny on WebCodecs, with a video element fallback |
@@ -142,8 +142,8 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 | Reveal video | Canvas capture and MediaRecorder (WebM) |
 | The 3D jester guide | three.js |
 | Deep agents | LangChain deepagents (`createDeepAgent`); Claude Sonnet 5.5 for the Chamberlain; Claude Opus 5.5 with Muse Spark 1.3 subagents for the referee coach; LangSmith tracing |
-| Clip bank, submissions and rooms | Supabase (Storage, tables, Realtime) |
-| Hosting | Vercel |
+| Submissions, the round log and rooms | Supabase (Storage, tables, Realtime) |
+| Hosting | Vercel, with the clip bank as static files |
 | The jester | Blender 5.2, scripted in Python, rendered with EEVEE |
 | Fonts | Gaegu and Titan One (SIL Open Font License), Special Elite (Apache License 2.0) |
 | Tests | Node's built-in test runner, and GitHub Actions on every pull request |
