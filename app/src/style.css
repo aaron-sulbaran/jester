@@ -558,3 +558,11 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 /* Scoped to the notice: the crowning marks losing jesters .lost too, and a bare .lost pulled them onto the winner. */
 #lostNotice { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
 .place-who .aside { text-align: left; }
+
+/* Your clip is in: a note taped to the bottom left corner, over the page; hidden during a turn. */
+#clipReady { position: fixed; z-index: 30; left: 14px; bottom: 14px; width: min(420px, calc(100vw - 28px)); display: grid; gap: 10px; justify-items: start; }
+#clipReady .note { --lh: 30px; font-size: 22px; padding: 16px 18px 10px 50px; }
+#clipReady .row-actions { justify-content: flex-start; gap: 12px; padding-left: 8px; }
+#clipReady .link { background: var(--photo); box-shadow: var(--lift); padding: 8px 14px; }
+body[data-screen="turn"] #clipReady { display: none; }
+@media (max-width: 760px) { #clipReady { left: 8px; right: 8px; bottom: 8px; width: auto; } }
