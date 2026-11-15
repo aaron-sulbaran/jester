@@ -49,10 +49,10 @@ test("composeFrame gives each role its own colour and null where the recording h
   const at650 = composeFrame(roles, 650, { playerAspect: 4 / 3, clipAspect: 16 / 9 });
   assert.equal(at650[0].pose, null);
   assert.equal(at650[0].color, PLAYER_COLORS[0]);
-  const at100 = composeFrame(roles, 100, { playerAspect: 4 / 3, clipAspect: 16 / 9 });
-  assert.ok(at100[0].pose && at100[0].pose.length === 33);
-  assert.equal(at100[1].pose, null);
-  assert.equal(at100[1].color, PLAYER_COLORS[1]);
+  const at400 = composeFrame(roles, 400, { playerAspect: 4 / 3, clipAspect: 16 / 9 });
+  assert.ok(at400[0].pose && at400[0].pose.length === 33);
+  assert.equal(at400[1].pose, null);
+  assert.equal(at400[1].color, PLAYER_COLORS[1]);
 });
 
 test("drawComposite draws every visible bone and skips missing figures", () => {
