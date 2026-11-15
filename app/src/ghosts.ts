@@ -5,13 +5,17 @@
 //
 //   const pool = ghostCandidates(rows, clipId);            // untagged rounds with a score on this bank clip
 //   const ids = pickGhosts(rows, clipId, 3);                // a spread: one strong, one middling, one weak
-//   const ghost = makeGhost(record, ghostName(record.id));  // ready to draw and rank
+//   const ghost = makeGhost(rescore(record), ghostName(record.id));  // scored again by today's engine, ready to draw and rank
 //   ghostScoreAt(ghost, mediaMs);                           // the live bar, 0 up to the ghost's final score
 //   withGhosts(duelStandings(room), ghosts.map((g) => ghostStanding(g, startMs, endMs)));
 
-import { GRID_HZ } from "../../engine/src/constants.ts";
+import { GRID_HZ, SCORER_VERSION } from "../../engine/src/constants.ts";
+// The scorer straight from its own file: the round log only taps imports of engine/src/index.ts, so a ghost's
+// rescore is never saved as a new round.
+import { scorePoseRound } from "../../engine/src/pose.ts";
+import type { PoseRoundOptions } from "../../engine/src/index.ts";
 import { bucketCredits, rankDuel } from "../../clip/src/match.ts";
-import { unpackPose, type AnyPackedPose } from "../../eval/src/record.ts";
+import { unpackPose, type AnyPackedBoxes, type AnyPackedPose } from "../../eval/src/record.ts";
 import { serializeTimeline } from "../../spikes/pose-match/serialize.mjs";
 import type { DuelClipInfo, DuelStanding, DuelTable } from "./onlineDuel.ts";
 
@@ -30,8 +34,32 @@ export interface GhostRecord {
   id: string;
   score: number;
   player: AnyPackedPose;
-  result: { score: number | null; lagMs?: number | null; frameCredits?: (number | null)[]; worstLimb?: { label?: string } | null };
+  result: { score: number | null; lagMs?: number | null; frameCredits?: (number | null)[]; worstLimb?: { label?: string } | null; scorerVersion?: string };
+  /** What the player copied and the scorer's options, when fetched: enough to score the round again. */
+  reference?: AnyPackedPose | AnyPackedBoxes;
+  options?: Record<string, unknown>;
+  /** "current" once rescored by the engine in this build, "saved" when the stored result is used as it was. */
+  scoredBy?: "current" | "saved";
 }
+
+/**
+ * The round scored again by the engine in this build, so a ghost from an older scorer competes on today's rules.
+ * Keeps the saved result when there is no pose reference to score against, or when today's engine cannot score it.
+ */
+export function rescore(record: GhostRecord): GhostRecord {
+  const ref = record.reference;
+  if (!ref || (ref.schema !== "packed-pose/1" && ref.schema !== "packed-pose/2")) return { ...record, scoredBy: "saved" };
+  try {
+    const result = scorePoseRound(unpackPose(ref), unpackPose(record.player), (record.options ?? {}) as PoseRoundOptions);
+    if (result.score === null) return { ...record, scoredBy: "saved" };
+    return { ...record, score: result.score, result, scoredBy: "current" };
+  } catch {
+    return { ...record, scoredBy: "saved" };
+  }
+}
+
+/** The scorer version a ghost's score came from. */
+export const ghostScorer = (record: GhostRecord) => (record.scoredBy === "current" ? SCORER_VERSION : record.result.scorerVersion ?? "unknown");
 
 export interface Ghost {
   /** The saved round's id. */

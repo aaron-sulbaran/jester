@@ -42,7 +42,7 @@ function codeFacts(repo: string): NonNullable<RoundRecord["app"]> {
 
 /**
  * Ghosts on a dev server (app/src/ghostSource.ts) read this laptop's round log with GET: without `ids`, a light row
- * per untagged round with a score and a bank clip; with `ids=a,b`, those rounds' player poses and results.
+ * per untagged round with a score and a bank clip; with `ids=a,b`, those rounds' poses, reference, options and results.
  */
 function localGhostRows(roundsDir: string, ids: string | null): unknown[] {
   if (!existsSync(roundsDir)) return [];
@@ -54,7 +54,7 @@ function localGhostRows(roundsDir: string, ids: string | null): unknown[] {
     try { r = JSON.parse(readFileSync(join(roundsDir, file), "utf8")); } catch { continue; }
     if (!looksLikeRecord(r) || r.tag !== null || r.result.score === null || !r.clip.bankId) continue;
     out.push(wanted
-      ? { id: r.id, score: r.result.score, player: r.player, result: r.result }
+      ? { id: r.id, score: r.result.score, player: r.player, result: r.result, reference: r.reference, options: r.options }
       : { id: r.id, score: r.result.score, tag: r.tag, bankId: r.clip.bankId, channel: r.channel });
   }
   return out;

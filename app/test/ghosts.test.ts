@@ -89,3 +89,25 @@ test("the clip: a bank clip over the starter, and one with ghosts for someone al
   assert.equal(pickClip([info("starter")], [], { alone: true, starterId: "starter" })?.id, "starter");
   assert.equal(pickClip([info("starter")], [row("s", 50, { bankId: "starter" })], { alone: true, starterId: "starter" })?.id, "starter");
 });
+
+test("a ghost is scored again by today's engine; one with no pose reference keeps its saved score", async () => {
+  const { makeSequenceTimeline, DEMO_SEQUENCE } = await import("../../spikes/pose-match/synthetic.mjs");
+  const { fromClipSamples } = await import("../../engine/src/adapters.ts");
+  const { SCORER_VERSION } = await import("../../engine/src/constants.ts");
+  const { ghostScorer, rescore } = await import("../src/ghosts.ts");
+  const samples = makeSequenceTimeline(DEMO_SEQUENCE, { idleDegrees: 2, aspect: 1 }) as never;
+  const timeline = fromClipSamples(samples, { width: 1000, height: 1000, timeUnit: "s" });
+  const old = { ...record("r-old", 12, [0.1, 0.1]), reference: packPose(timeline), player: packPose(timeline), options: {} };
+  old.result.scorerVersion = "pose-0.1";
+  const now = rescore(old);
+  assert.equal(now.scoredBy, "current");
+  assert.equal(typeof now.score, "number");
+  assert.ok(now.score > 12, `a perfect copy scores ${now.score} today, not the saved 12`);
+  assert.equal(now.result.score, now.score);
+  assert.equal(ghostScorer(now), SCORER_VERSION);
+  const boxes = { ...record("r-box", 40, [1]), reference: { schema: "packed-box/2", source: { width: 1, height: 1 }, t: [0], empty: [], b: [0, 0, 0, 0] } as never };
+  const kept = rescore(boxes);
+  assert.equal(kept.scoredBy, "saved");
+  assert.equal(kept.score, 40);
+  assert.equal(rescore(record("r-none", 33, [1])).score, 33);  // no reference fetched: saved score
+});

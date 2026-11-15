@@ -4,7 +4,7 @@
 // Every call answers { data, error }; a failed source just means fewer ghosts.
 
 import { ROUND_ID } from "../../eval/src/record.ts";
-import type { GhostRecord, GhostRow } from "./ghosts.ts";
+import { rescore, type GhostRecord, type GhostRow } from "./ghosts.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
 
@@ -41,7 +41,10 @@ export async function ghostRows(): Promise<Result<GhostRow[]>> {
   return { data: rows, error: null };
 }
 
-/** The saved rounds behind these ghost ids: the player's poses and the scorer's result. Unknown ids are left out. */
+/**
+ * The saved rounds behind these ghost ids, each scored again by this build's engine (ghosts.ts rescore; the saved
+ * result is kept when that is not possible). Unknown ids are left out.
+ */
 export async function ghostRecords(ids: readonly string[]): Promise<Result<GhostRecord[]>> {
   // Round ids are only letters, digits and dashes (checked by the table), so they are safe in the address.
   const wanted = ids.filter((id) => ROUND_ID.test(id));
@@ -54,11 +57,11 @@ export async function ghostRecords(ids: readonly string[]): Promise<Result<Ghost
   const missing = wanted.filter((id) => !found.has(id));
   let error: string | null = null;
   if (missing.length) {
-    const shared = await supabase<GhostRecord[]>(`select=id,score,player:record->player,result:record->result&id=in.(${missing.join(",")})`);
+    const shared = await supabase<GhostRecord[]>(`select=id,score,player:record->player,result:record->result,reference:record->reference,options:record->options&id=in.(${missing.join(",")})`);
     for (const r of shared.data ?? []) found.set(r.id, r);
     error = shared.error;
   }
-  const records = wanted.map((id) => found.get(id)).filter((r): r is GhostRecord => !!r && typeof r.score === "number" && !!r.player?.t);
+  const records = wanted.map((id) => found.get(id)).filter((r): r is GhostRecord => !!r && typeof r.score === "number" && !!r.player?.t).map(rescore);
   if (records.length === 0 && error !== null) return { data: null, error: `The ghosts did not load (Supabase ${error}).` };
   return { data: records, error: null };
 }
