@@ -5,6 +5,7 @@
 
 import type { Player } from "../round.ts";
 import { cameraTrouble } from "../feelText.ts";
+import { calmMotion } from "../settings.ts";
 import * as sfx from "../sfx.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -247,7 +248,7 @@ function watched(p: Player): Player {
 
 /** Counts `el` up from 0 to `to`, easing out; shows the number at once when motion is reduced. */
 export function countUp(el: HTMLElement, to: number, delayMs = 0) {
-  if (to <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = String(to); return; }
+  if (to <= 0 || calmMotion()) { el.textContent = String(to); return; }
   el.textContent = "0";
   const durationMs = 700 + to * 8;
   const t0 = performance.now() + delayMs;
