@@ -11,6 +11,7 @@ import {
   type BankEntry, type BankIndex,
 } from "./bankIndex.ts";
 import { listBank, loadBankGuides } from "./bank.ts";
+import { submitClip } from "./submit.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
 type VideoType = "mp4" | "webm";
@@ -505,6 +506,21 @@ $("check").addEventListener("click", async () => {
     else problems.push(`${clip.title}: ${guides.error}`);
   }
   say("checkStatus", `The game sees ${listed.data.length} clips at ${where}/bank; ${ok} have their moves.${problems.length ? " " + problems.join(" ") : ""} Reload the page to check again.`, problems.length ? "bad" : "good");
+});
+
+// ---- Submit your own, as the game sends it ----
+
+$("submitFile").addEventListener("change", async (event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  const progress = $<HTMLProgressElement>("submitProgress");
+  progress.value = 0;
+  say("submitStatus", `Sending ${file.name}...`);
+  const sent = await submitClip(file, { title: $<HTMLInputElement>("submitTitle").value, credit: $<HTMLInputElement>("submitCredit").value }, (share) => { progress.value = share; });
+  if (sent.error !== null) return say("submitStatus", sent.error, "bad");
+  say("submitStatus", `Sent for review as ${sent.data.id}.`, "good");
 });
 
 syncButtons();

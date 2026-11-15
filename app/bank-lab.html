@@ -74,6 +74,18 @@
   </section>
 
   <section>
+    <h2>Try Submit your own</h2>
+    <p class="sub">Sends a video to the review queue exactly as the game will (<code>submitClip</code>). It cannot be read back or removed from this page, so title tests "Test, please reject".</p>
+    <label for="submitTitle">Title (optional)</label>
+    <input id="submitTitle" type="text" maxlength="80" value="Test, please reject" />
+    <label for="submitCredit">Credit (optional)</label>
+    <input id="submitCredit" type="text" maxlength="60" />
+    <p><input id="submitFile" type="file" accept="video/mp4,video/webm,video/quicktime,.mov" /></p>
+    <progress id="submitProgress" value="0" max="1"></progress>
+    <p id="submitStatus" class="status"></p>
+  </section>
+
+  <section>
     <h2>In the bank</h2>
     <p id="bankStatus" class="status">Pick the bank folder to see what is in it.</p>
     <div id="bankList"></div>
