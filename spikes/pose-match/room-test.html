@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jester room test</title>
+<style>body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:16px;max-width:560px}
+button,input{padding:8px 12px;font-size:15px;margin:2px}li{margin:4px 0}.hint{color:#aaa;font-size:13px}code{background:#222;padding:2px 5px}</style></head><body>
+<h1>Room test</h1>
+<p class="hint">Open this page in two tabs of the same browser. Same room code joins them (no server, no account). Real devices need a hosted transport.</p>
+<p><input id="name" placeholder="Your name" size="10"> <input id="code" placeholder="CODE" size="6" maxlength="4">
+<button id="create">New room</button> <button id="join">Join</button></p>
+<div id="roomBox" hidden>
+  <h2>Room <code id="roomCode"></code> <small id="role"></small></h2>
+  <ol id="roster"></ol>
+  <p><button id="start">Start round (host)</button> <button id="send">Finish: send a random score</button></p>
+  <p id="round"></p>
+  <h3>Standings</h3><ol id="standings"></ol>
+</div>
+<script type="module">
+import { Room, broadcastChannelTransport, makeRoomCode, normalizeCode } from "./rooms.mjs";
+const $ = (id) => document.getElementById(id);
+let room = null;
+const id = "p" + Math.random().toString(36).slice(2, 6);
+function enter(code) {
+  code = normalizeCode(code); if (code.length !== 4) { alert("Room code is 4 letters"); return; }
+  room = new Room({ transport: broadcastChannelTransport(code), code, playerId: id, name: $("name").value || id });
+  window.room = room;
+  room.on("update", render); room.on("start", (r) => { $("round").textContent = "Round " + r.roundNo + " starts in " + Math.max(0, Math.round(r.startAt - Date.now())) + " ms (clip " + r.clipId + ")"; });
+  room.join(); $("roomBox").hidden = false; $("roomCode").textContent = code; render();
+}
+function render() {
+  $("role").textContent = room.isHost ? "(you are the host)" : "";
+  $("roster").innerHTML = room.roster().map((p) => "<li>" + p.name + (p.id === room.hostId ? " (host)" : "") + (p.id === id ? " (you)" : "") + "</li>").join("");
+  $("standings").innerHTML = room.standings().map((r) => "<li>" + r.name + ": " + (r.score ?? "playing...") + "</li>").join("");
+}
+$("create").onclick = () => enter(makeRoomCode());
+$("join").onclick = () => enter($("code").value);
+$("start").onclick = () => { try { room.start("demo-clip", 3000); } catch (e) { alert(e.message); } };
+$("send").onclick = () => room.submitResult({ score: Math.round(40 + Math.random() * 60) });
+</script></body></html>
