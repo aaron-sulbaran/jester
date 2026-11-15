@@ -332,13 +332,10 @@ export function initGame(deps: GameDeps) {
     renderBank();
   });
 
-  // The lines under the picks: the mode's, and for two or more, what the How? pick means.
+  // Each switch's line sits under it: what the How? pick means, and what the mode means.
   const sayMode = () => {
-    const line = (text: string) => { const s = document.createElement("span"); s.textContent = text; return s; };
-    const howSays = document.querySelector<HTMLButtonElement>(`[data-how="${how}"]`)?.dataset.says ?? "";
-    // The room plays in the mode picked here too, so its line stays for every How?.
-    const modeLine = line(document.querySelector(`.mode[data-mode="${mode}"] span`)?.textContent ?? "");
-    $("modeSays").replaceChildren(modeLine, ...(count >= 2 ? [line(count === 2 ? howSays.replace("You all", "You both") : howSays)] : []));
+    $("howSays").textContent = document.querySelector<HTMLButtonElement>(`[data-how="${how}"]`)?.dataset.says ?? "";
+    $("modeSays").textContent = document.querySelector(`.mode[data-mode="${mode}"] span`)?.textContent ?? "";
   };
   function setCount(n: number) {
     count = n;

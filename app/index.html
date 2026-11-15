@@ -323,24 +323,32 @@
       <!-- How you play: how many are playing (remembered), and for two or more how; then Blind or Normal. The lines
            under it say what the picks mean (game.ts). The library below follows them. -->
       <div class="start-setup" id="startMode">
-        <div class="start-count" role="radiogroup" aria-labelledby="countLabel">
+        <div class="start-q" id="countRow">
           <span class="start-ask" id="countLabel">How many are playing?</span>
-          <button type="button" class="chip" role="radio" data-players="1" aria-checked="true">1</button>
-          <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
-          <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
-          <button type="button" class="chip" role="radio" data-players="4" aria-checked="false">4</button>
+          <div class="start-pick" role="radiogroup" aria-labelledby="countLabel">
+            <button type="button" class="chip" role="radio" data-players="1" aria-checked="true">1</button>
+            <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
+            <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
+            <button type="button" class="chip" role="radio" data-players="4" aria-checked="false">4</button>
+          </div>
         </div>
-        <div class="start-count start-how" id="howPick" role="radiogroup" aria-labelledby="howLabel" hidden>
+        <div class="start-q" id="howPick" hidden>
           <span class="start-ask" id="howLabel">How?</span>
-          <button type="button" class="chip" role="radio" data-how="turns" aria-checked="true" data-says="One of you plays, then passes the laptop to the next.">Take turns on this laptop</button>
-          <button type="button" class="chip" role="radio" data-how="duel" aria-checked="false" data-says="You all copy the same person. Best copy wins.">Duel: copy the same person</button>
-          <button type="button" class="chip" role="radio" data-how="online" aria-checked="false" data-says="Each of you plays on your own phone or laptop, from anywhere. You pick the clip in the room.">Each on your own device</button>
+          <div class="start-pick" role="radiogroup" aria-labelledby="howLabel">
+            <button type="button" class="chip" role="radio" data-how="turns" aria-checked="true" data-says="One of you plays, then passes the laptop to the next.">Take turns on this laptop</button>
+            <button type="button" class="chip" role="radio" data-how="duel" aria-checked="false" data-says="Everyone copies the same person. Best copy wins.">Duel</button>
+            <button type="button" class="chip" role="radio" data-how="online" aria-checked="false" data-says="Each of you plays on your own phone or laptop. You pick the clip in the room.">Each on your own device</button>
+          </div>
+          <p class="typed start-says" id="howSays"></p>
         </div>
-        <div class="modes-pick" role="radiogroup" aria-label="Game mode">
-          <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end, only the shape of their part.</span></button>
-          <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Everyone sees the clip and dances along with it.</span></button>
+        <div class="start-q" id="modeRow">
+          <span class="start-ask" id="modeLabel">Blind or Normal?</span>
+          <div class="modes-pick" role="radiogroup" aria-labelledby="modeLabel">
+            <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>Nobody sees the clip until the end.</span></button>
+            <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Everyone sees the clip and dances along with it.</span></button>
+          </div>
+          <p class="typed start-says mode-says" id="modeSays" aria-hidden="true"></p>
         </div>
-        <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
       </div>
 
       <!-- The choice: Surprise me, or pick from the library. Surprise me draws from the clips that fit the pick. -->
@@ -367,7 +375,8 @@
       <div class="start-foot" id="startFoot">
         <div class="start-actions" id="startActions">
           <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
-          <button type="button" class="btn btn-quiet" id="playOnline">Play online</button>
+          <!-- One way online: "Each on your own device" in How? presses this for you (ui/room.ts listens on it). -->
+          <button type="button" class="btn btn-quiet" id="playOnline" hidden>Play online</button>
         </div>
 
         <!-- Send in a clip: its own card in the Play row; the form has its own screen (#screen-submit). -->
