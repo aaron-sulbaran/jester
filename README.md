@@ -51,19 +51,19 @@ A LangChain deep agent that reviews every clip players send with Send in a clip 
 
 1. A player submits a clip with a name for it ("Gains" for a gym squat). It is stored privately in Supabase.
 2. The desk checks for new clips every minute, downloads each one and runs the game's own analysis: who moves, and for how long. An exact copy of a clip already in the bank is turned away by its file fingerprint, with no model call.
-3. The Chamberlain (`createDeepAgent` from `deepagents`, running Claude Sonnet 5.5) writes a plan with `write_todos`, asks its `playability-checker` subagent whether the clip plays, and looks at four frames: is it safe for work, and does the name fit? It records one decision: let in, turn away, or ask a person.
-4. Let in: the clip is written into the bank and published in about 30 seconds, and the submitter's open tab says "your clip is in". Ask a person: the clip waits on the desk with the agent's plan and reasons, and Aaron decides.
+3. The Chamberlain (`createDeepAgent` from `deepagents`, running Claude Sonnet 5.5) gets the game's playability verdict, its recent precedents and four frames: is it safe for work, and does the name relate to the clip? It records one decision in one model call: let in, turn away, or ask a person. The verdict used to come from a `playability-checker` subagent that only read the game's numbers back; as plain code, a review takes about 3 seconds instead of 11.
+4. Let in: the clip is written into the bank and published in about 30 seconds, and the submitter's open tab says "your clip is in". Ask a person: the clip waits on the desk with the agent's reasons, and Aaron decides.
 
 **What it decides alone, and what a person decides**
 
 - Alone: clips that are safe and have a fitting name (let in), clips that break the content rules or cannot be played (turned away), and exact copies (turned away).
 - A person: missing or unfitting names, borderline content, and any submitted text that tries to steer it. Code, not the prompt, makes sure it never lets a clip in without a fitting name.
 
-**Learning.** It is built to learn: each decision a person makes on a hand-off becomes a precedent it reads on its next review, so similar cases stop coming back, and precedents never come from content or steering cases. That change is [jester PR 128](https://github.com/aaron-sulbaran/jester/pull/128), still in review and not on main. An eval that replays real and synthetic submissions and reports agreement with people, false approvals and the hand-off rate is [jester PR 124](https://github.com/aaron-sulbaran/jester/pull/124), also in review.
+**Learning.** Each decision a person makes on a hand-off becomes a precedent it reads on its next review, so similar cases stop coming back ([jester PR 128](https://github.com/aaron-sulbaran/jester/pull/128)). Precedents never come from content or steering cases, and code never lets one approve a name that has nothing to do with the clip. An eval that replays real and synthetic submissions and reports agreement with people, false approvals and the hand-off rate is [jester PR 124](https://github.com/aaron-sulbaran/jester/pull/124), also in review.
 
 **So far.** Its first real run took 4 clips: it let 1 in on its own, caught a title that tried to steer it and handed that one over, and handed 2 over needlessly (fixed in [PR 111](https://github.com/aaron-sulbaran/jester/pull/111)). Later a clip named "not even a lil bit" went from submission to the public bank with no person involved.
 
-**Limits.** It runs only while the desk is open on Aaron's laptop, where the keys stay; a hosted, login protected Chamberlain is the next step. Prompt injection is reduced, not closed, and the desk's "Ask me before adding a clip" switch holds every approval for a person. Only exact copies are caught, not near duplicates. For each review, four frames, the game's measurements, the title and the credit go to Anthropic, and the submit form says so.
+**Limits.** It runs only while the desk is open on Aaron's laptop, where the keys stay; a hosted, login protected Chamberlain is the next step. Prompt injection is reduced, not closed, and the desk's "Ask me before adding a clip" switch holds every approval for a person. Only exact copies are caught, not near duplicates. For each review, four frames, the game's measurements, the title and the credit go to Anthropic, and the submit form says so; so do the names of its recent precedents.
 
 **Code**
 
