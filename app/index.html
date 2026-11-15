@@ -444,6 +444,21 @@
         <!-- Before a room: your name, then make a room, or join one with a friend's code. Opened from a join link
              (?room=CODE), the code is filled in and Join is the main action. -->
         <div id="roomJoin">
+          <!-- The photo booth: your camera in a taped print. Joining counts down and snaps it, and your jester wears
+               that face in the lobby. Without a camera you join with the plain grey face. -->
+          <div class="room-booth-col" id="roomBoothCol" hidden>
+            <figure class="print room-booth">
+              <span class="washi w-pink" aria-hidden="true"></span>
+              <span class="room-booth-pic">
+                <canvas id="roomBoothView" width="360" height="360" aria-hidden="true"></canvas>
+                <span class="room-booth-ring" aria-hidden="true"></span>
+                <span class="room-booth-count" id="roomBoothCount" aria-hidden="true"></span>
+                <span class="room-booth-flash" id="roomBoothFlash" aria-hidden="true"></span>
+              </span>
+              <figcaption id="roomBoothSays">Face in the circle</figcaption>
+            </figure>
+            <p class="aside room-booth-note">When you join, this photo goes to the others in the room so your jester wears your face. It is not stored anywhere.</p>
+          </div>
           <div class="room-invite" id="roomInvite" hidden>
             <p class="room-code-label">Room code</p>
             <p class="room-code" id="roomInviteCode"></p>
@@ -528,7 +543,7 @@
               <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
               <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
             </div>
-            <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
+            <p class="aside room-privacy">Your photo, your face picture and a short cut-out clip of you are sent to the others in this room for the lobby, the recap and the crowning. They are not stored anywhere.</p>
           </div>
           </div>
           <!-- The chat sits under the lineup for the host and under the ready ticket for a guest (room.ts moves it). -->

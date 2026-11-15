@@ -11,6 +11,7 @@ import { escapeHtml } from "../escape.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { videoScene, type Scene } from "../blind.ts";
 import { bankSceneId, packScene, sceneFromBank, setHostUpload, UPLOAD_ID } from "../onlineClip.ts";
+import { packFace, unpackFace } from "../packMedia.ts";
 import { addressWithRoom, joinLink, linkShown, roomCodeFromSearch } from "../roomLink.ts";
 import { FaceJester, variantFor, type JesterAnim } from "./faceJester.ts";
 import { playersFor } from "../castWords.ts";
@@ -211,6 +212,130 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
 
   const problem = (text: string) => { const el = $("roomProblem"); el.textContent = text; el.hidden = !text; };
 
+  // ---- The photo booth: your camera in a taped print. Joining counts down 3, 2, 1 and snaps the face circle; your
+  // jester wears it in the lobby, on every device in the room, until a round brings a newer face. Never stored. ----
+
+  const boothView = $<HTMLCanvasElement>("roomBoothView");
+  /** The face circle's width as a share of the print (style.css: .room-booth-ring is inset 15%). */
+  const RING = 0.7;
+  let boothStream: MediaStream | null = null;
+  let boothVideo: HTMLVideoElement | null = null;
+  let boothRaf = 0;
+  let boothTurn = 0; // bumps on every start and stop, so a camera that answers after leaving is let go
+  let joinTurn = 0;  // bumps on leave, so a countdown under way does not join
+  let myFace: HTMLCanvasElement | null = null;
+  let myFaceText: string | null = null;
+  const faces = new Map<string, HTMLCanvasElement>();
+  const faceText = new Map<string, string>(); // the picture text each jester wears now
+  const MAX_FACE_CHARS = 200_000;
+  let knownIds = new Set<string>();
+  let resendTimer = 0;
+  const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /** The centre square of the camera, flipped like a mirror. */
+  function drawBooth() {
+    const v = boothVideo;
+    if (!v || v.readyState < 2 || !v.videoWidth) return;
+    const side = Math.min(v.videoWidth, v.videoHeight);
+    const g = boothView.getContext("2d")!;
+    g.save();
+    g.translate(boothView.width, 0);
+    g.scale(-1, 1);
+    g.drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, boothView.width, boothView.height);
+    g.restore();
+  }
+  async function startBooth() {
+    stopBooth();
+    const turn = ++boothTurn;
+    $("roomBoothSays").textContent = "Face in the circle";
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      if (turn !== boothTurn) { stream.getTracks().forEach((t) => t.stop()); return; }
+      boothStream = stream;
+      const v = document.createElement("video");
+      v.muted = true;
+      v.playsInline = true;
+      v.srcObject = stream;
+      await v.play();
+      if (turn !== boothTurn) return; // stopBooth has already let the camera go
+      boothVideo = v;
+      $("roomBoothCol").hidden = false;
+      const loop = () => { drawBooth(); boothRaf = requestAnimationFrame(loop); };
+      loop();
+    } catch { /* no camera, or it was refused: you join with the plain grey face */ }
+  }
+  function stopBooth() {
+    boothTurn++;
+    cancelAnimationFrame(boothRaf);
+    boothRaf = 0;
+    boothStream?.getTracks().forEach((t) => t.stop());
+    boothStream = null;
+    boothVideo = null;
+  }
+  const restart = (el: HTMLElement, cls: string) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+  /** Counts down on the print, snaps the face circle and lets the camera go. Null without a camera. */
+  async function snapFace(): Promise<HTMLCanvasElement | null> {
+    if (!boothVideo) { stopBooth(); return null; }
+    const count = $("roomBoothCount");
+    for (const n of ["3", "2", "1"]) {
+      count.textContent = n;
+      restart(count, "tick");
+      await wait(650);
+      if (!boothVideo) { count.textContent = ""; return null; } // left meanwhile
+    }
+    count.textContent = "";
+    drawBooth();
+    cancelAnimationFrame(boothRaf); // the print keeps the snapped frame
+    boothRaf = 0;
+    restart($("roomBoothFlash"), "go");
+    const face = document.createElement("canvas");
+    face.width = face.height = 256;
+    const g = face.getContext("2d")!;
+    g.beginPath();
+    g.arc(128, 128, 128, 0, Math.PI * 2);
+    g.clip();
+    const side = boothView.width * RING, from = (boothView.width - side) / 2;
+    g.drawImage(boothView, from, from, side, side, 0, 0, 256, 256);
+    $("roomBoothSays").textContent = "Got you";
+    await wait(550);
+    stopBooth();
+    return face;
+  }
+  async function joinWithPhoto(rawCode: string) {
+    if (normalizeCode(rawCode).length !== 4) return problem("A room code is 4 letters.");
+    const turn = ++joinTurn;
+    const buttons = [$<HTMLButtonElement>("roomCreate"), $<HTMLButtonElement>("roomEnter")];
+    for (const b of buttons) b.disabled = true;
+    try {
+      const face = await snapFace();
+      if (turn !== joinTurn) return; // they left during the countdown
+      myFace = face;
+      myFaceText = face ? packFace(face) : null;
+    } finally {
+      for (const b of buttons) b.disabled = false;
+    }
+    enter(rawCode);
+  }
+  function shareMyFace() {
+    if (room && myFaceText) void room.sendMedia("lobbyface", myFaceText, { chunkChars: 60000, delayMs: 0 }).catch(() => {});
+  }
+  /** Puts each player's newest face on their jester: the face from their last round, else their lobby photo. */
+  function syncFaces(roster: Member[]) {
+    if (!room) return;
+    for (const p of roster) {
+      const media = (room.media.get(p.id) ?? {}) as Record<string, string>;
+      const text = media.face ?? media.lobbyface;
+      if (!text || text.length > MAX_FACE_CHARS || text === faceText.get(p.id)) continue;
+      faceText.set(p.id, text);
+      void unpackFace(text).then((c) => {
+        if (!c || faceText.get(p.id) !== text) return;
+        faces.set(p.id, c);
+        seats.get(p.id)?.jester.setFace(c);
+      });
+    }
+  }
+
   // ---- The lineup: everyone's jester. Ready players (and the host) dance; the rest stand by ----
 
   const seats = new Map<string, Seat>();
@@ -228,6 +353,8 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     return { li, jester, variant, anim: null, name, says };
   }
   function dropSeat(id: string) {
+    faces.delete(id);
+    faceText.delete(id);
     const s = seats.get(id);
     if (!s) return;
     s.jester.stop();
@@ -242,7 +369,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       const variant = variantFor(i);
       let s = seats.get(p.id);
       if (s && s.variant !== variant) { dropSeat(p.id); s = undefined; }
-      if (!s) { s = makeSeat(variant); seats.set(p.id, s); }
+      if (!s) { s = makeSeat(variant); seats.set(p.id, s); s.jester.setFace(faces.get(p.id) ?? null); }
       if (rosterList.children[i] !== s.li) rosterList.insertBefore(s.li, rosterList.children[i] ?? null);
       s.li.style.setProperty("--who", `var(--p${(i % 4) + 1})`);
       s.name.textContent = shownName(p.name);
@@ -261,6 +388,11 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     const hostId = room.hostId as string;
     const host = room.isHost as boolean;
     renderSeats(roster, hostId);
+    syncFaces(roster);
+    // Someone new: send them my photo (a short wait gathers several arrivals into one send).
+    const newcomer = roster.some((p) => p.id !== me && !knownIds.has(p.id));
+    knownIds = new Set(roster.map((p) => p.id));
+    if (newcomer) { clearTimeout(resendTimer); resendTimer = window.setTimeout(shareMyFace, 400); }
     $("roomLobby").dataset.role = host ? "host" : "guest";
     // The chat goes under the shorter side: the lineup for the host, the ready ticket for a guest.
     const chatHome = $(host ? "roomSideWho" : "roomSidePlay");
@@ -360,6 +492,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       hooks.onRound(r, round);
     });
     r.join();
+    shareMyFace();
     setPlay((hooks.mode?.() === "normal" ? "normal" : "blind"));
     $("roomJoin").hidden = true;
     $("roomLobby").hidden = false;
@@ -379,6 +512,12 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
   }
 
   function leave() {
+    joinTurn++; // a countdown under way no longer joins
+    stopBooth();
+    $("roomBoothCol").hidden = true;
+    myFace = null; myFaceText = null;
+    knownIds = new Set();
+    clearTimeout(resendTimer);
     room?.leave();
     room = null;
     for (const id of [...seats.keys()]) dropSeat(id);
@@ -392,9 +531,10 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     problem("");
   }
 
-  $("playOnline").addEventListener("click", () => { leave(); hooks.show(); });
-  $("roomCreate").addEventListener("click", () => enter(makeRoomCode()));
-  $("roomEnter").addEventListener("click", () => enter($<HTMLInputElement>("roomCode").value));
+  $("playOnline").addEventListener("click", () => { leave(); hooks.show(); void startBooth(); });
+  $("roomCreate").addEventListener("click", () => void joinWithPhoto(makeRoomCode()));
+  $("roomEnter").addEventListener("click", () => void joinWithPhoto($<HTMLInputElement>("roomCode").value));
+  if (invited) void startBooth();
   // Enter in a field does what its main button does.
   $("roomName").addEventListener("keydown", (e) => { if (e.key === "Enter") (joinBox.hasAttribute("data-invite") ? $("roomEnter") : $("roomCreate")).click(); });
   $("roomCode").addEventListener("keydown", (e) => { if (e.key === "Enter") $("roomEnter").click(); });

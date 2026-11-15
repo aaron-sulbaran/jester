@@ -412,6 +412,43 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 #roomJoin[data-invite] #roomHaveCode .field { display: none; }
 #roomJoin[data-invite] #roomCreateRow { order: 1; }
 
+/* The photo booth on the join form: your camera in a taped print with a circle for your face. Joining counts down
+   3, 2, 1 in sticker numbers, a white flash, and the print keeps the snapped frame. On a laptop it stands beside
+   the form; on a phone it sits on top. */
+#roomJoin:has(#roomBoothCol:not([hidden])) { grid-template-columns: auto minmax(0, 460px); column-gap: 52px; width: min(100%, 860px); align-items: center; }
+#roomJoin:has(#roomBoothCol:not([hidden])) > :not(#roomBoothCol) { grid-column: 2; }
+#roomBoothCol { grid-column: 1; grid-row: 1 / span 3; display: grid; justify-items: center; gap: 12px; }
+#roomJoin[data-invite] #roomBoothCol { grid-row: 1 / span 4; }
+.room-booth { margin: 0; width: 250px; padding: 10px 10px 4px; rotate: -2deg; }
+.room-booth .washi { top: -13px; left: 50%; translate: -50% 0; width: 84px; height: 24px; rotate: 3deg; }
+.room-booth-pic { position: relative; display: block; aspect-ratio: 1; overflow: hidden; background: #16161d; }
+#roomBoothView { display: block; width: 100%; height: 100%; }
+.room-booth-ring { position: absolute; inset: 15%; border-radius: 50%; border: 3px dashed var(--photo); box-shadow: 0 0 0 400px var(--shade); pointer-events: none; }
+.room-booth-count {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  font: 400 120px/1 var(--sticker); color: var(--ticket); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; filter: url(#die-cut);
+}
+.room-booth-count:empty { display: none; }
+.room-booth-flash { position: absolute; inset: 0; background: var(--photo); opacity: 0; pointer-events: none; }
+.room-booth figcaption { font: 700 24px/1.2 var(--hand); letter-spacing: -.03em; text-align: center; }
+#roomBoothCol .room-booth-note { display: block; max-width: 32ch; font-size: 13px; line-height: 1.45; color: #6B5A48; text-align: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .room-booth-count.tick { animation: room-count .65s var(--ease) both; }
+  @keyframes room-count { from { opacity: 0; transform: scale(1.6) rotate(-10deg); } 30% { opacity: 1; transform: scale(1) rotate(-3deg); } }
+  .room-booth-flash.go { animation: room-flash .45s ease-out both; }
+  @keyframes room-flash { from { opacity: .95; } to { opacity: 0; } }
+}
+@media (max-width: 760px) {
+  #roomJoin:has(#roomBoothCol:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
+  #roomJoin:has(#roomBoothCol:not([hidden])) > :not(#roomBoothCol) { grid-column: auto; }
+  #roomBoothCol, #roomJoin[data-invite] #roomBoothCol { grid-column: auto; grid-row: auto; }
+  /* From a join link the room's code comes first, so Join stays near the top. */
+  #roomJoin[data-invite] #roomInvite { order: -1; }
+  .room-booth { width: 190px; }
+  .room-booth figcaption { font-size: 20px; }
+  .room-booth-count { font-size: 88px; }
+}
+
 /* The room code: alphabet stickers like the wordmark, as big as the space allows, under a strip of tape. */
 .room-code-label { margin: 0; font-size: 16px; }
 .room-code-tape .tape { font-size: 30px; padding: 5px 20px 7px 16px; }
