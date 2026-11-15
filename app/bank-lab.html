@@ -26,6 +26,11 @@
     .clip .what { flex: 1; min-width: 0; }
     .clip .credit { color: #555; font-size: 0.9rem; }
     #seedLog li.bad { color: #a33; }
+    h3 { font-size: 0.95rem; margin: 14px 0 4px; }
+    .waiting { border: 1px solid #ddd; padding: 8px; margin: 8px 0; }
+    .waiting video { display: block; width: 100%; max-height: 320px; background: #000; }
+    .waiting .why { margin: 6px 0; }
+    .waiting .steps { color: #555; font-size: 0.85rem; margin: 4px 0; }
     .hidden { display: none; }
   </style>
 </head>
@@ -71,6 +76,18 @@
     <p class="sub">Wikimedia Commons clips with their credits filled in. Needs them in <code>app/public/_clips/</code>. Clips already in the bank under the same title are left alone.</p>
     <button id="seed" disabled>Add the starter clips</button>
     <ul id="seedLog"></ul>
+  </section>
+
+  <section>
+    <h2>Review submissions</h2>
+    <p class="sub">Clips sent with Submit your own. The reviewer, a deep agent, looks at each one: it adds clips that play well to the bank folder picked above, turns away ones that cannot be played, and leaves the ones it is unsure about for you under "Needs you". Its keys go in <code>hack-princeton/jester-review.env</code>.</p>
+    <p id="reviewStatus" class="status"></p>
+    <p><button id="reviewNow">Review new submissions</button> <label style="display:inline; font-weight:normal"><input id="reviewAuto" type="checkbox" /> Keep reviewing every minute while this page is open</label></p>
+    <ul id="reviewRun"></ul>
+    <h3>Needs you</h3>
+    <div id="needsYou"><p class="sub">Nothing waiting.</p></div>
+    <h3>Latest decisions</h3>
+    <ul id="reviewLog"></ul>
   </section>
 
   <section>
