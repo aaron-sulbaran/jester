@@ -267,20 +267,22 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             };
             if (!input.facts || !Array.isArray(input.frames) || input.frames.length > 8) return fail(400, "The review needs the clip's facts and up to 8 frames.");
             // Every judged clip becomes an eval case, whatever the outcome; a failed save never blocks the review.
-            const keep = (decision: Decision | null, error?: string) => {
+            // `keep` saves the very object passed to reviewSubmission, so a replay reads exactly what this review
+            // read (anything added to the input later, such as precedents, is captured with it).
+            const keep = (judged: ReviewInput, decision: Decision | null, error?: string) => {
               const saved = saveJudged(casesDir, {
                 id: ROW_ID.test(String(body.id ?? "")) ? String(body.id) : null,
                 videoPath: PATH.test(String(body.video_path ?? "")) ? String(body.video_path) : null,
-                model: s.model, prompt: promptVersion(), input, decision, ...(error ? { error } : {}),
+                model: s.model, prompt: promptVersion(), input: judged, decision, ...(error ? { error } : {}),
               });
               if (saved.error !== null) console.warn(`[review] ${saved.error}`);
             };
             try {
               const decision = await reviewSubmission(input, { apiKey: s.anthropicKey, model: s.model });
-              keep(decision);
+              keep(input, decision);
               return ok(decision);
             } catch (err) {
-              keep(null, s.scrub((err as Error).message));
+              keep(input, null, s.scrub((err as Error).message));
               return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
           }
