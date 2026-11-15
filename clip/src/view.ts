@@ -66,3 +66,29 @@ export function placeSubject(
   if (reachY > 0) scale = Math.min(scale, (KEEP_INSIDE * canvas.height) / 2 / reachY);
   return { scale, offsetX: canvas.width / 2 - meanX * scale, offsetY: canvas.height / 2 - meanY * scale };
 }
+
+/**
+ * How much a view may grow about the point (ax, ay) in canvas pixels, for example to match the player's size, and
+ * still keep the subject's whole range of movement on the canvas. Never below 1 (only growing is limited);
+ * Infinity when the guide has no subject.
+ */
+export function growLimit(
+  guide: Pick<Guide, "source" | "boxTrack" | "outlines">,
+  canvas: { width: number; height: number },
+  view: View,
+  ax: number,
+  ay: number,
+): number {
+  const all = extents(guide);
+  if (all.length === 0) return Infinity;
+  const left = Math.min(...all.map((e) => e.left)) * view.scale + view.offsetX;
+  const right = Math.max(...all.map((e) => e.right)) * view.scale + view.offsetX;
+  const top = Math.min(...all.map((e) => e.top)) * view.scale + view.offsetY;
+  const bottom = Math.max(...all.map((e) => e.bottom)) * view.scale + view.offsetY;
+  let k = Infinity;
+  if (left < ax) k = Math.min(k, ax / (ax - left));
+  if (right > ax) k = Math.min(k, (canvas.width - ax) / (right - ax));
+  if (top < ay) k = Math.min(k, ay / (ay - top));
+  if (bottom > ay) k = Math.min(k, (canvas.height - ay) / (bottom - ay));
+  return Math.max(1, k);
+}
