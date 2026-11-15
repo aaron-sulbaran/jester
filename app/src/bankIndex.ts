@@ -78,6 +78,35 @@ export function resolveBankPath(base: string, path: string): string {
   return new URL(path, base.endsWith("/") ? base : base + "/").href;
 }
 
+/**
+ * A title or credit as stored in the bank: control characters and text-direction overrides removed, runs of
+ * spaces made one, trimmed, and cut to `max` characters. Everything that draws it uses textContent, escapeHtml
+ * or canvas text, so markup in it stays text; this only keeps the stored string clean.
+ */
+export function cleanText(text: string, max: number): string {
+  return text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+/**
+ * The backend id for a new clip: a plain slug from its title plus a short piece of the clip's fingerprint, so
+ * two clips with the same title never collide ("the-dougie-9c23e4"). Never shown to players.
+ */
+export function bankIdFor(title: string, fingerprint: string, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  const base = slugFor(title, []).slice(0, 26).replace(/-+$/g, "") || "clip";
+  const hash = fingerprint.toLowerCase().replace(/[^a-f0-9]/g, "") || "0";
+  for (let n = 6; n <= hash.length; n += 2) {
+    const id = `${base}-${hash.slice(0, n)}`;
+    if (!used.has(id)) return id;
+  }
+  return slugFor(`${base}-${hash.slice(0, 12)}`, used);
+}
+
 /** A slug for a new clip from its title, made unique against the ids already taken ("dog-fetch", "dog-fetch-2"). */
 export function slugFor(title: string, taken: Iterable<string>): string {
   const used = new Set(taken);
@@ -110,7 +139,10 @@ export function withoutClip(index: BankIndex, id: string): BankIndex {
 
 /** The entry for a new clip, with its files at the usual names inside `<id>/`. */
 export function bankEntry(info: Omit<BankEntry, "video" | "poster" | "guides">, videoType: "mp4" | "webm"): BankEntry {
-  return { ...info, video: `${info.id}/clip.${videoType}`, poster: `${info.id}/poster.jpg`, guides: `${info.id}/guides.json` };
+  return {
+    ...info, title: cleanText(info.title, 80), credit: cleanText(info.credit, 60),
+    video: `${info.id}/clip.${videoType}`, poster: `${info.id}/poster.jpg`, guides: `${info.id}/guides.json`,
+  };
 }
 
 /**

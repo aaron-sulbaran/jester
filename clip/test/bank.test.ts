@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  bankEntry, emptyBankIndex, guidesJson, readBankIndex, resolveBankPath, slugFor, withClip, withoutClip,
+  bankEntry, bankIdFor, cleanText, emptyBankIndex, guidesJson, readBankIndex, resolveBankPath, slugFor, withClip, withoutClip,
 } from "../../app/src/bankIndex.ts";
+import { escapeHtml } from "../../app/src/escape.ts";
 
 const entry = (id: string, extra: Record<string, unknown> = {}) => ({
   id, title: "Dog fetch", credit: "Someone, CC BY 3.0", durationMs: 8000, people: 1, things: 1,
@@ -77,4 +78,36 @@ test("withClip and withoutClip: add, replace in place, remove", () => {
 
 test("guidesJson: keeps whole numbers, rounds the rest to 4 decimals", () => {
   assert.equal(guidesJson([{ tMs: 66.66666666, x: 0.123456789, n: 15, s: "guide/1" }]), '[{"tMs":66.6667,"x":0.1235,"n":15,"s":"guide/1"}]');
+});
+
+test("cleanText: strips control and direction characters, collapses spaces, trims, caps the length", () => {
+  assert.equal(cleanText("  The\u0000 Dougie\n\t ", 80), "The Dougie");
+  assert.equal(cleanText("abc\u202Edef\u200B", 80), "abc def");
+  assert.equal(cleanText("x".repeat(100), 80).length, 80);
+  assert.equal(cleanText("   ", 80), "");
+});
+
+test("a title with markup is stored and listed as plain text, and escapes wherever HTML is built", () => {
+  const evil = "<img src=x onerror=alert(1)>";
+  const entry = bankEntry({ id: "the-dougie-9c23e4", title: ` ${evil}\u0007 `, credit: "<b>Lisa</b>", durationMs: 8200, people: 1, things: 0 }, "mp4");
+  assert.equal(entry.title, evil);          // kept as the literal text it is: never parsed or decoded
+  assert.equal(entry.credit, "<b>Lisa</b>");
+  const listed = readBankIndex(withClip(emptyBankIndex(), entry)).data![0]!;
+  assert.equal(listed.title, evil);
+  // The clip cards and the desk use textContent; the room list and duel lab build HTML with escapeHtml.
+  assert.equal(escapeHtml(listed.title), "&lt;img src=x onerror=alert(1)&gt;");
+  assert.ok(!escapeHtml(listed.credit).includes("<"));
+});
+
+test("bankIdFor: a plain slug from the title plus a short fingerprint, unique and accepted by the index", () => {
+  const fp = "9c23e4027445aee3" + "0".repeat(48);
+  assert.equal(bankIdFor("The Dougie!", fp, []), "the-dougie-9c23e4");
+  assert.equal(bankIdFor("The Dougie!", fp, ["the-dougie-9c23e4"]), "the-dougie-9c23e402");
+  assert.equal(bankIdFor("<img src=x onerror=alert(1)>", fp, []), "img-src-x-onerror-alert-1-9c23e4");
+  assert.equal(bankIdFor("!!!", fp, []), "clip-9c23e4");
+  const long = bankIdFor("a very long dance name that goes on and on and on", fp, []);
+  assert.ok(long.length <= 40, long);
+  for (const id of [long, bankIdFor("The Dougie!", fp, []), bankIdFor("!!!", fp, [])]) {
+    assert.equal(readBankIndex({ schema: "bank/1", clips: [entry(id)] }).data?.length, 1, id);
+  }
 });

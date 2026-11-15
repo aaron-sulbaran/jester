@@ -6,13 +6,15 @@
 // turning away by hand need only the Supabase key; the Chamberlain also needs the model key.
 
 import type { Guide } from "../../clip/src/index.ts";
-import { addClip, analyseClip, mayWrite, pickFolder, rememberFolder, rememberedFolder, seek, videoType, whenReady, type Found, type Result, type VideoType } from "./bankLabCore.ts";
+import { addClip, analyseClip, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
+import { cleanText, withClip } from "./bankIndex.ts";
 import { jesterBars } from "./ui/jesterBar.ts";
 
 interface Finding { from: string; text: string }
 interface Logged { verdict: "approved" | "rejected" | "ask_a_person"; reason: string; title: string | null; steps?: string[]; findings?: Finding[]; framesCheck?: string }
 interface Pending { id: string; created_at: string; video_path: string; title: string | null; credit: string | null; logged: Logged | null }
-interface Decision { verdict: "approve" | "reject" | "ask_a_person"; reason: string; title: string; framesCheck: string; findings: Finding[]; steps: string[] }
+type NameCheck = "fits" | "does_not_fit" | "inappropriate" | "missing";
+interface Decision { verdict: "approve" | "reject" | "ask_a_person"; reason: string; nameCheck: NameCheck; nameNote: string; framesCheck: string; findings: Finding[]; steps: string[] }
 interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null; publish: { state: string; at: string | null; detail: string } }
 interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
 
@@ -74,6 +76,7 @@ $("deskFolder").addEventListener("click", async () => {
   remembered = handle;
   await rememberFolder(handle);
   syncFolder();
+  await showBank();
 });
 
 // ---- Reading a submission ----
@@ -158,7 +161,9 @@ async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Part
   if (!dir) return { data: null, error: `Pick the bank folder${status?.bankFolder ? ` "${status.bankFolder}"` : ""} first: approved clips go there.` };
   const ready = await readySubmission(p);
   if (ready.error !== null) return ready;
-  const added = await addClip(dir, video, ready.data.file, ready.data.type, ready.data.found.guides, p.title ?? title, p.credit ?? SUBMITTED_CREDIT);
+  const name = cleanText(title, 80);
+  if (!name) return { data: null, error: "Name the move or dance first." };
+  const added = await addClip(dir, video, ready.data.file, ready.data.type, ready.data.found.guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
   if (added.error !== null) return added;
   const saved = await api("decide", {
     id: p.id, video_path: p.video_path, title: added.data.entry.title, status: "approved", by, bankId: added.data.entry.id,
@@ -178,7 +183,7 @@ function showWork(p: Pending, line: string) {
   $("deskWork").hidden = false;
   $("workTitle").textContent = `${p.title ?? "Untitled clip"}${p.credit ? ` (${p.credit})` : ""}: ${line}`;
   for (const id of ["workFrames", "workPlan"]) $(id).replaceChildren();
-  for (const id of ["workFinding", "workSaw", "workDecision"]) $(id).textContent = "";
+  for (const id of ["workFinding", "workName", "workSaw", "workDecision"]) $(id).textContent = "";
 }
 
 function showFrames(frames: string[]) {
@@ -186,7 +191,9 @@ function showFrames(frames: string[]) {
   box.replaceChildren(...frames.map((src, i) => Object.assign(document.createElement("img"), { src, alt: `Frame ${i + 1} sent to the Chamberlain`, width: 192 })));
 }
 
-function showDecision(d: Decision, outcome: string) {
+const NAME_WORDS: Record<NameCheck, string> = { fits: "fits the clip", does_not_fit: "does not fit the clip", inappropriate: "is not appropriate", missing: "is missing" };
+
+function showDecision(d: Decision, outcome: string, title: string | null) {
   $("workPlan").replaceChildren(...d.steps.map((s) => {
     const li = document.createElement("li");
     li.className = "step";
@@ -196,6 +203,7 @@ function showDecision(d: Decision, outcome: string) {
     return li;
   }));
   $("workFinding").textContent = d.findings.map((f) => `The ${f.from.replace(/-/g, " ")}: ${f.text}`).join(" ") || "The playability checker did not answer.";
+  $("workName").textContent = title ? `The name "${title}" ${NAME_WORDS[d.nameCheck]}. ${d.nameNote}` : `No name was given. ${d.nameNote}`;
   $("workSaw").textContent = d.framesCheck ? `In the frames: ${d.framesCheck}` : "";
   $("workDecision").textContent = outcome;
 }
@@ -241,17 +249,17 @@ async function reviewQueue() {
       const judged = await api<Decision>("judge", { title: p.title, credit: p.credit, facts: factsOf(ready.data.found), frames });
       if (judged.error !== null) { problem(`${judged.error} It stays in the queue for next time.`); continue; }
       const d = judged.data;
-      const name = p.title ?? d.title;
-      if (d.verdict === "approve" && !pressed("deskAskFirst")) {
-        const added = await approve(p, d.title, "agent", d);
-        showDecision(d, added.error === null ? `Let in as ${added.data}. ${d.reason}` : added.error);
+      // The Chamberlain only approves under the submitter's own name (review-agent.ts enforces it).
+      if (d.verdict === "approve" && p.title && !pressed("deskAskFirst")) {
+        const added = await approve(p, p.title, "agent", d);
+        showDecision(d, added.error === null ? `Let in as "${p.title}". ${d.reason}` : added.error, p.title);
       } else if (d.verdict === "reject") {
         const saved = await reject(p, "agent", d.reason, d);
-        showDecision(d, saved.error === null ? `Turned away. ${d.reason}` : saved.error);
+        showDecision(d, saved.error === null ? `Turned away. ${d.reason}` : saved.error, p.title);
       } else {
         const reason = d.verdict === "approve" ? `The Chamberlain would let it in: ${d.reason}` : d.reason;
-        const saved = await api("flag", { id: p.id, video_path: p.video_path, title: name, reason, steps: d.steps, findings: d.findings, framesCheck: d.framesCheck });
-        showDecision(d, saved.error === null ? `Waiting for you. ${reason}` : saved.error);
+        const saved = await api("flag", { id: p.id, video_path: p.video_path, title: p.title, reason, steps: d.steps, findings: d.findings, framesCheck: d.framesCheck });
+        showDecision(d, saved.error === null ? `Waiting for you. ${reason}` : saved.error, p.title);
       }
     }
     setStatus(`Reviewed at ${new Date().toLocaleTimeString()}.`);
@@ -297,10 +305,19 @@ function renderNeedsYou(pending: Pending[]) {
   for (const p of waiting) {
     const card = document.createElement("article");
     card.className = "print";
-    const title = p.title ?? p.logged?.title ?? "Untitled clip";
     const name = document.createElement("p");
     name.className = "typed";
-    name.textContent = `${title}${p.credit ? ` (${p.credit})` : ""}`;
+    name.textContent = `${p.title ? `Sent in as "${p.title}"` : "Sent in with no name"}${p.credit ? `, by ${p.credit}` : ""}`;
+    const field = document.createElement("label");
+    field.className = "field";
+    const fieldLabel = document.createElement("span");
+    fieldLabel.textContent = "Name the move or dance";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.maxLength = 80;
+    nameInput.autocomplete = "off";
+    nameInput.value = cleanText(p.title ?? "", 80);
+    field.append(fieldLabel, nameInput);
     const clip = document.createElement("video");
     clip.controls = true;
     clip.playsInline = true;
@@ -341,12 +358,77 @@ function renderNeedsYou(pending: Pending[]) {
       }
     };
     yes.addEventListener("click", async () => {
-      if (await ask(`Let "${title}" into the bank? Everyone playing on the site can pick it a few minutes later.`)) void act(() => approve(p, title, "aaron"));
+      const title = cleanText(nameInput.value, 80);
+      if (!title) { result.textContent = "Name the move or dance first."; result.hidden = false; nameInput.focus(); return; }
+      if (await ask(`Let "${title}" into the bank? Everyone playing on the site can pick it a few minutes later.`)) {
+        void act(() => approve(p, title, "aaron", { reason: title === p.title ? "Let in by hand." : `Let in by hand, named "${title}".` })).then(() => showBank());
+      }
     });
     no.addEventListener("click", () => void act(() => reject(p, "aaron", "Turned away by hand.")));
     row.append(no, yes);
-    card.append(name, clip, why, row, result);
+    card.append(name, clip, why, field, row, result);
     box.appendChild(card);
+  }
+}
+
+/** Clips already in the bank, each with its name to fix. Saving rewrites index.json and publishes the bank. */
+async function showBank() {
+  const list = $("deskBank");
+  list.replaceChildren();
+  if (!dir) return;
+  const folder = dir;
+  const index = await readIndex(folder);
+  if (index.error !== null) return problem(index.error);
+  if (index.data.clips.length === 0) {
+    const none = document.createElement("p");
+    none.className = "typed";
+    none.textContent = "The bank is empty.";
+    list.appendChild(none);
+    return;
+  }
+  for (const clip of index.data.clips) {
+    const card = document.createElement("article");
+    card.className = "print";
+    const field = document.createElement("label");
+    field.className = "field";
+    const label = document.createElement("span");
+    label.textContent = `Name (${clip.people} ${clip.people === 1 ? "person" : "people"}, ${(clip.durationMs / 1000).toFixed(1)} s, ${clip.credit})`;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 80;
+    input.autocomplete = "off";
+    input.value = clip.title;
+    field.append(label, input);
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "btn btn-quiet";
+    save.textContent = "Save the name";
+    const note = document.createElement("p");
+    note.className = "aside";
+    save.addEventListener("click", async () => {
+      const title = cleanText(input.value, 80);
+      if (!title) { note.textContent = "A clip needs a name."; return; }
+      if (title === clip.title) { note.textContent = "That is already its name."; return; }
+      save.disabled = true;
+      try {
+        const latest = await readIndex(folder);
+        if (latest.error !== null) { note.textContent = latest.error; return; }
+        const now = latest.data.clips.find((c) => c.id === clip.id);
+        if (!now) { note.textContent = "That clip is not in the bank any more."; return; }
+        await writeIndex(folder, withClip(latest.data, { ...now, title }));
+        await api("publish", {});
+        clip.title = title;
+        input.value = title;
+        note.textContent = `Renamed to "${title}". The site shows it after the bank publishes, in about half a minute.`;
+        void showPublish();
+      } catch (err) {
+        note.textContent = `Saving the name failed: ${(err as Error).message}`;
+      } finally {
+        save.disabled = false;
+      }
+    });
+    card.append(field, save, note);
+    list.appendChild(card);
   }
 }
 

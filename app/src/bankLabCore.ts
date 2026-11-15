@@ -5,7 +5,7 @@
 import type { Guide } from "../../clip/src/index.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import {
-  BANK_SCHEMA, bankEntry, emptyBankIndex, guidesJson, readBankIndex, slugFor, withClip,
+  BANK_SCHEMA, bankEntry, bankIdFor, emptyBankIndex, guidesJson, readBankIndex, withClip,
   type BankEntry, type BankIndex,
 } from "./bankIndex.ts";
 
@@ -165,7 +165,8 @@ export async function addClip(folder: FileSystemDirectoryHandle, video: HTMLVide
   const index = await readIndex(folder);
   if (index.error !== null) return index;
   const g = guides[0]!;
-  const id = slugFor(title, index.data.clips.map((c) => c.id));
+  // A backend id: the title as a slug plus a piece of the clip's fingerprint. Players only ever see the title.
+  const id = bankIdFor(title, g.fingerprint, index.data.clips.map((c) => c.id));
   try {
     const clipFolder = await folder.getDirectoryHandle(id, { create: true });
     await writeFile(clipFolder, `clip.${type}`, file);
