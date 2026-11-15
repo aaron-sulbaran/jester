@@ -1415,7 +1415,7 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
     cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
     boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), spread: shiftOf(s),
     torsoAt: followsBox(s) ? undefined : (ms: number) => torsoAt(s.guide, toPlay(ms)),
-    color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`, glow: theme.glow, tagFont: theme.font,
+    color: s.color, glow: theme.glow,
   }));
 }
 
