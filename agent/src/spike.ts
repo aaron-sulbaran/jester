@@ -3,6 +3,8 @@
 // Spark 1.3 (task). Prints which tools ran, tokens and cost per model, and where the LangSmith trace is.
 //   JESTER_SUBAGENT=haiku npm run spike   runs the subagent on Claude Haiku 5.5 instead of Muse.
 
+// Imported first: it decides what LangSmith may keep before any client exists.
+import { flushTraces, tracers } from "./tracing.ts";
 import { createDeepAgent } from "deepagents";
 import { todoListMiddleware } from "langchain";
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
@@ -45,7 +47,7 @@ const task = [
 ].join(" ");
 
 const started = Date.now();
-const result = await agent.invoke({ messages: [{ role: "user", content: task }] }, { recursionLimit: 40 });
+const result = await agent.invoke({ messages: [{ role: "user", content: task }] }, { recursionLimit: 40, callbacks: tracers() });
 
 // What the orchestrator did, in order.
 const steps: string[] = [];
@@ -77,4 +79,5 @@ console.log("Checks:", JSON.stringify(checks));
 console.log(process.env.LANGSMITH_TRACING === "true" ? `Trace: smith.langchain.com, project "${process.env.LANGSMITH_PROJECT ?? "default"}".` : "LangSmith tracing is off (LANGSMITH_TRACING).");
 // Send the last trace data before the process ends (otherwise the final calls stay "pending" in LangSmith).
 await awaitAllCallbacks();
+await flushTraces();
 if (!Object.values(checks).every(Boolean)) process.exitCode = 1;

@@ -7,6 +7,8 @@
 // a tool, and may propose a constant change for Alex, which a person must approve first. It never scores a round and
 // never edits the engine. Traces go to LangSmith.
 
+// Imported first: it decides what LangSmith may keep before any client exists.
+import { flushTraces, tracers } from "./tracing.ts";
 import { createInterface } from "node:readline/promises";
 import { mkdirSync } from "node:fs";
 import { createDeepAgent, FilesystemBackend } from "deepagents";
@@ -104,7 +106,16 @@ const progress = {
   },
 };
 
-const config = { configurable: { thread_id: `coach-${stamp}` }, recursionLimit: 150, callbacks: [progress] };
+// How the run is named and tagged in LangSmith: started by a person, or by `npm run watch` (which links its check run).
+const trigger = process.env.JESTER_COACH_TRIGGER === "watch" ? "watch" : "person";
+const config = {
+  configurable: { thread_id: `coach-${stamp}` },
+  recursionLimit: 150,
+  callbacks: [progress, ...tracers()],
+  runName: trigger === "watch" ? "referee coach (started by the watch)" : "referee coach",
+  tags: ["coach", trigger],
+  metadata: { trigger, watchRunId: process.env.JESTER_WATCH_RUN_ID || null },
+};
 const started = Date.now();
 console.log(`Referee coach: Opus 5.5 orchestrator, ${investigator.name} subagents. Report: agent/workspace${reportPath}`);
 
@@ -164,3 +175,4 @@ console.log(`Report: agent/workspace${reportPath}. Trace: smith.langchain.com, p
 
 // Send the last trace data before the process ends (otherwise the final calls stay "pending" in LangSmith).
 await awaitAllCallbacks();
+await flushTraces();

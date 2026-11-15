@@ -39,6 +39,17 @@ JESTER_SUBAGENT=haiku npm run coach    # subagents on Claude Haiku 5.5 instead o
 
 The terminal shows every tool call as it happens, subagents included. Reports, findings and proposals land in `agent/workspace/` (git-ignored).
 
+## On autopilot: the watch
+
+```
+npm run watch                  # every 3 minutes: pull new live rounds, score them, coach only what newly fails
+npm run watch -- --once        # one check, then exit
+npm run watch -- --no-coach    # checks only, no model calls
+npm run watch -- --baseline    # treat what fails now as already seen
+```
+
+Every round played on the live site reaches Supabase by itself. Each check downloads the new ones, scores them and their derived cases with the real engine (no model, no cost), and records one `watch check` run in LangSmith with what it found. When cases fail that no coach run has looked at, it starts `npm run coach` on just those ids; that run shows up as `referee coach (started by the watch)`, tagged `watch`, with the check's run id in its metadata. A gap between coach runs (15 minutes) and a spend cap per session (5 USD) keep it cheap. It runs on a laptop with `.env.local`, never on the public site, and no one approves a constant change while it runs, so proposals only appear in the report.
+
 ## How it works
 
 All four parts of a deep agent, each for a real reason:
