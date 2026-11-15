@@ -82,3 +82,13 @@ test("messages for other rooms are ignored and leaving removes the player", asyn
   b.leave(); await tick();
   assert.deepEqual(a.roster().map((p) => p.id), ["ana"]);
 });
+
+test("start can carry extra data (role assignments) and results can carry extra (role name)", async () => {
+  const [a, b] = makeRooms(["ana", "ben"]);
+  a.join(); b.join(); await tick();
+  a.start("scene1", 1000, { assign: { ana: 0, ben: 1 } }); await tick();
+  assert.deepEqual(b.round.extra, { assign: { ana: 0, ben: 1 } });
+  b.submitResult({ score: 80, extra: { role: "the ball", guideIndex: 1 } }); await tick();
+  assert.deepEqual(a.standings().find((r) => r.id === "ben").extra, { role: "the ball", guideIndex: 1 });
+  assert.equal(a.standings().find((r) => r.id === "ana").extra, null);
+});

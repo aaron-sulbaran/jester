@@ -92,7 +92,7 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
     drawFrame(playerCanvas, simulated() ? null : $<HTMLVideoElement>("cam"), f.player as never, { mirror: true, color: "#4cc9f0" });
   });
   playing = false;
-  room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs) });
+  room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs), extra: null });
   status(result.result.score == null ? "Tracking was too poor to score. Stand back so your whole body is in view." : "Your score: " + result.result.score + ". Waiting for the others...");
   render();
 }
