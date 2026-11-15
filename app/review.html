@@ -20,7 +20,7 @@
       <button type="button" class="btn btn-main" id="deskReview"><span class="ticket"><span class="ticket-text">Review new clips</span></span></button>
     </div>
     <div class="chips" role="group" aria-label="How the Chamberlain works">
-      <button type="button" class="chip" id="deskAuto" aria-pressed="false">Keep reviewing every minute</button>
+      <button type="button" class="chip" id="deskAuto" aria-pressed="true">Keep reviewing every minute</button>
       <button type="button" class="chip" id="deskAskFirst" aria-pressed="false">Ask me before adding a clip</button>
     </div>
     <progress id="deskBar" value="0" max="1" hidden></progress>
@@ -35,6 +35,10 @@
       <p class="aside" id="workSaw"></p>
       <p class="typed" id="workDecision"></p>
     </article>
+
+    <div class="masking"><h2 class="tape">Waiting for the Chamberlain</h2></div>
+    <p class="typed" id="deskQueueCount">Nothing new.</p>
+    <ul class="how" id="deskQueue"></ul>
 
     <div class="masking"><h2 class="tape">Needs you</h2></div>
     <div id="needsYou"><p class="typed">Nothing waiting.</p></div>
