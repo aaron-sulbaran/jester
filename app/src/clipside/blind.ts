@@ -2,6 +2,7 @@
 // comparing, the old stick figure); a thing is its outline. Behind them a stage, or the old plain background.
 // Placement comes from `placeSubject` in ../../../clip.
 
+import { steadyFps, typicalMs } from "./guideRate.ts";
 import { boneLengths, boxFromLandmarks, bodyTurns, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
 import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
@@ -239,25 +240,27 @@ const swings = new WeakMap<HTMLCanvasElement, Swing>();
 // ---- Keeping the guide light ----
 
 /**
- * The most the 3D jester may take to draw, on average over a turn's first second (milliseconds per draw). The game
+ * The most the 3D jester may take to draw, for a typical real draw (a pose already drawn is reused) in a turn's first second (milliseconds). The game
  * paints the guide 30 times a second and draws the jester twice a paint (the figure and the faint look-ahead copy),
  * so this keeps the guide well under half of each 33 ms frame, leaving the rest to the webcam tracker on the same
  * thread. A laptop GPU draws it in about 1 ms.
  */
 export const GUIDE_BUDGET_MS = 6;
 /**
- * The page's frame rate below which a puppet guide gives way, measured over a turn's first second. Draw time alone
+ * The page's frame rate below which a puppet guide gives way, going by a typical frame in a turn's first second (see guideRate.ts: one long freeze when the camera tracker starts
+ * does not count). Draw time alone
  * misses the real cost on a machine without a GPU (software rendering): there the browser spends its time putting
  * the big canvas pictures on screen, outside the drawing code, and both the 3D jester (about 13 fps) and the flat
  * sticker (about 16 fps) drag the page down while the stick figure keeps 60.
  */
 export const GUIDE_MIN_FPS = 20;
-/** How long the start of a turn is measured. */
+/** How long the start of a turn is measured, and the fewest frames it decides on. */
 const MEASURE_MS = 1000;
+const MIN_FRAMES = 20;
 
 /** What the guide draws this turn: the 3D jester, the flat sticker, or the stick figure on the plain background. */
 type GuideMode = "3d" | "flat" | "stick";
-const guard = { mode: "3d" as GuideMode, from: 0, total: 0, count: 0, said: false, decided: false, first: true, turn: 0 };
+const guard = { mode: "3d" as GuideMode, from: 0, draws: [] as number[], said: false, decided: false, first: true, turn: 0 };
 
 function giveWay(to: GuideMode, why: string) {
   guard.mode = to;
@@ -272,20 +275,23 @@ function giveWay(to: GuideMode, why: string) {
  */
 export function startGuideTurn(puppet: Construction | null) {
   const turn = ++guard.turn;
-  Object.assign(guard, { from: 0, total: 0, count: 0, said: false, decided: false, mode: "3d" });
+  Object.assign(guard, { from: 0, draws: [], said: false, decided: false, mode: "3d" });
   if (!puppet) return;
   if (puppet === "d") {
     want3d();
     if (!puppet3d?.available()) giveWay("flat", "the 3D jester is not ready (or this browser has no WebGL)");
   }
   if (typeof requestAnimationFrame === "undefined") return;
-  let frames = 0;
+  const gaps: number[] = [];
   const begin = performance.now();
+  let last = begin;
   const count = (now: number) => {
     if (guard.turn !== turn) return;
-    frames++;
-    if (now - begin < MEASURE_MS) { requestAnimationFrame(count); return; }
-    const fps = (frames * 1000) / (now - begin);
+    gaps.push(now - last);
+    last = now;
+    if (now - begin < MEASURE_MS || gaps.length < MIN_FRAMES) { requestAnimationFrame(count); return; }
+    const fps = steadyFps(gaps);
+    if (document.body.classList.contains("dev")) console.info(`Guide check: the page ran at ${fps.toFixed(0)} fps over the turn's first second (typical frame, ${gaps.length} frames).`);
     if (fps < GUIDE_MIN_FPS && guard.mode !== "stick") giveWay("stick", `the page ran at ${fps.toFixed(0)} fps (needs ${GUIDE_MIN_FPS})`);
   };
   requestAnimationFrame(count);
@@ -426,11 +432,13 @@ function measure3d(ms: number) {
   if (guard.decided) return;
   const now = performance.now();
   if (!guard.from) guard.from = now;
-  guard.total += ms; guard.count++;
-  if (guard.count < 3 || (now - guard.from < MEASURE_MS && guard.count < 30)) return;
+  guard.draws.push(ms);
+  const n = guard.draws.length;
+  if (n < 3 || (now - guard.from < MEASURE_MS && n < 30)) return;
   guard.decided = true;
-  const avg = guard.total / guard.count;
-  if (avg > GUIDE_BUDGET_MS) giveWay("stick", `the 3D jester took ${avg.toFixed(1)} ms a draw (budget ${GUIDE_BUDGET_MS} ms)`);
+  const typical = typicalMs(guard.draws);
+  if (document.body.classList.contains("dev")) console.info(`Guide check: the 3D jester took ${typical.toFixed(2)} ms a typical draw over ${n} draws.`);
+  if (typical > GUIDE_BUDGET_MS) giveWay("stick", `the 3D jester took ${typical.toFixed(1)} ms a draw (budget ${GUIDE_BUDGET_MS} ms)`);
 }
 
 /** The last 3D picture drawn on each canvas, reused while the pose has not moved by half a sample. */
@@ -528,8 +536,8 @@ export function drawBlindSubject(
         const key = at.position === undefined ? "" : [id, Math.round(at.position * 2), canvas.width, canvas.height, style.color, style.faint ? 1 : 0, view.scale.toFixed(4), view.offsetX.toFixed(1), view.offsetY.toFixed(1)].join("|");
         let kept = drawnFigures.get(canvas);
         if (key && kept && kept.key === key) {
+          // A pose already drawn costs nearly nothing; only real draws count against the budget.
           ctx.drawImage(kept.image, 0, 0);
-          measure3d(performance.now() - started);
           return;
         }
         if (!kept) { kept = { key: "", image: document.createElement("canvas") }; drawnFigures.set(canvas, kept); }
