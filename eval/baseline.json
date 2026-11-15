@@ -1,0 +1,14 @@
+{
+  "savedAt": "2026-11-15T03:49:51.629Z",
+  "scorerVersion": "jester-engine/0.8.0",
+  "engineHash": "97ad82d7ce07",
+  "headline": {
+    "cases": 0,
+    "tagged": 0,
+    "holding": 0,
+    "notHolding": 0,
+    "drifted": 0,
+    "localRounds": 0
+  },
+  "cases": {}
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@jester/eval",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jester eval suite: replays recorded rounds against the current scorer and says what got better or worse.",
+  "type": "module",
+  "scripts": {
+    "eval": "node src/eval.ts",
+    "freeze": "node src/freeze.ts",
+    "pull": "node src/pull.ts",
+    "upload": "node src/upload.ts",
+    "test": "node --test 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
