@@ -13,6 +13,7 @@ import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
+import { startRide, type Ride } from "./ride.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
 import { DUEL_WINNER_AWARD, duelHeadline, podiumOrder } from "../duelPlay.ts";
@@ -145,6 +146,8 @@ const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3
 /** One player may play alone; a new cast still starts with two, since it is a party game. */
 const MIN_PLAYERS = 1;
 const MAX_PLAYERS = 4;
+/** How long the Surprise me ride waits for Normal's posters to decode before it starts without the slow ones. */
+const POSTER_WAIT_MS = 300;
 
 export function initGame(deps: GameDeps) {
   let scene: Scene | null = null;
@@ -153,6 +156,8 @@ export function initGame(deps: GameDeps) {
   let pick: Pick | null = null;
   /** The bank clip being cast, and its scene with every part; `scene` leaves out the things when they are off. */
   let castClip: BankClip | null = null;
+  /** The next cast screen comes in under the Surprise me ride, whole, rather than piece by piece. */
+  let rideArrive = false;
   let fullScene: Scene | null = null;
   let names: string[] = ["", "", ""];
   /** Each seat's jester colour, picked on the cast screen; seats start on different colours. */
@@ -424,15 +429,51 @@ export function initGame(deps: GameDeps) {
     const from = surprises().length ? surprises() : bank;
     const clip = pick.kind === "bank" ? pick.clip : from[Math.floor(Math.random() * from.length)];
     if (!clip) return;
+    // A surprise gets the merry-go-round while its moves load; the cast screen follows once both are done.
+    const ride = pick.kind === "surprise" ? await surpriseRide(clip, from) : null;
+    // The ride's first frame is painted before the load starts, so any work the load does runs under it.
+    if (ride) await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
     // Loaded with its things; the cast screen's switch plays them as parts or leaves them out (sceneFor).
-    const r = await bankScene(clip, deps.clipVideo);
-    if (r.error !== null) return startProblem(r.error);
+    const loading = bankScene(clip, deps.clipVideo);
+    let loaded = false;
+    void loading.then(() => { loaded = true; });
+    if (ride) {
+      await ride.landed;
+      if (!loaded) ride.say("Got one. Getting its moves ready.");
+    }
+    const r = await loading;
+    if (r.error !== null) { ride?.close(); return startProblem(r.error); }
     castClip = clip;
     fullScene = r.data;
     scene = sceneFor();
+    // After the ride, the cast screen is drawn whole beneath it and the ride fades away over it: no empty frame.
+    rideArrive = !!ride;
     openCast();
+    ride?.close(true);
   });
 
+  /**
+   * The ride for a surprise: six to eight photos, the picked clip at a random place among others it could have been.
+   * In Blind every photo is the same question mark with no name and no performers, so nothing says which clip it is.
+   */
+  async function surpriseRide(clip: BankClip, from: BankClip[]): Promise<Ride> {
+    const blind = mode === "blind";
+    const slots = Math.max(6, Math.min(8, from.length));
+    const pickAt = Math.floor(Math.random() * slots);
+    const others = from.filter((c) => c.id !== clip.id);
+    for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j]!, others[i]!]; }
+    const pool = others.length ? others : [clip];
+    const clips = Array.from({ length: slots }, (_, i) => (i === pickAt ? clip : pool[(i < pickAt ? i : i - 1) % pool.length]!));
+    // Normal shows posters, decoded before the ride starts so they spin with it rather than popping in at the end.
+    // The start screen's cards have usually loaded them already. One not ready in time stays a plain card.
+    const images = blind ? [] : clips.map((c) => { if (!c.poster) return null; const img = new Image(); img.src = c.poster; return img; });
+    if (!blind) await Promise.race([Promise.allSettled(images.map((img) => img?.decode())), new Promise((r) => setTimeout(r, POSTER_WAIT_MS))]);
+    const photos = clips.map((c, i) => {
+      const img = images[i];
+      return blind ? { name: "", image: null } : { name: c.title, image: img && img.complete && img.naturalWidth > 0 ? img : null };
+    });
+    return startRide(photos, pickAt, blind ? "Got one. Nobody sees it until the end." : `Got one: ${clip.title}.`);
+  }
   /** The clip being cast, with its things as parts or people only, by its switch: what bankScene's withThings does. */
   function sceneFor(): Scene | null {
     if (!fullScene || !castClip || withThingsFor(castClip)) return fullScene;
@@ -524,6 +565,8 @@ export function initGame(deps: GameDeps) {
    */
   function openCast(again = false) {
     if (!scene) return;
+    $("screen-cast").classList.toggle("ride-arrive", rideArrive);
+    rideArrive = false;
     $("startProblem").hidden = true;
     // As many seats as the start screen's pick; more players than parts share them, fewer leave some out.
     const want = again && names.length ? names.length : Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, count));

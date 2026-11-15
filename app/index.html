@@ -245,6 +245,23 @@
   </svg>
 
   <main id="game">
+    <!-- Surprise me's merry-go-round (ui/ride.ts): plays when Play starts a surprise, while the clip's moves load. Outside
+         the start screen, so it can fade out over the cast screen as that one appears. -->
+    <div class="ride" id="ride" hidden>
+      <div class="ride-stage" aria-hidden="true">
+        <svg class="ride-canopy" viewBox="0 0 400 140" focusable="false">
+          <path d="M200 6 V30" stroke="#1E1B18" stroke-width="5" stroke-linecap="round" />
+          <path d="M200 6 L232 14 L200 22 Z" fill="#D93A2B" stroke="#1E1B18" stroke-width="3.5" stroke-linejoin="round" />
+          <path d="M200 26 L14 98 H386 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round" />
+          <path d="M200 26 L38 98 H86 Z M200 26 L134 98 H174 Z M200 26 L226 98 H266 Z M200 26 L314 98 H362 Z" fill="#D93A2B" />
+          <path d="M14 98 H386 V112 H14 Z" fill="#2848C8" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round" />
+          <path d="M14 112 Q30 134 46 112 Q62 134 78 112 Q94 134 110 112 Q126 134 142 112 Q158 134 174 112 Q190 134 206 112 Q222 134 238 112 Q254 134 270 112 Q286 134 302 112 Q318 134 334 112 Q350 134 366 112 Q376 128 386 112 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="4.5" stroke-linejoin="round" />
+        </svg>
+        <span class="ride-floor"></span>
+        <div class="ride-ring" id="rideRing"></div>
+      </div>
+      <div class="note-wrap ride-note-wrap"><p class="note" id="rideNote" role="status"></p></div>
+    </div>
     <!-- Your clip is in (submissionWatch.ts): on any screen, once a clip sent from this tab joins the bank. Plain markup; the look comes from the frontend agent. -->
     <div class="note-wrap" id="clipReady" role="status" hidden>
       <p class="note" id="clipReadyText"></p>
