@@ -310,19 +310,56 @@
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 300 180"><use href="/art.svg#crawl" /></svg></span><b>See what you did.</b><span>Everyone is cut out into the clip, then the best jester gets the spotlight.</span></li>
       </ol>
       <p class="typed">Not ready when your turn starts? You can start over once, in the first 5 seconds.</p>
+      <p class="typed">What Jester saves is in Settings.</p>
       <button type="button" class="btn btn-main" id="howtoGo"><span class="ticket"><span class="ticket-text">Got it</span></span></button>
     </section>
 
     <!-- Start: pick a mode and a clip from the bank, play in one click. -->
-    <!-- Settings: settings.ts binds the controls by id and remembers them in this browser. The look is the frontend agent's. -->
+    <!-- Settings: settings.ts binds the controls by id and remembers them in this browser (game feel session's store). -->
     <section class="screen" id="screen-settings" hidden>
       <div class="masking"><h2 class="tape">Settings</h2></div>
-      <div class="settings" id="settingsList">
-        <label class="consent"><input type="checkbox" id="setSound" /><span>Sound effects</span></label>
-        <label class="field"><span>Sound effects volume</span><input type="range" id="setVolume" min="0" max="100" step="5" /></label>
-        <label class="field"><span>Motion</span><select id="setMotion"><option value="system">Follow this device</option><option value="calm">Calm</option><option value="full">Full</option></select></label>
-        <label class="field"><span>Announcer</span><select id="setVoice"><option value="off">Off</option><option value="browser">This browser's voice</option></select></label>
-        <label class="consent"><input type="checkbox" id="setDev" /><span>Developer mode: the team's tools, the build stamp and the refresh notice</span></label>
+      <div class="set-grid">
+        <section class="set-card set-saved" aria-labelledby="setHeadSaved">
+          <span class="washi w-dots" aria-hidden="true"></span>
+          <h3 id="setHeadSaved"><svg class="ico" aria-hidden="true"><use href="#ico-save" /></svg>What Jester saves</h3>
+          <ul class="how">
+            <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. The team uses them to test and tune the scoring.</li>
+            <li>A clip you send in is kept private until it's reviewed. To check it, a few frames, what the game measured, its name and your name go to Anthropic, the company that makes the AI.</li>
+            <li>In an online room, your face picture and a short cut-out of you go to the others in the room for the recap and the crowning. They aren't stored.</li>
+            <li>Your settings and how many of you play stay in this browser.</li>
+          </ul>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadSound">
+          <span class="washi w-pink" aria-hidden="true"></span>
+          <h3 id="setHeadSound"><svg class="ico" aria-hidden="true"><use href="#ico-sound-on" /></svg>Sound</h3>
+          <label class="set-row"><span>Sound effects</span><input type="checkbox" class="set-switch" id="setSound" /></label>
+          <label class="set-row"><span>Volume</span><input type="range" class="set-range" id="setVolume" min="0" max="100" step="5" /></label>
+          <p class="aside">The clip's own sound never changes.</p>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadVoice">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <h3 id="setHeadVoice"><svg class="ico" aria-hidden="true"><use href="#ico-podium" /></svg>The announcer</h3>
+          <label class="set-row"><span>Voice</span><select class="set-select" id="setVoice"><option value="off">Off</option><option value="browser">Your browser's voice</option></select></label>
+          <p class="aside">Calls the drum roll and the winner out loud, in your browser's own built-in voice.</p>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadMotion">
+          <span class="washi w-dots" aria-hidden="true"></span>
+          <h3 id="setHeadMotion"><svg class="ico" aria-hidden="true"><use href="#ico-speed" /></svg>Motion</h3>
+          <label class="set-row"><span>Motion</span><select class="set-select" id="setMotion"><option value="system">Like my device</option><option value="calm">Calm</option><option value="full">Full</option></select></label>
+          <p class="aside">Calm keeps the floating stickers and the big moves still.</p>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadRules">
+          <span class="washi w-pink" aria-hidden="true"></span>
+          <h3 id="setHeadRules"><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Please don't send</h3>
+          <!-- Filled from the Send in a clip screen's list (#sendRules), so the two can never say different things. -->
+          <ul class="how set-rules" id="setRules"></ul>
+        </section>
+        <section class="set-card" aria-labelledby="setHeadDev">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <h3 id="setHeadDev"><svg class="ico" aria-hidden="true"><use href="#ico-clapper" /></svg>For the team</h3>
+          <label class="set-row"><span>Developer mode</span><input type="checkbox" class="set-switch" id="setDev" /></label>
+          <p class="aside">Shows the testing links, the build stamp and the refresh notice.</p>
+        </section>
       </div>
       <button type="button" class="btn btn-main" id="settingsBack"><span class="ticket"><span class="ticket-text">Done</span></span></button>
     </section>
@@ -431,7 +468,7 @@
           <div class="send-go">
             <section class="send-dont" aria-labelledby="sendCannot">
               <h3 id="sendCannot"><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Please don't send</h3>
-              <ul class="how">
+              <ul class="how" id="sendRules">
                 <li><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Anything sexual, violent or hateful.</li>
                 <li><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Anything meant to shock or bully.</li>
                 <li><svg class="ico" aria-hidden="true"><use href="#ico-cross" /></svg>Writing in the video that tries to talk the reviewer into something.</li>

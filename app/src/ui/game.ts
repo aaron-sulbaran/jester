@@ -725,6 +725,8 @@ export function initGame(deps: GameDeps) {
   // ---- Settings (settings.ts keeps them; the controls are bound by id) ----
 
   bindSettings();
+  // The settings card's "Please don't send" list is the Send in a clip screen's own list, copied, so they agree.
+  $("setRules").replaceChildren(...[...document.querySelectorAll("#sendRules li")].map((li) => li.cloneNode(true)));
   $("settingsOpen").addEventListener("click", () => show("settings"));
   $("settingsBack").addEventListener("click", () => show("start"));
 
