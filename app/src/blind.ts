@@ -174,6 +174,41 @@ function boxAt(g: Guide, ms: number): Box | null {
   return g.boxTrack.frames[guideFrameAt(g, g.range.startMs + ms)]?.box ?? null;
 }
 
+/**
+ * Hides the clip's own subjects at replay time `ms` so the players can stand in their place: each
+ * subject's outline (grown a little, or an ellipse round its box when there is none) is filled with a
+ * heavily blurred copy of the frame underneath.
+ */
+function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number) {
+  if (ms < 0) return;
+  for (const g of guides) {
+    const i = guideFrameAt(g, g.range.startMs + ms);
+    const outline = g.outlines[i] ?? null, box = g.boxTrack.frames[i]?.box ?? null;
+    if (!box && !outline) continue;
+    c.save();
+    c.beginPath();
+    if (outline && outline.length >= 3) {
+      const mx = outline.reduce((a, p) => a + p[0], 0) / outline.length, my = outline.reduce((a, p) => a + p[1], 0) / outline.length;
+      outline.forEach(([x, y], k) => {
+        const px = (mx + (x - mx) * 1.15) * W, py = (my + (y - my) * 1.08) * H;
+        if (k === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      });
+      c.closePath();
+    } else if (box) {
+      // 1.45 and 1.3 reach past the box corners.
+      c.ellipse(box.cx * W, box.cy * H, (box.w * W) / 2 * 1.45, (box.h * H) / 2 * 1.3, 0, 0, Math.PI * 2);
+    }
+    c.clip();
+    // Blur from a frame drawn larger than the canvas, so the blur pulls in colour from around the subject.
+    c.filter = `blur(${Math.round(W / 25)}px)`;
+    c.drawImage(video, -W * 0.05, -H * 0.05, W * 1.1, H * 1.1);
+    c.filter = "none";
+    c.fillStyle = "rgba(0,0,0,0.2)";
+    c.fillRect(0, 0, W, H);
+    c.restore();
+  }
+}
+
 /** The same guide played slower: every time stretched by 1 / speed. `range.startMs` stays the clip's media start. */
 function slowGuide(g: Guide, speed: number): Guide {
   if (speed === 1) return g;
@@ -340,8 +375,8 @@ export function deal(names: string[], guides: Guide[], colors: readonly string[]
   return names.map((name, i) => {
     if (pool.length === 0) pool = shuffle(guides);
     const guide = pool.pop()!;
-    const hasOutline = guide.outlines.some((o) => o !== null);
-    const look: Look = isThing(guide) || (hasOutline && Math.random() < 0.5) ? "outline" : "stick";
+    // People are always a stick figure (a moving outline is too hard to read); things are their outline.
+    const look: Look = isThing(guide) ? "outline" : "stick";
     return { name, color: colors[i % colors.length]!, guide, original: guide, look, part: "body", cutouts: [], face: null, result: null, recording: null };
   });
 }
@@ -550,13 +585,14 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
 }
 
 /** One frame of the side by side: the clip on the left, the cast on the right. */
-function drawSideBySide(ctx: CanvasRenderingContext2D, W: number, H: number, full: HTMLCanvasElement, background: (c: CanvasRenderingContext2D, ms: number) => void, layers: RevealLayer[], ms: number) {
+function drawSideBySide(ctx: CanvasRenderingContext2D, W: number, H: number, full: HTMLCanvasElement, background: (c: CanvasRenderingContext2D, ms: number) => void, castBackground: (c: CanvasRenderingContext2D, ms: number) => void, layers: RevealLayer[], ms: number) {
   full.width = W; full.height = H;
   const f = full.getContext("2d")!;
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   const pad = W * 0.02, w = (W - 3 * pad) / 2, h = w * (H / W), y = (H - h) / 2 + H * 0.04;
   background(f, ms);
   ctx.drawImage(full, pad, y, w, h);
+  castBackground(f, ms);
   drawLayers(f, W, H, layers, ms);
   ctx.drawImage(full, 2 * pad + w, y, w, h);
   ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.font = font(H, 0.05, 700);
@@ -624,6 +660,12 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     if (video) { c.fillStyle = "#000"; c.fillRect(0, 0, W, H); c.drawImage(video, 0, 0, W, H); }
     else drawDemoScene(c, W, H, scene, toPlay(from + ms));
   };
+  // The roles someone played: in a video their own subjects are hidden, so each player replaces one.
+  const roles = [...new Set(seats.map((s) => s.guide))];
+  const withoutSubjects = (from: number) => (c: CanvasRenderingContext2D, ms: number) => {
+    background(from)(c, ms);
+    if (video) eraseSubjects(c, W, H, video, roles, toPlay(from + ms));
+  };
   const sideMs = Math.min(6000, realMs);
   const sideFrom = busiestWindow(seats.map((s) => s.original), sideMs);
   const sideLayers = layers.map((l) => ({ ...l, boxAt: (ms: number) => l.boxAt(sideFrom + ms), cutouts: l.cutouts.map((c) => ({ ...c, clipMs: c.clipMs - toPlay(sideFrom) })) }));
@@ -634,11 +676,11 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
     {
       durationMs: realMs, clock: video ? videoClock(video, scene.startMs) : undefined,
-      draw: (c, ms) => { background(0)(c, ms); drawLayers(c, W, H, layers, ms); },
+      draw: (c, ms) => { withoutSubjects(0)(c, ms); drawLayers(c, W, H, layers, ms); },
     },
     {
       durationMs: sideMs, clock: video ? videoClock(video, scene.startMs + sideFrom) : undefined,
-      draw: (c, ms) => drawSideBySide(c, W, H, full, background(sideFrom), sideLayers, ms),
+      draw: (c, ms) => drawSideBySide(c, W, H, full, background(sideFrom), withoutSubjects(sideFrom), sideLayers, ms),
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
