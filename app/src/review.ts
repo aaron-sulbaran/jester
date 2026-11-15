@@ -13,7 +13,7 @@ interface Finding { from: string; text: string }
 interface Logged { verdict: "approved" | "rejected" | "ask_a_person"; reason: string; title: string | null; steps?: string[]; findings?: Finding[]; framesCheck?: string }
 interface Pending { id: string; created_at: string; video_path: string; title: string | null; credit: string | null; logged: Logged | null }
 interface Decision { verdict: "approve" | "reject" | "ask_a_person"; reason: string; title: string; framesCheck: string; findings: Finding[]; steps: string[] }
-interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null }
+interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null; publish: { state: string; at: string | null; detail: string } }
 interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
 
 const SUBMITTED_CREDIT = "Sent in with Submit your own";
@@ -35,7 +35,8 @@ function problem(text: string | null) {
   el.textContent = text ?? "";
   el.hidden = !text;
 }
-const setStatus = (text: string) => { $("deskStatus").textContent = text; };
+let statusBase = "";
+const setStatus = (text: string) => { statusBase = text; $("deskStatus").textContent = text; };
 
 /** The dev server's review queue. Every answer is { data, error }. */
 async function api<T>(route: string, body?: unknown): Promise<Result<T>> {
@@ -235,6 +236,7 @@ async function reviewQueue() {
       }
     }
     setStatus(`Reviewed at ${new Date().toLocaleTimeString()}.`);
+    void showPublish();
   } catch (err) {
     problem(`The review stopped: ${(err as Error).message}`);
   } finally {
@@ -313,6 +315,7 @@ function renderNeedsYou(pending: Pending[]) {
         if (r.error !== null) { result.textContent = r.error; result.hidden = false; return; }
         card.remove();
         await showLog();
+        void showPublish();
       } finally {
         busy = false;
         yes.disabled = no.disabled = false;
@@ -326,6 +329,14 @@ function renderNeedsYou(pending: Pending[]) {
     card.append(name, clip, why, row, result);
     box.appendChild(card);
   }
+}
+
+/** How the last publish of the bank went (an approval publishes it a few seconds later). */
+async function showPublish(tries = 12) {
+  const s = await api<Status>("status");
+  if (s.error !== null || s.data.publish.state === "idle") return;
+  $("deskStatus").textContent = `${statusBase} ${s.data.publish.detail}`;
+  if ((s.data.publish.state === "waiting" || s.data.publish.state === "running") && tries > 0) setTimeout(() => void showPublish(tries - 1), 5000);
 }
 
 async function showLog() {

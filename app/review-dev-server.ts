@@ -17,8 +17,14 @@
 //   POST decide          { id, video_path, title, status: "approved" | "rejected", by, reason, bankId? }
 //   POST flag            { id, video_path, title, reason, ... } -> logged as waiting for a person
 //   GET  log             the latest decisions
+//   POST publish         publish the bank: runs deploy-bank.sh beside the bank folder a few seconds later
+//
+// Publishing: the public bank is its own small site, published by jester-deploy/deploy-bank.sh (about 20 s).
+// It runs after every approval, and the bank lab asks for it after every clip it adds. Requests a few seconds
+// apart share one run, and a run never overlaps another.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
@@ -110,6 +116,37 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     writeFileSync(logPath, JSON.stringify(log.slice(-500), null, 2) + "\n");
   };
   let log: LogEntry[] = [];
+  // ---- Publishing the bank ----
+  const publishScript = bankDir ? join(dirname(bankDir), "deploy-bank.sh") : undefined;
+  const PUBLISH_DELAY_MS = 5000;
+  let publish: { state: "idle" | "waiting" | "running" | "done" | "failed"; at: string | null; detail: string } = { state: "idle", at: null, detail: "" };
+  let publishTimer: ReturnType<typeof setTimeout> | undefined;
+  let publishing = false;
+  let publishAgain = false;
+  const now = () => new Date().toISOString();
+  const runPublish = () => {
+    if (!publishScript || !existsSync(publishScript)) {
+      publish = { state: "failed", at: now(), detail: "There is no deploy-bank.sh beside the bank folder, so the bank was not published." };
+      return;
+    }
+    if (publishing) { publishAgain = true; return; }
+    publishing = true;
+    publish = { state: "running", at: now(), detail: "Publishing the bank to the site..." };
+    execFile("/bin/bash", [publishScript], { timeout: 180000 }, (err, stdout) => {
+      publishing = false;
+      const url = /https:\/\/[^\s"]*vercel\.app/.exec(String(stdout))?.[0];
+      publish = err
+        ? { state: "failed", at: now(), detail: "The bank did not publish. Run jester-deploy/deploy-bank.sh by hand." }
+        : { state: "done", at: now(), detail: url ? `The bank is published (${url}).` : "The bank is published." };
+      if (publishAgain) { publishAgain = false; schedulePublish(); }
+    });
+  };
+  const schedulePublish = () => {
+    clearTimeout(publishTimer);
+    if (!publishing) publish = { state: "waiting", at: now(), detail: "Publishing the bank in a few seconds..." };
+    publishTimer = setTimeout(runPublish, PUBLISH_DELAY_MS);
+  };
+
   /** The project URL Vite loaded for the page (app/.env.local or the live site's public settings). */
   let pageUrl: string | undefined;
 
@@ -162,9 +199,14 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             return ok({
               missing: [...s.queueMissing, ...s.judgeMissing], canQueue: s.queueMissing.length === 0, canJudge: s.queueMissing.length === 0 && s.judgeMissing.length === 0,
               model: s.model, bankFolder: bankDir ? basename(bankDir) : null, envFile: options.envFile ? basename(options.envFile) : null,
+              publish,
             });
           }
           if (route === "log") return ok(log.slice(-40).reverse());
+          if (route === "publish" && req.method === "POST") {
+            schedulePublish();
+            return ok(publish);
+          }
           if (s.queueMissing.length || !s.url || !s.serviceKey) return fail(503, `The review queue is missing: ${s.queueMissing.join(", ")}.`);
           const db = createClient(s.url, s.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
@@ -228,6 +270,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             const { error } = await db.from("submissions").update({ status }).eq("id", id).eq("status", "pending");
             if (error) return fail(502, `Saving the decision failed: ${error.message}`);
             addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(bankId ? { bankId } : {}), ...extra });
+            if (status === "approved") schedulePublish();
             return ok({ id, status });
           }
 

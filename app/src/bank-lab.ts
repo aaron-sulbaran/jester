@@ -206,9 +206,23 @@ $("add").addEventListener("click", async () => {
   }
   current = null;
   syncButtons();
-  say("addStatus", `Added "${title}" as ${added.data.entry.id}: ${describe(added.data.entry)}, moves ${(added.data.guidesBytes / 1e6).toFixed(1)} MB.`, "good");
+  say("addStatus", `Added "${title}" as ${added.data.entry.id}: ${describe(added.data.entry)}, moves ${(added.data.guidesBytes / 1e6).toFixed(1)} MB. ${await publishBank()}`, "good");
   await showBank();
 });
+
+/**
+ * Asks the dev server to publish the bank (jester-deploy/deploy-bank.sh, about 20 seconds), so added clips reach
+ * the site. Requests a few seconds apart share one run.
+ */
+async function publishBank(): Promise<string> {
+  try {
+    const response = await fetch("/__review/publish", { method: "POST", headers: { "x-jester-review": "1", "content-type": "application/json" }, body: "{}" });
+    const answer = (await response.json()) as Result<unknown>;
+    return answer.error ?? "Publishing the bank to the site in a few seconds (about 20 seconds in all).";
+  } catch {
+    return "The dev server could not publish the bank. Run jester-deploy/deploy-bank.sh by hand.";
+  }
+}
 
 // ---- Many at once: a batch of files, or the starter clips ----
 
@@ -251,7 +265,7 @@ async function addMany(items: Queued[], logId: string) {
     line.className = "good";
     await showBank();
   }
-  note(`Done: ${added} added.`);
+  note(`Done: ${added} added.${added > 0 ? ` ${await publishBank()}` : ""}`);
   busy = false;
   syncButtons();
 }
