@@ -18,7 +18,7 @@ import type { RevealRole } from "./composite.ts";
 type RoomLike = {
   me: string; name: string; round: { roundNo: number; extra?: { assign?: Record<string, number> } } | null; allDone: boolean;
   roster(): { id: string; name: string }[];
-  standings(): { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string } | null }[];
+  standings(): { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
   start(clipId: string, delayMs?: number, extra?: object): unknown;
   submitResult(r: { score: number; timeline?: unknown; extra?: unknown }): void;
   on(event: "update" | "start", fn: (arg: never) => void): () => void;
@@ -43,7 +43,7 @@ export async function playMyRole(room: RoomLike, scene: Scene, ui: BlindUi, deps
   const packed = row.timeline
     ? serializeTimeline({ aspect: row.timeline.aspect, durationMs: frames.length ? frames[frames.length - 1]!.t : 0, coverage: 1, model: "blind", frames: frames.map((f) => ({ t: f.t, landmarks: f.landmarks as never, outline: null })) } as never, { every: 2 })
     : null;
-  room.submitResult({ score: row.score ?? 0, timeline: packed, extra: { guideIndex: idx, role: row.role } });
+  room.submitResult({ score: row.score ?? 0, timeline: packed, extra: { guideIndex: idx, role: row.role, part: row.part ?? "body", lagMs: row.lagMs ?? 0 } });
   return row;
 }
 

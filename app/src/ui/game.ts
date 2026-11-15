@@ -4,7 +4,7 @@
 
 import type { BodyPart } from "../../../engine/src/index.ts";
 import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
-import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
+import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
@@ -14,8 +14,7 @@ import { jesterBars } from "./jesterBar.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
-import { playMyRole, revealRoles } from "../onlineBlind.ts";
-import { drawReveal } from "../composite.ts";
+import { playMyRole } from "../onlineBlind.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -376,38 +375,15 @@ export function initGame(deps: GameDeps) {
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string } | null }[];
-      const top = Math.max(-1, ...standings.map((s) => s.score ?? -1));
-      const tied = standings.filter((s) => s.score === top).length > 1;
-      rows = standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map((s) => {
-        const guide = played.guides[s.extra!.guideIndex]!;
-        return {
-          name: s.name, color: colorOf(s.id), role: s.extra!.role, look: guide.subject.kind === "thing" ? "outline" : "stick",
-          score: s.score, tier: null, winner: top >= 0 && s.score === top, tied, guide,
-          timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as ResultRow["timeline"]) : null, face: null,
-        } as ResultRow;
-      });
-      ui.results(rows);
-      // The reveal: everyone's stick figure (or disc, for a thing) on their part, replayed once.
-      const roles = revealRoles(room as never, played);
-      revealCanvas.width = 960;
-      revealCanvas.height = Math.round(960 * (played.height / played.width));
-      setPace(1);
-      const clipAspect = played.width / played.height;
-      const total = Math.max(1000, played.durationMs);
-      let at = 0, last = performance.now();
-      await new Promise<void>((done) => {
-        const timer = window.setInterval(() => {
-          if (game?.signal.aborted) { clearInterval(timer); return done(); }
-          const t = performance.now();
-          at += (t - last) * revealControl.speed; last = t;
-          drawReveal(revealCanvas, roles, Math.min(at, total), { clipAspect });
-          ui.progress(Math.min(1, at / total));
-          if (at >= total) { clearInterval(timer); done(); }
-        }, 1000 / 30);
-      });
+      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const results: RemoteResult[] = standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map((s) => ({
+        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
+        timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
+      }));
+      // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
+      // crowning and results. Remote players are drawn as their stick figures.
+      await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });
       live();
-      ui.revealReady(null);
     } catch (err) {
       if (game?.signal.aborted) return; // they left on purpose
       console.error("The online game stopped:", err);
