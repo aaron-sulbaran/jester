@@ -319,7 +319,7 @@ export function initAnyone(deps: AnyoneDeps) {
     const items = table.ranked.map((row) => {
       const li = el("li", (isGhost(row.id) ? "ghost" : "") + (row.place === 1 ? " first" : ""));
       li.style.setProperty("--who", palette[Math.max(0, seat(row)) % palette.length]!);
-      const who = el("span", "who", row.id === me ? `${row.name} (you)` : row.name);
+      const who = el("span", "anyone-name", row.id === me ? `${row.name} (you)` : row.name);
       const why = isGhost(row.id) ? "an earlier round on this clip" : row.error ?? (row.score === null ? "could not be scored" : "");
       if (why) who.append(el("small", "", why));
       li.append(el("span", "rank", String(row.place)), who, el("span", "score", row.score === null ? "-" : String(row.score)));
@@ -327,7 +327,7 @@ export function initAnyone(deps: AnyoneDeps) {
     });
     for (const name of table.waiting) {
       const li = el("li");
-      const who = el("span", "who", name);
+      const who = el("span", "anyone-name", name);
       who.append(el("small", "", "did not finish in time"));
       li.append(el("span", "rank", ""), who, el("span", "score", "-"));
       items.push(li);
