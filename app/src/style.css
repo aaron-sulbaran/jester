@@ -239,7 +239,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
    tag that opens its own screen; Play stays the one ticket. */
 .send-invite {
   position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px;
-  width: min(680px, 100%); padding: 16px 20px 16px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
+  width: min(680px, 100%); margin-top: 12px; padding: 16px 20px 16px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
 }
 .send-invite .washi { top: -13px; left: 26px; width: 84px; height: 24px; rotate: -4deg; }
 .send-invite-text { margin: 0; flex: 1 1 280px; text-align: left; font: 700 23px/1.25 var(--hand); letter-spacing: -.03em; color: var(--pen); }

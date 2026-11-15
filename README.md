@@ -11,7 +11,7 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 ## Any video is now a game
 
 - **Any clip becomes a level.** Jester finds the people (up to 4) and the things that move in a short video (a dancer, a dog, a ball) and turns each one into a part someone can play. No level design, no markers, no training.
-- **Play it blind, or dance along.** In Blind, each player sees only their own part's outline or stick figure, never the clip and never who they are, and finds out what they actually did at the reveal. In Normal, the clip plays during your turn and your part is shown in your colour.
+- **Play it blind, or dance along.** In Blind, each player sees only their own part's outline or stick figure, never the clip and never who they are, and finds out what they actually did at the reveal. In Normal, the clip plays during your turn and your part is marked on it with a thin outline in your colour and your name above.
 - **The reveal is the payoff.** The real video plays with every player's cutout on their part, the jester crowns the winner, and the reveal saves as a video you can keep.
 
 **A fairer judge without retraining a model.** The scorer is computer vision and fixed code: MediaPipe's body points turned into limb directions, the same recording always getting the same score, and no model to retrain. We make it fairer by testing it instead: every round is recorded as pose data and replayed through the real scorer, and each good round becomes six altered copies whose right answer is known. That is how we found that standing completely still scored 66 on a real round; the engine fix shipped the same night ([jester#82](https://github.com/aaron-sulbaran/jester/pull/82)), and guard cases keep it fixed. LangChain deep agents work on top of this: [the Chamberlain](#the-chamberlain-our-clip-reviewer) reviews the clips players submit, and a referee coach that investigates scoring with the real scorer is in review ([jester#106](https://github.com/aaron-sulbaran/jester/pull/106)).
@@ -33,15 +33,15 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 
 | Part | Where | What it does | Tests |
 |---|---|---|---|
-| Clip side | `clip/`, `app/src/clipside/` | Reads the video's frames, finds people (MediaPipe Pose Landmarker) and moving things (EfficientDet-Lite0), detects cuts, follows and rejoins each subject, ranks them, refuses clips it cannot use, and turns each subject into a guide. Saved under a fingerprint of the file, so the same video gives the same result. | 124 |
+| Clip side | `clip/`, `app/src/clipside/` | Reads the video's frames, finds people (MediaPipe Pose Landmarker) and moving things (EfficientDet-Lite0), detects cuts, follows and rejoins each subject, ranks them, refuses clips it cannot use, and turns each subject into a guide. Saved under a fingerprint of the file, so the same video gives the same result. | 141 |
 | Webcam side | `spikes/pose-match/webcam.mjs` and its helpers | Tracks the player's 33 body points live, smooths them (One Euro filter), and keeps a person mask and outline for the reveal cutout. | 53 |
 | Engine | `engine/` | Scores a copy: 12 limb directions (so height, size and distance do not matter), the round read both as a mirror image and the same way round with the better kept, one lag for the round, and credit only for accuracy that beats standing still or for moving the way the clip moves, so standing still scores near 0. Things are scored by how the player's body follows the thing's box. Same inputs, same score, bit for bit. Engine 0.12.0. | 88 |
 | Rooms | `spikes/pose-match/rooms.mjs`, `app/src/ui/room.ts`, `app/src/supabaseTransport.ts` | Four letter room codes over Supabase Realtime: presence, host handoff, a start synced to the host's clock, late joiners sit out one round, shared results. | 21 |
 | Eval | `eval/`, `app/round-log-plugin.ts` | Records every scored round (pose points only, no video) and replays them all against the engine on disk, so a scoring change shows what got better or worse. Each good round also becomes six altered copies with known answers (late, frozen, seated, walked out, jittered, mirrored), with no AI and no extra play, and frozen guard cases with a saved baseline make `npm run eval` fail if a fix comes undone. | 12 |
 | Chamberlain | `app/review-agent.ts`, `app/review-dev-server.ts`, `app/src/review.ts` | Reviews the clips players submit and decides which join the bank ([below](#the-chamberlain-our-clip-reviewer)). Bank ids and title cleaning are tested with the clip side, and the "your clip is in" matcher with the game. | none yet for its own judgments; the replay eval is in PR 124 |
-| Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | 33, plus typecheck and build |
+| Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | 39, plus typecheck and build |
 
-331 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
+354 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
 
 ## The Chamberlain: our clip reviewer
 
@@ -93,7 +93,7 @@ make dev
 
 Then open http://localhost:5173. No settings file is needed: the dev server takes the two public Supabase settings from the live site by itself, and without a network the game still runs in one browser. Every setting is named in [`app/.env.example`](app/.env.example). Add `?nocam=1` to play with simulated players and no camera.
 
-`make test` runs the type checks and all 331 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
+`make test` runs the type checks and all 354 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
 
 ## Team and how we built it
 
