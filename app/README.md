@@ -26,6 +26,8 @@ On the pick frame, a dashed box is a person who is not in that frame, drawn wher
 
 `?model=heavy` (or `lite`) runs a fresh analysis with that pose model and does not save it; the table's "Seconds taken" is the number to compare with the default `full`. The game always uses `full`.
 
+The pose tracker looks for people on every frame (MediaPipe IMAGE mode). In VIDEO mode it only looks again when it loses someone, so in a tight group dance it could follow 2 of 4 dancers for the whole clip. `?search=tracking` runs the old way, not saved, to compare. Analyses saved before this change are not used.
+
 People the pose model drops for a while (behind another dancer, at the back) come back as a new track. `analyze.ts` links with a 1 second gap and then joins pieces with `rejoinTracks` from `clip/` (up to 3 seconds apart, near where the earlier piece ended or was heading, a similar size). Saved analyses keep their frames and run this again when opened, so they pick up the joining without a fresh analysis.
 
 `?nocam=1` ticks "Simulated player": a stand-in copies the clip with 150 ms lag and an adjustable wobble, no camera needed.

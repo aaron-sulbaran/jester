@@ -6,7 +6,7 @@ import {
   rankCandidates, rejoinTracks, shotRanges, withConfirmBoxes,
 } from "../../../clip/src/index.ts";
 import type { Candidate, ClipSource, FrameDetections, Guide, Track } from "../../../clip/src/index.ts";
-import { createPeopleDetector, type PoseModel } from "./detect.ts";
+import { createPeopleDetector, type PersonSearch, type PoseModel } from "./detect.ts";
 import { sha256Hex } from "./fingerprint.ts";
 import { readFrames, type FrameCanvas, type VideoInfo } from "./frames.ts";
 import { loadPrepared, savePrepared } from "./store.ts";
@@ -32,6 +32,8 @@ export interface PrepareOptions {
   ignoreSaved?: boolean;
   /** Pose model to try, for timing in the lab. Anything but the default "full" ignores and does not save the analysis. */
   model?: PoseModel;
+  /** How to look for people, to compare in the lab. Anything but the default "every-frame" ignores and does not save the analysis. */
+  search?: PersonSearch;
 }
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
@@ -91,7 +93,9 @@ export async function prepareClip(
   onProgress(0);
   const fingerprint = await sha256Hex(file);
   const model = options.model ?? "full";
-  if (!options.ignoreSaved && model === "full") {
+  const search = options.search ?? "every-frame";
+  const usual = model === "full" && search === "every-frame";
+  if (!options.ignoreSaved && usual) {
     const saved = await loadPrepared(fingerprint);
     if (saved) {
       // The saved frames are kept as read; following the people again picks up the current rules.
@@ -107,7 +111,7 @@ export async function prepareClip(
   const refuse = (error: string, decoder: PrepareFacts["decoder"] = null): PrepareResult =>
     ({ data: null, error, facts: { decoder, frames: frames.length } });
 
-  const detector = await createPeopleDetector(model);
+  const detector = await createPeopleDetector(model, search);
   if (detector.error !== null) return refuse(detector.error);
   const scratch = document.createElement("canvas");
   let read: Awaited<ReturnType<typeof readFrames>>;
@@ -140,7 +144,7 @@ export async function prepareClip(
     fingerprint, source, frames, cuts, ...people,
     warnings, decoder: info.decoder, fromSaved: false,
   };
-  if (model === "full") await savePrepared(prepared);
+  if (usual) await savePrepared(prepared);
   onProgress(1);
   return { data: prepared, error: null };
 }
