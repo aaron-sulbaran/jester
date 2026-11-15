@@ -42,6 +42,20 @@ Each guide carries, one entry per frame at the same times: `timeline` (pose, for
 
 To draw what a player sees without the clip: `placeSubject(guide, canvas, "fit" | "exact")` from `../clip` gives the placement once per guide, and `drawBlind(canvas, guide, guideFrameAt(guide, mediaMs), "outline" | "stick", view)` from `src/clipside/blind.ts` draws one frame. "fit" centres the subject on its own average position at about 70 percent of the canvas height and shrinks it if its movement would leave the canvas; "exact" keeps it where it is in the clip frame. The clip lab shows both.
 
+### Things as roles (animals, balls, cars)
+
+Pass `{ things: true }` to `prepareVideo` and `subjectGuides` returns the people first, then every thing the object detector found that moves, all from the same shot. It is off by default, so solo play and people results are unchanged; it adds a second detector (EfficientDet-Lite0, every third frame). With it on, a clip with no people but a moving thing is not refused.
+
+```ts
+const prepared = await prepareVideo(file, videoElement, onProgress, { things: true });
+const { guides } = subjectGuides(prepared.data);
+for (const guide of guides) {
+  if (guide.subject.kind === "thing") playObjectRound(thingObjectClip(guide), player, onLive, bodyPart);
+}
+```
+
+A thing guide has `subject.label` like "Dog 1" or "Ball 2", `timeline` null, `channel` "trajectory", a `box-track/1` the engine scores as is, and `outlines` that are the box as four points (the detector gives no mask). `thingObjectClip(guide)` in `src/clip.ts` returns the shape of `ObjectClip` in `src/objectClips.ts`: `track` is the guide's box track, `boxAt(ms)` for the reveal, `name` ("dog"), and a `hint` from the ways the box moves. Draw a thing's blind view with the "outline" look. A thing that never moves goes to `skipped` with "This one does not move, so there is nothing to copy." Check it in `things-lab.html` (`?clip=<name>`, `?fresh=1`).
+
 ## How the engine is wired
 
 Each player frame is tagged with `clipTimeMs`, the clip's playback time when the frame arrived (video `currentTime`, or wall time since start for the starter clip). The engine's adapter uses that in place of `trackerTimeAtClipStartMs`, and it stays right if the video stalls. Frames before the clip starts are tagged -1 and dropped.
