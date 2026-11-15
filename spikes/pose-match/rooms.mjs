@@ -25,6 +25,9 @@ export const normalizeCode = (code) => String(code || "").trim().toUpperCase();
 const MAX_MEDIA_CHARS = 3_000_000, MAX_CHUNK_CHARS = 60000, MAX_PIECES = 200;
 const validKind = (k) => typeof k === "string" && /^[A-Za-z0-9_]{1,20}$/.test(k);
 export const MAX_CHAT_CHARS = 140;
+// Chat a device will show from each player: a burst of CHAT_BURST lines, then one line per CHAT_EVERY_MS. The rest
+// are dropped quietly, so a client that skips the chat form cannot flood everyone else's screen.
+export const CHAT_BURST = 3, CHAT_EVERY_MS = 400;
 /** One line of chat: text only, trimmed, on one line, and short. Anything else is dropped. */
 const cleanChat = (t) => (typeof t === "string" ? t.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT_CHARS) : "");
 
@@ -40,7 +43,8 @@ export class Room {
     this.skew = 0;              // estimated (my clock - sender clock), updated from each message
     this.offset = null;         // host clock minus my clock, measured by ping and reply (null until measured)
     this.bestRtt = Infinity;
-    this.lastSeen = new Map();  // playerId -> my clock when I last heard from them
+    this.lastSeen = new Map();  // playerId -> my clock when I last heard from them (players in the room only)
+    this.chatBudget = new Map(); // playerId -> { lines, at }: chat lines they may still send right now
     this.heartbeatMs = heartbeatMs; this.silentMs = silentMs; this.timer = null;
     this.joinedAt = this.now();
     this.ready = false;
@@ -76,7 +80,7 @@ export class Room {
       const seen = this.lastSeen.get(id);
       // Players are busy with the camera and tracker during a turn, so allow twice as long before dropping them mid-round.
       const limit = this.round && !this.allDone ? this.silentMs * 2 : this.silentMs;
-      if (seen !== undefined && t - seen > limit) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); this.#dropMedia(id); removed = true; }
+      if (seen !== undefined && t - seen > limit) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); this.chatBudget.delete(id); this.#dropMedia(id); removed = true; }
     }
     for (const [key, p] of [...this.pendingMedia]) if (t - p.at > 60000) this.pendingMedia.delete(key);
     if (removed) this.#emit("update");
@@ -118,11 +122,22 @@ export class Room {
   // A line of chat to everyone in the room. Nothing keeps it: each device holds what it has heard, in memory.
   say(text) {
     const line = cleanChat(text);
-    if (!line) return null;
+    if (!line || !this.#chatAllowed(this.me)) return null;
     const said = { from: this.me, name: this.name, text: line, at: this.now() };
     this.#send({ type: "chat", text: line });
     this.#emit("chat", said);
     return said;
+  }
+  /** Spends one line of a player's chat budget; false when they have none left right now. */
+  #chatAllowed(id) {
+    const t = this.now();
+    const b = this.chatBudget.get(id) ?? { lines: CHAT_BURST, at: t };
+    b.lines = Math.min(CHAT_BURST, b.lines + (t - b.at) / CHAT_EVERY_MS);
+    b.at = t;
+    this.chatBudget.set(id, b);
+    if (b.lines < 1) return false;
+    b.lines -= 1;
+    return true;
   }
   leave() { this.#send({ type: "leave" }); clearInterval(this.timer); this.timer = null; this.unsubscribe?.(); this.transport.close?.(); }
 
@@ -184,7 +199,6 @@ export class Room {
   #receive(m) {
     if (!m || m.room !== this.code || m.from === this.me) return;
     this.skew = this.now() - m.sentAt;
-    this.lastSeen.set(m.from, this.now());
     switch (m.type) {
       case "join": {
         const isNew = !this.players.has(m.from);
@@ -192,7 +206,7 @@ export class Room {
         if (isNew) this.#send({ type: "join", name: this.name, joinedAt: this.joinedAt, ready: this.ready }); // so the newcomer sees me
         break;
       }
-      case "ping": break; // only proves they are here (lastSeen is already updated)
+      case "ping": break; // only proves they are here (lastSeen is updated below)
       case "sync": if (this.isHost) this.#send({ type: "syncReply", to: m.from, t0: m.t0, th: this.now() }); break;
       case "syncReply": {
         if (m.to !== this.me) break;
@@ -201,11 +215,13 @@ export class Room {
         break;
       }
       case "ready": { const p = this.players.get(m.from); if (p) p.ready = !!m.ready; break; }
-      case "leave": this.players.delete(m.from); this.results.delete(m.from); this.#dropMedia(m.from); break;
+      case "leave": this.players.delete(m.from); this.results.delete(m.from); this.lastSeen.delete(m.from); this.chatBudget.delete(m.from); this.#dropMedia(m.from); break;
       case "media": this.#receiveMedia(m); break;
       case "chat": {
+        // Only from a player in this room, and only within their chat budget.
+        const who = this.players.get(m.from);
         const line = cleanChat(m.text);
-        if (line) this.#emit("chat", { from: m.from, name: this.players.get(m.from)?.name ?? "Someone", text: line, at: this.now() });
+        if (who && line && this.#chatAllowed(m.from)) this.#emit("chat", { from: m.from, name: who.name, text: line, at: this.now() });
         break;
       }
       case "start": {
@@ -221,6 +237,9 @@ export class Room {
         if (m.roundNo === (this.round?.roundNo ?? 0)) this.results.set(m.from, { score: m.score, timeline: m.timeline ?? null, extra: m.extra ?? null, at: this.now() });
         break;
     }
+    // Heard from: kept for players in this room only (a join has just added them, a leave has just removed them),
+    // so made-up senders never pile up here; pruning only ever looks at players.
+    if (this.players.has(m.from)) this.lastSeen.set(m.from, this.now());
     this.#emit("update");
   }
 }

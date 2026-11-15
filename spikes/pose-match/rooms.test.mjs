@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Room, MemoryBus, makeRoomCode, normalizeCode } from "./rooms.mjs";
+import { Room, MemoryBus, makeRoomCode, normalizeCode, CHAT_BURST, CHAT_EVERY_MS } from "./rooms.mjs";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 function makeRooms(names, clocks = {}) {
@@ -284,4 +284,64 @@ test("chat reaches everyone else with the sender's name, once, and only as short
   await tick();
   const both = ["ANA: hello there", "BEN: " + "x".repeat(140)];
   assert.deepEqual(heard, { ana: both, ben: both, cy: both });
+});
+
+/** Rooms on one bus sharing a clock, plus a modified client that can send any message under any sender id. */
+function roomsWithStranger(names, now) {
+  const bus = new MemoryBus();
+  const rooms = names.map((n) => new Room({ transport: bus.transport(), code: "abcd", playerId: n, name: n.toUpperCase(), now, heartbeatMs: 0 }));
+  const raw = bus.transport();
+  return { rooms, send: (msg) => raw.send({ room: "ABCD", sentAt: now(), ...msg }) };
+}
+
+test("chat from a sender who is not a player in the room is dropped", async () => {
+  const t = 1000;
+  const { rooms: [a, b], send } = roomsWithStranger(["ana", "ben"], () => t);
+  a.join(); b.join(); await tick();
+  const heard = [];
+  a.on("chat", (line) => heard.push(`${line.name}: ${line.text}`));
+  send({ type: "chat", from: "ghost", text: "boo" });
+  send({ type: "chat", from: "ben", text: "hi" });
+  await tick();
+  assert.deepEqual(heard, ["BEN: hi"]);
+});
+
+test("a device shows each player's chat only within a short burst, then one line per CHAT_EVERY_MS", async () => {
+  let t = 1000;
+  const { rooms: [a, b, c], send } = roomsWithStranger(["ana", "ben", "cy"], () => t);
+  a.join(); b.join(); c.join(); await tick();
+  const heard = [];
+  a.on("chat", (line) => heard.push(line.from));
+  // A client that skips the chat form sends 20 lines at once as ben: ana shows only the burst.
+  for (let i = 0; i < 20; i++) send({ type: "chat", from: "ben", text: `line ${i}` });
+  await tick();
+  assert.equal(heard.length, CHAT_BURST);
+  // One budget per player: cy can still talk.
+  send({ type: "chat", from: "cy", text: "me too" });
+  await tick();
+  assert.deepEqual(heard.slice(CHAT_BURST), ["cy"]);
+  // After CHAT_EVERY_MS, ben gets exactly one more line through.
+  t += CHAT_EVERY_MS;
+  for (let i = 0; i < 5; i++) send({ type: "chat", from: "ben", text: "again" });
+  await tick();
+  assert.equal(heard.filter((id) => id === "ben").length, CHAT_BURST + 1);
+  // say() keeps to the same budget on the sender's own device, so a fast typist sees the same lines the others do.
+  const said = [1, 2, 3, 4, 5].map(() => c.say("hello"));
+  assert.equal(said.filter(Boolean).length, CHAT_BURST);
+});
+
+test("made-up senders leave nothing in lastSeen; real players still drop out when silent or when they leave", async () => {
+  let t = 1000;
+  const { rooms: [a, b, c], send } = roomsWithStranger(["ana", "ben", "cy"], () => t);
+  a.join(); b.join(); c.join(); await tick();
+  for (let i = 0; i < 100; i++) send({ type: i % 2 ? "ping" : "chat", from: `x${i}`, text: "hi" });
+  await tick();
+  assert.deepEqual([...a.lastSeen.keys()].sort(), ["ben", "cy"]);
+  c.leave(); await tick();
+  assert.deepEqual([...a.lastSeen.keys()], ["ben"]);
+  // Presence as before: ben goes quiet past silentMs and is dropped, and his entry goes with him.
+  t += 10001;
+  a.prune();
+  assert.deepEqual(a.roster().map((p) => p.id), ["ana"]);
+  assert.equal(a.lastSeen.size, 0);
 });

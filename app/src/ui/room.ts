@@ -63,6 +63,11 @@ async function drawQr(el: HTMLElement, link: string) {
   el.dataset.link = link; // what the QR holds, for checking it in a test
 }
 
+/** A player's name as this screen shows it: one line, at most the name field's 14 letters. What a join message
+ *  carries is left as it is; a longer name from a modified client is only cut short here. */
+const NAME_CHARS = 14;
+const shownName = (name: unknown) => (typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, NAME_CHARS) : "") || "Player";
+
 /** "Sam", "Sam and Lisa", "Sam, Lisa and Jo" */
 const nameList = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
@@ -196,7 +201,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       if (!s) { s = makeSeat(variant); seats.set(p.id, s); }
       if (rosterList.children[i] !== s.li) rosterList.insertBefore(s.li, rosterList.children[i] ?? null);
       s.li.style.setProperty("--who", `var(--p${(i % 4) + 1})`);
-      s.name.textContent = p.name;
+      s.name.textContent = shownName(p.name);
       const isHost = p.id === hostId, isMe = p.id === me;
       const ready = isHost || !!p.ready;
       s.li.dataset.ready = String(ready);
@@ -221,11 +226,12 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     $("roomNeedTwo").hidden = roster.length >= 2;
     // The host sees who still has to tap ready; dealing is never held up by someone who stepped away.
     const guests = roster.filter((p) => p.id !== hostId);
-    const waiting = guests.filter((p) => !p.ready).map((p) => p.name);
+    const waiting = guests.filter((p) => !p.ready).map((p) => shownName(p.name));
     const readyLine = $("roomReadyLine");
     readyLine.hidden = guests.length === 0;
     readyLine.textContent = waiting.length === 0 ? "Everyone's ready." : `${nameList(waiting)} ${waiting.length === 1 ? "isn't" : "aren't"} ready yet.`;
-    const hostName = roster.find((p) => p.id === hostId)?.name ?? "The host";
+    const hostPlayer = roster.find((p) => p.id === hostId);
+    const hostName = hostPlayer ? shownName(hostPlayer.name) : "The host";
     $("roomGuestNote").textContent = `${hostName} picks the clip and deals the parts.`;
     const readyBtn = $("roomReady");
     readyBtn.setAttribute("aria-pressed", String(!!room.ready));
@@ -250,7 +256,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     const li = document.createElement("li");
     li.className = line.from === me ? "mine" : "";
     const who = document.createElement("b");
-    who.textContent = `${line.name}:`;
+    who.textContent = `${shownName(line.name)}:`;
     li.append(who, document.createTextNode(" " + line.text));
     chatLog.appendChild(li);
     while (chatLog.children.length > 60) chatLog.firstElementChild?.remove();
@@ -322,6 +328,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     $("roomWhere").textContent = hosted ? "" : "(this browser only: the hosted connection is not set up on this copy)";
     $("roomLinkLine").hidden = !!hosted; // only the "this browser only" notice shows here
     $("roomQrCode").replaceChildren();
+    $("roomQr").hidden = false; // a QR that failed in an earlier room must not hide this one's
     void drawQr($("roomQrCode"), link).catch(() => { $("roomQr").hidden = true; });
     history.replaceState(history.state, "", addressWithRoom(location.href, code));
     render();
