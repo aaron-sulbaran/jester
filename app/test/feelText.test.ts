@@ -16,24 +16,24 @@ test("camera errors map to the right card", () => {
   assert.equal(cameraTrouble(undefined).kind, "tracker");
 });
 
-test("every camera card offers the understudy and has no em dashes", () => {
+test("every camera card offers the simulated player and has no em dashes", () => {
   for (const e of [named("NotAllowedError"), named("NotFoundError"), named("NotReadableError"), new TypeError("getUserMedia"), new Error("x")]) {
     const c = cameraTrouble(e);
-    assert.match(c.text, /understudy/);
+    assert.match(c.text, /simulated player/);
     assert.doesNotMatch(c.title + c.text, /—/);
   }
 });
 
 test("ranks follow the score tiers", () => {
-  assert.equal(rankFor(100).title, "Court Favourite");
-  assert.equal(rankFor(90).title, "Court Favourite");
-  assert.equal(rankFor(89).title, "Royal Jester");
-  assert.equal(rankFor(60).title, "Juggler of the Hall");
-  assert.equal(rankFor(30).title, "Village Clown");
-  assert.equal(rankFor(29).title, "Stable Hand in Bells");
-  assert.equal(rankFor(0).title, "Stable Hand in Bells");
-  assert.equal(rankFor(null).title, "Lost in the Crowd");
-  assert.equal(rankFor(Number.NaN).title, "Lost in the Crowd");
+  assert.equal(rankFor(100).title, "Top marks");
+  assert.equal(rankFor(90).title, "Top marks");
+  assert.equal(rankFor(89).title, "Great");
+  assert.equal(rankFor(60).title, "Good");
+  assert.equal(rankFor(30).title, "Getting there");
+  assert.equal(rankFor(29).title, "Keep practising");
+  assert.equal(rankFor(0).title, "Keep practising");
+  assert.equal(rankFor(null).title, "No score");
+  assert.equal(rankFor(Number.NaN).title, "No score");
 });
 
 test("rank tiers are ordered best first and every one has a blurb", () => {
@@ -49,17 +49,17 @@ test("everyone gets an award, the winner gets the crown", () => {
     { score: 40, winner: false, motion: 2.5 },
     { score: 55, winner: false, motion: 0.1 },
   ]);
-  assert.deepEqual(a, ["The Crown", "Nearly Royal", "Most Energetic", "Statue of the Court"]);
+  assert.deepEqual(a, ["Winner", "Close second", "Most movement", "Stillest"]);
   assert.equal(new Set(a).size, a.length);
 });
 
-test("ties share the crown and a player the camera never saw is a mystery guest", () => {
+test("ties are joint winners and a player the camera never saw is named so", () => {
   assert.deepEqual(awardsFor([
     { score: 70, winner: true, motion: 1 },
     { score: 70, winner: true, motion: 1 },
     { score: null, winner: false, motion: null },
-  ]), ["Shared Crown", "Shared Crown", "Mystery Guest"]);
-  assert.deepEqual(awardsFor([{ score: 50, winner: true, motion: null }, { score: 20, winner: false, motion: null }]), ["The Crown", "Bravest Attempt"]);
+  ]), ["Joint winner", "Joint winner", "Not seen by the camera"]);
+  assert.deepEqual(awardsFor([{ score: 50, winner: true, motion: null }, { score: 20, winner: false, motion: null }]), ["Winner", "Gave it a go"]);
 });
 
 test("motion counts wrist and ankle travel per second", () => {
@@ -72,8 +72,8 @@ test("motion counts wrist and ankle travel per second", () => {
 });
 
 test("host lines fill in the winner and never use em dashes", () => {
-  assert.equal(hostLine("crown", { winner: "Ana" }, () => 0), "Ana takes the crown!");
-  assert.equal(hostLine("results", { winner: "Ana", title: "Royal Jester" }, () => 0), "Ana is our Royal Jester!");
+  assert.equal(hostLine("crown", { winner: "Ana" }, () => 0), "Ana wins!");
+  assert.equal(hostLine("results", { winner: "Ana", title: "Great" }, () => 0), "Here are the scores. Ana: Great.");
   for (const e of ["beat", "roll", "crown", "tie", "nobody", "results"] as const) {
     for (const r of [0, 0.5, 0.99]) assert.doesNotMatch(hostLine(e, { winner: "Ana", title: "X" }, () => r), /—|\{/);
   }

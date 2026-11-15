@@ -132,7 +132,7 @@ export function initGame(deps: GameDeps) {
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
   let videoUrl: string | null = null;
-  // The camera for the game's turns: a loading card, the jester's card when it fails, the understudy (?demo=1).
+  // The camera for the game's turns: a loading card, a card when it fails, the simulated player (?demo=1).
   const camera = guardCamera(deps, () => goHome());
   installFeel();
 
@@ -771,7 +771,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="place-title"></span><span class="place-blurb"></span><span class="place-award"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="wins place-title"></span><span class="aside place-blurb"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
@@ -782,7 +782,7 @@ export function initGame(deps: GameDeps) {
       li.querySelector("b")!.textContent = r.name;
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
       const rank = rankFor(r.score);
-      li.querySelector(".place-title")!.textContent = rank.title;
+      letters(li.querySelector<HTMLElement>(".place-title")!, rank.title);
       li.querySelector(".place-blurb")!.textContent = rank.blurb;
       li.querySelector(".place-award")!.textContent = `Award: ${awards[i]}`;
       const score = li.querySelector<HTMLElement>(".place-score")!;

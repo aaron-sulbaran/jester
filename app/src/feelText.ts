@@ -1,5 +1,6 @@
-// What the jester says when the camera lets us down, the rank title for each score, the awards and the host's
-// lines. Pure: no DOM, so app/test/feelText.test.ts can check it with plain node.
+// The words for the camera card, the rank title for each score, the awards and the host's lines. Plain wording
+// for now: the Jester's voice comes through the design flow (kb/jester-design-flow). Pure: no DOM, so
+// app/test/feelText.test.ts can check it with plain node.
 
 export type CameraTroubleKind = "refused" | "missing" | "busy" | "unsupported" | "tracker";
 
@@ -9,25 +10,25 @@ export interface CameraTrouble {
   text: string;
 }
 
-const UNDERSTUDY = "Or let the understudy take this turn.";
+const SIMULATED = "Or let the simulated player take this turn.";
 
-/** Turns a camera or tracker failure into the jester's card. Unknown errors count as the tracker not starting. */
+/** Turns a camera or tracker failure into the camera card. Unknown errors count as the tracker not starting. */
 export function cameraTrouble(err: unknown): CameraTrouble {
   const name = typeof err === "object" && err !== null && "name" in err ? String((err as { name: unknown }).name) : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
   if (name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError") {
-    return { kind: "refused", title: "The jester can't see a thing!", text: `Your browser said no to the camera. Allow it from the camera icon in the address bar, then try again. ${UNDERSTUDY}` };
+    return { kind: "refused", title: "The camera is blocked", text: `The browser blocked the camera. Allow it from the camera icon in the address bar, then try again. ${SIMULATED}` };
   }
   if (name === "NotFoundError" || name === "DevicesNotFoundError" || name === "OverconstrainedError") {
-    return { kind: "missing", title: "No camera in sight.", text: `I looked everywhere, even under my hat. Plug a camera in, then try again. ${UNDERSTUDY}` };
+    return { kind: "missing", title: "No camera found", text: `Plug in a camera, then try again. ${SIMULATED}` };
   }
   if (name === "NotReadableError" || name === "TrackStartError" || name === "AbortError") {
-    return { kind: "busy", title: "Someone else has the camera.", text: `Another app or tab is holding on to it. Close that one, then try again. ${UNDERSTUDY}` };
+    return { kind: "busy", title: "The camera is in use", text: `Another app or tab is using the camera. Close it, then try again. ${SIMULATED}` };
   }
   if (/mediaDevices|getUserMedia/.test(message)) {
-    return { kind: "unsupported", title: "This page can't borrow the camera.", text: `The browser keeps the camera away from this address. Open the game from its https link and try again. ${UNDERSTUDY}` };
+    return { kind: "unsupported", title: "No camera on this page", text: `The browser allows the camera only on a secure (https) address. Open the game from its https link, then try again. ${SIMULATED}` };
   }
-  return { kind: "tracker", title: "My spectacles won't go on.", text: `The pose tracker did not start. It needs the internet the first time it loads. Try again in a moment. ${UNDERSTUDY}` };
+  return { kind: "tracker", title: "The tracker did not start", text: `The pose tracker did not load. It needs the internet the first time. Try again in a moment. ${SIMULATED}` };
 }
 
 export interface Rank {
@@ -37,17 +38,17 @@ export interface Rank {
 
 /** Score tiers, best first: the lowest score that earns each title. */
 export const RANKS: readonly (Rank & { min: number })[] = [
-  { min: 90, title: "Court Favourite", blurb: "The king laughed so hard he forgot to collect taxes." },
-  { min: 75, title: "Royal Jester", blurb: "Bells on, timing sharp. The court wants an encore." },
-  { min: 60, title: "Juggler of the Hall", blurb: "Most of the balls stayed in the air. Most." },
-  { min: 45, title: "Apprentice Fool", blurb: "You have the hat. The moves are on their way." },
-  { min: 30, title: "Village Clown", blurb: "The goats were impressed. The goats are easy to impress." },
-  { min: 0, title: "Stable Hand in Bells", blurb: "Bold of you to dance like nobody was watching. We were." },
+  { min: 90, title: "Top marks", blurb: "Almost every move matched." },
+  { min: 75, title: "Great", blurb: "Most moves matched, and on time." },
+  { min: 60, title: "Good", blurb: "More hits than misses." },
+  { min: 45, title: "Fair", blurb: "Some of the moves matched." },
+  { min: 30, title: "Getting there", blurb: "A few of the moves matched." },
+  { min: 0, title: "Keep practising", blurb: "Try a slower speed next time." },
 ];
 
-const UNSEEN: Rank = { title: "Lost in the Crowd", blurb: "The camera never found you, so the jester kept your seat warm." };
+const UNSEEN: Rank = { title: "No score", blurb: "The camera did not see you for long enough." };
 
-/** The jester's title for a score from 0 to 100; no score gets its own. */
+/** The rank title for a score from 0 to 100; no score gets its own. */
 export function rankFor(score: number | null): Rank {
   if (score === null || !Number.isFinite(score)) return UNSEEN;
   const r = RANKS.find((x) => score >= x.min) ?? RANKS[RANKS.length - 1]!;
@@ -64,13 +65,13 @@ export interface AwardInput {
 }
 
 /**
- * One award per player, all different where possible: the crown for the winner (shared when tied), then the
- * most energetic, the nearly royal (within 10 of the top score), the statue, the bravest attempt, and a good sport.
+ * One award per player, all different where possible: winner (joint when tied), then most movement, close
+ * second (within 10 of the top score), stillest, gave it a go (lowest score), and good sport.
  */
 export function awardsFor(players: readonly AwardInput[]): string[] {
   const awards: (string | null)[] = players.map(() => null);
   const winners = players.filter((p) => p.winner).length;
-  players.forEach((p, i) => { if (p.winner) awards[i] = winners > 1 ? "Shared Crown" : "The Crown"; });
+  players.forEach((p, i) => { if (p.winner) awards[i] = winners > 1 ? "Joint winner" : "Winner"; });
   const top = Math.max(...players.map((p) => p.score ?? -1));
   const open = () => players.map((p, i) => ({ p, i })).filter(({ i }) => awards[i] === null);
   const give = (title: string, pickFrom: { p: AwardInput; i: number }[], better: (a: AwardInput, b: AwardInput) => number) => {
@@ -78,11 +79,11 @@ export function awardsFor(players: readonly AwardInput[]): string[] {
     if (best) awards[best.i] = title;
   };
   const moving = () => open().filter(({ p }) => p.motion !== null && p.motion > 0);
-  give("Most Energetic", moving(), (a, b) => b.motion! - a.motion!);
-  give("Nearly Royal", open().filter(({ p }) => p.score !== null && top - p.score <= 10), (a, b) => b.score! - a.score!);
-  give("Statue of the Court", moving(), (a, b) => a.motion! - b.motion!);
-  give("Bravest Attempt", open().filter(({ p }) => p.score !== null), (a, b) => a.score! - b.score!);
-  return awards.map((a, i) => a ?? (players[i]!.score === null ? "Mystery Guest" : "Good Sport"));
+  give("Most movement", moving(), (a, b) => b.motion! - a.motion!);
+  give("Close second", open().filter(({ p }) => p.score !== null && top - p.score <= 10), (a, b) => b.score! - a.score!);
+  give("Stillest", moving(), (a, b) => a.motion! - b.motion!);
+  give("Gave it a go", open().filter(({ p }) => p.score !== null), (a, b) => a.score! - b.score!);
+  return awards.map((a, i) => a ?? (players[i]!.score === null ? "Not seen by the camera" : "Good sport"));
 }
 
 type Point = { x: number; y: number; visibility?: number };
@@ -113,12 +114,12 @@ export function motionOf(timeline: { frames: readonly { t: number; landmarks: re
 export type HostEvent = "beat" | "roll" | "crown" | "tie" | "nobody" | "results";
 
 const HOST_LINES: Record<HostEvent, readonly string[]> = {
-  beat: ["That's everyone! Gather round.", "Pencils down, jesters. Time for the truth.", "And that's the show. Or is it?"],
-  roll: ["Drum roll, please!", "Who wears the crown tonight?", "The court holds its breath."],
-  crown: ["{winner} takes the crown!", "All hail {winner}!", "Bow to {winner}, the finest fool in the land!"],
-  tie: ["A tie! {winner} share the crown.", "Two heads, one crown. Well played, {winner}."],
-  nobody: ["Everyone played! The crown stays in its box tonight.", "No crown tonight. The court will talk about this."],
-  results: ["{winner} is our {title}!", "Here are the scrolls. {winner} is our {title}.", "The court has spoken. {winner}, {title}!"],
+  beat: ["That's everyone. Here comes the reveal."],
+  roll: ["Drum roll, please."],
+  crown: ["{winner} wins!"],
+  tie: ["It's a tie. {winner} share the win."],
+  nobody: ["Everyone played!"],
+  results: ["Here are the scores. {winner}: {title}."],
 };
 
 /** A host line for `event`, with {winner} and {title} filled in. `random` is for tests. */

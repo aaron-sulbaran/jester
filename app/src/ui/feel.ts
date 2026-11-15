@@ -1,4 +1,4 @@
-// The game's feel: what makes it seem finished. A sound on every button, the jester's card when the camera
+// The game's feel: what makes it seem finished. A sound on every button, the camera card when the camera
 // lets us down, a loading card with Cancel while the camera and tracker start, a "can't see you" notice during
 // a turn, the demo switch (?demo=1), Esc for home and one key to skip the waiting screens, and the score that
 // counts up. game.ts hooks these in with a few lines; the markup is in index.html (ids below).
@@ -82,16 +82,16 @@ export function waitOrSkip(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// ---- The camera: a loading card, the jester's card when it fails, and the "can't see you" notice ----
+// ---- The camera: a loading card, the camera card when it fails, and the "can't see you" notice ----
 
 export interface CameraGuard {
-  /** The camera for a turn. Shows the loading card while it starts and the jester's card if it fails. */
+  /** The camera for a turn. Shows the loading card while it starts and the camera card if it fails. */
   getCamera(): Promise<Player>;
   /** True when this turn is played by the understudy (the simulated player). */
   simMode(): boolean;
   /** A new player's turn: back on the camera, unless the demo switch is on. */
   newTurn(): void;
-  /** The jester's line for the part screen after Cancel on the loading card (read once), or null. */
+  /** The line for the part screen after Cancel on the loading card (read once), or null. */
   partNote(): string | null;
 }
 
@@ -104,7 +104,7 @@ type Started = { player: Player } | { error: unknown } | { cancelled: true };
 type Choice = "retry" | "understudy" | "home";
 
 /**
- * Wraps the app's camera for the game. On a refused or missing camera it shows the jester's card: try again,
+ * Wraps the app's camera for the game. On a refused or missing camera it shows the camera card: try again,
  * let the understudy take the turn (it turns `simMode` on and rejects; blind.ts then hands the turn to the
  * simulated player), or go home.
  */
@@ -154,7 +154,7 @@ export function guardCamera(base: { getCamera(): Promise<Player>; simMode(): boo
       const r = await starting();
       if ("player" in r) { note = null; return watched(r.player); }
       if ("cancelled" in r) {
-        note = "No rush. The camera is still warming up; press Start when you're ready.";
+        note = "Cancelled. The camera is still starting; press Start when you're ready.";
         throw new Error("Cancelled while the camera started");
       }
       console.warn("The camera did not start:", r.error);
@@ -177,7 +177,7 @@ export function guardCamera(base: { getCamera(): Promise<Player>; simMode(): boo
   };
 }
 
-/** The jester's card for a camera that failed. Resolves with what the player picked; Esc means home. */
+/** The camera card for a camera that failed. Resolves with what the player picked; Esc means home. */
 function cameraCard(err: unknown): Promise<Choice> {
   const trouble = cameraTrouble(err);
   const dialog = $<HTMLDialogElement>("cameraDialog");
