@@ -205,22 +205,38 @@ function torsoAt(g: Guide, ms: number): Torso | null {
 function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video: HTMLVideoElement, guides: readonly Guide[], ms: number) {
   if (ms < 0) return;
   for (const g of guides) {
-    // An ellipse round the blended box: the raw outline changes shape from frame to frame, which made the cover flicker.
+    // An ellipse round the blended box (the raw outline changed shape every frame, which made the cover
+    // flicker), with a soft rim: the blurred frame is drawn on a scratch canvas, kept by a radial fade.
     const box = boxAt(g, ms);
     if (!box) continue;
-    c.save();
-    c.beginPath();
-    // 1.45 and 1.3 reach past the box corners.
-    c.ellipse(box.cx * W, box.cy * H, (box.w * W) / 2 * 1.45, (box.h * H) / 2 * 1.3, 0, 0, Math.PI * 2);
-    c.clip();
-    // Blur from a frame drawn larger than the canvas, so the blur pulls in colour from around the subject.
-    c.filter = `blur(${Math.round(W / 25)}px)`;
-    c.drawImage(video, -W * 0.05, -H * 0.05, W * 1.1, H * 1.1);
-    c.filter = "none";
-    c.fillStyle = "rgba(0,0,0,0.2)";
-    c.fillRect(0, 0, W, H);
-    c.restore();
+    const s = coverCanvas(W, H), sc = s.getContext("2d")!;
+    sc.globalCompositeOperation = "source-over";
+    sc.clearRect(0, 0, W, H);
+    sc.filter = `blur(${Math.round(W / 25)}px)`;
+    // Drawn larger than the canvas, so the blur pulls in colour from around the subject.
+    sc.drawImage(video, -W * 0.05, -H * 0.05, W * 1.1, H * 1.1);
+    sc.filter = "none";
+    sc.fillStyle = "rgba(0,0,0,0.2)";
+    sc.fillRect(0, 0, W, H);
+    sc.globalCompositeOperation = "destination-in";
+    sc.save();
+    // 1.55 and 1.4 reach past the box corners; the fade starts at 70% of the way out.
+    sc.translate(box.cx * W, box.cy * H);
+    sc.scale((box.w * W) / 2 * 1.55, (box.h * H) / 2 * 1.4);
+    const fade = sc.createRadialGradient(0, 0, 0, 0, 0, 1);
+    fade.addColorStop(0.7, "rgba(0,0,0,1)"); fade.addColorStop(1, "rgba(0,0,0,0)");
+    sc.fillStyle = fade;
+    sc.fillRect(-1, -1, 2, 2);
+    sc.restore();
+    c.drawImage(s, 0, 0);
   }
+}
+
+let cover: HTMLCanvasElement | null = null;
+function coverCanvas(W: number, H: number): HTMLCanvasElement {
+  cover ??= document.createElement("canvas");
+  if (cover.width !== W || cover.height !== H) { cover.width = W; cover.height = H; }
+  return cover;
 }
 
 /** Below this, a limb is not drawn (clipside/blind.ts and draw.ts). */
