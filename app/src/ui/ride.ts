@@ -13,8 +13,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 export interface RidePhoto {
   /** The clip's name, or "" in Blind. */
   name: string;
-  /** The clip's poster, or null in Blind. */
-  poster: string | null;
+  /** The clip's poster, already decoded so it shows from the first frame; null in Blind, or when it was not ready. */
+  image: HTMLImageElement | null;
 }
 
 export interface Ride {
@@ -22,8 +22,8 @@ export interface Ride {
   landed: Promise<void>;
   /** Swaps the Jester's note, for a wait after landing. */
   say(text: string): void;
-  /** Takes the ride away. */
-  close(): void;
+  /** Takes the ride away; `fade` dissolves it over what is now beneath it (the cast screen) instead of at once. */
+  close(fade?: boolean): void;
 }
 
 // Timings, in ms from the push. Pull back, then push and coast, then run past and settle back.
@@ -32,6 +32,8 @@ const COAST_MS = 2000;
 const SETTLE_MS = 380;
 const LIFT_MS = 420;
 const HOLD_MS = 520;
+/** The ride fading out over the cast screen; matches .ride's opacity transition. */
+const FADE_MS = 220;
 const PULL_DEG = 10;
 const PAST_DEG = 4;
 /** How far each photo bobs on its pole, and how many bobs per turn of the ring. */
@@ -82,12 +84,9 @@ export function startRide(photos: RidePhoto[], pick: number, note: string): Ride
     slot.className = "ride-slot";
     slot.style.transform = `rotateY(${i * step}deg) translateZ(${radius.toFixed(1)}px)`;
     slot.innerHTML = `<span class="ride-pole"></span><div class="ride-card"><div class="ride-face"><span class="clip-pic"><span class="clip-q">?</span></span><span class="ride-name"></span></div><div class="ride-back"></div></div>`;
-    if (photo.poster) {
-      // The poster url comes from the bank, so it is set as an attribute rather than written into markup.
-      const img = document.createElement("img");
-      img.src = photo.poster;
-      img.alt = "";
-      slot.querySelector(".clip-pic")!.prepend(img);
+    if (photo.image) {
+      photo.image.alt = "";
+      slot.querySelector(".clip-pic")!.prepend(photo.image);
     }
     slot.querySelector(".ride-name")!.textContent = photo.name;
     ring.append(slot);
@@ -175,14 +174,18 @@ export function startRide(photos: RidePhoto[], pick: number, note: string): Ride
   return {
     landed,
     say: (text) => { noteEl.textContent = text; },
-    close: () => {
+    close: (fade = false) => {
       done = true;
-      for (const a of anims) a.cancel();
       ride.removeEventListener("click", skip);
       document.removeEventListener("keydown", onKey);
+      // The landed frame holds (the animations fill forwards) while the ride fades over the screen beneath it.
       ride.classList.remove("ride-open");
-      ride.hidden = true;
-      ring.replaceChildren();
+      const gone = () => {
+        for (const a of anims) a.cancel();
+        ride.hidden = true;
+        ring.replaceChildren();
+      };
+      if (fade && !still) setTimeout(gone, FADE_MS); else gone();
     },
   };
 }

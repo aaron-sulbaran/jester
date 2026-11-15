@@ -666,7 +666,9 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 /* Surprise me's merry-go-round (ui/ride.ts): the Home tent's stripes on the canopy, photos on gold poles going round
    a mast on a wooden platform. One clock in ride.ts turns the ring, bobs the photos and lifts the picked one; the
    canopy and the platform stand still. In Blind every photo is the same question mark with no name. */
-.ride { position: fixed; inset: 0; z-index: 30; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(205, 168, 130, .92) var(--grain); opacity: 0; transition: opacity .18s var(--ease); cursor: pointer; }
+.ride { position: fixed; inset: 0; z-index: 30; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(205, 168, 130, .92) var(--grain); opacity: 0; transition: opacity .2s ease-out; cursor: pointer; }
+/* The cast screen comes in whole under the ride as it fades, instead of its usual piece by piece entrance. */
+#screen-cast.ride-arrive > * { animation: none; }
 .ride.ride-open { opacity: 1; }
 .ride-stage { --card-w: 150px; position: relative; width: min(800px, 94vw); height: 540px; perspective: 1300px; perspective-origin: 50% 30%; }
 .ride-canopy { position: absolute; z-index: 3; left: 50%; top: 0; width: 80%; translate: -50% 0; filter: drop-shadow(5px 6px 0 var(--shade)); }
