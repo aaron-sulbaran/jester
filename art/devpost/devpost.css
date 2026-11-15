@@ -1,0 +1,165 @@
+/* The Devpost pictures, in the game's own "Shoebox Show" look. Tokens and pieces are copied from
+   app/src/style.css on main (kraft page, masking tape headings, ballpoint notebook scraps, typed labels,
+   alphabet stickers, ticket stubs, washi tape, the shoebox stage). Keep them in step with that file.
+   Every page here is rendered to a PNG by render.mjs; nothing here ships with the game. */
+
+@font-face { font-family: "Gaegu"; src: url("../../app/public/fonts/gaegu-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Gaegu"; src: url("../../app/public/fonts/gaegu-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+@font-face { font-family: "Special Elite"; src: url("../../app/public/fonts/special-elite.woff2") format("woff2"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Titan One"; src: url("../../app/public/fonts/titan-one.woff2") format("woff2"); font-weight: 400; font-display: block; }
+
+:root {
+  --kraft: #CDA882;
+  --photo: #FFFFFF;
+  --paper: #FFFEFA;
+  --ink: #1E1B18;
+  --pen: #2848C8;
+  --stamp: #D93A2B;
+  --gold: #F4BE1A;
+  --ticket: #FFC93C;
+  --shade: rgba(30, 27, 24, 0.34);
+  --lift: 5px 6px 0 var(--shade);
+  --card: #B5773F;
+  --ceil-c: #5C3A20;
+  --side-c: #774C2B;
+  --floor-c: #93613A;
+  --backdrop: #2E4593;
+  --wood: #EDCB8E;
+  --soft: #6B5A48;
+  --hand: "Gaegu", "Comic Sans MS", cursive;
+  --type: "Special Elite", "Courier New", serif;
+  --sticker: "Titan One", "Arial Black", sans-serif;
+  --p1: #F47FA6; --p2: #4F7BF0; --p3: #FFC93C; --p4: #3FBF8F;
+  /* The page's grain, lighter than the game's so the PNGs stay small. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.06 .5' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .97 0 0 0 0 .9 0 0 0 0 .78 0 0 0 .5 -.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23b)'/%3E%3C/svg%3E");
+  --flute: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Crect width='10' height='7' fill='%23E4C595'/%3E%3Cpath d='M0 3.5 Q2.5 .6 5 3.5 T10 3.5' fill='none' stroke='%239C6B3C' stroke-width='1.2'/%3E%3Cpath d='M0 .5H10M0 6.5H10' stroke='%239C6B3C' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+/* Devpost shows the pictures on a white page, so the area around each torn scrap is white. */
+body { background: #FFFFFF; color: var(--ink); font: 400 22px/1.35 var(--type); overflow: hidden; }
+.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ---------- The kraft scrap every picture sits on ---------- */
+.sheet { position: absolute; filter: drop-shadow(6px 7px 0 var(--shade)); }
+.sheet > .kraft {
+  position: absolute; inset: 0; background: var(--kraft) var(--grain);
+  clip-path: polygon(0 4%, 6% 1%, 13% 3.5%, 21% 0.5%, 30% 3%, 38% 0, 47% 2.5%, 55% 0.5%, 63% 3%, 71% 0, 80% 2.5%, 88% 0.5%, 95% 3%, 100% 1%,
+    100% 97%, 94% 99.5%, 86% 97%, 78% 100%, 69% 97.5%, 61% 99.5%, 52% 97%, 44% 100%, 35% 97.5%, 27% 99.5%, 18% 97%, 10% 100%, 3% 97.5%, 0 99%);
+}
+
+/* ---------- Washi tape ---------- */
+.washi {
+  position: absolute; z-index: 6; width: 130px; height: 34px; opacity: .92;
+  clip-path: polygon(2% 0, 98% 0, 100% 14%, 97% 30%, 100% 47%, 97% 64%, 100% 82%, 98% 100%, 2% 100%, 0 86%, 3% 70%, 0 52%, 3% 35%, 0 18%);
+}
+.w-pink { background: repeating-linear-gradient(-45deg, #F47FA6 0 7px, #FCD5E2 7px 15px); }
+.w-mint { background-color: #BFE6D3; background-image: linear-gradient(rgba(36, 120, 88, .38) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(36, 120, 88, .38) 1.5px, transparent 1.5px); background-size: 10px 10px; }
+.w-dots { background: #FFE69A radial-gradient(circle, #E9A800 2.6px, transparent 3.1px) 0 0 / 12px 12px; }
+.w-blue { background: #C9D6FA repeating-linear-gradient(90deg, rgba(79, 123, 240, .55) 0 6px, transparent 6px 14px); }
+
+/* ---------- Masking tape heading, in marker ---------- */
+.masking { position: relative; display: inline-block; filter: drop-shadow(4px 5px 0 var(--shade)); rotate: -1.5deg; }
+.tape {
+  margin: 0; display: inline-block; padding: 10px 40px 14px 34px; white-space: nowrap;
+  font: 700 104px/1 var(--hand); letter-spacing: -0.045em; color: var(--ink);
+  background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, .2) 0 3px, transparent 3px 10px);
+  clip-path: polygon(1% 4%, 99% 0, 100% 20%, 98% 40%, 100% 62%, 98% 82%, 99% 100%, 1% 96%, 0 76%, 2% 56%, 0 34%, 2% 16%);
+}
+
+/* ---------- The Jester's ballpoint note on a torn notebook scrap ---------- */
+.note-wrap { filter: drop-shadow(4px 5px 0 var(--shade)); }
+.note {
+  --lh: 40px;
+  margin: 0; position: relative; text-align: left;
+  font: 700 32px/var(--lh) var(--hand); letter-spacing: -0.045em; color: var(--pen);
+  padding: calc(var(--lh) * .6) 28px calc(var(--lh) * .45) 62px;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(90deg, transparent 42px, #EE9C9C 42px 44px, transparent 44px),
+    repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh));
+  background-position: 0 0, 0 calc(var(--lh) * .6 + 6px);
+  clip-path: polygon(0 7px, 5% 1px, 10% 6px, 16% 0, 23% 5px, 29% 1px, 36% 7px, 42% 2px, 49% 5px, 56% 0, 62% 6px, 69% 2px, 75% 6px, 82% 0, 88% 5px, 94% 1px, 100% 6px, 100% 100%, 0 100%);
+  rotate: -1deg;
+}
+
+/* ---------- Typed label on a punched paper tag ---------- */
+.tag {
+  position: relative; display: inline-flex; align-items: center; min-height: 52px; padding: 8px 22px 8px 44px;
+  background: var(--photo); border-radius: 3px; box-shadow: var(--lift); font: 400 22px/1.15 var(--type); white-space: nowrap;
+}
+.tag::before { content: ""; position: absolute; left: 15px; top: 50%; width: 13px; height: 13px; translate: 0 -50%; border-radius: 50%; background: var(--kraft); box-shadow: inset 0 0 0 2.5px #B48C61; }
+.typed { margin: 0; font: 400 22px/1.4 var(--type); }
+
+/* ---------- Alphabet stickers: each letter its own colour, one white backing, one hard shadow ---------- */
+.letters { display: inline-flex; flex-wrap: nowrap; filter: url(#die-cut); }
+.letters span { display: inline-block; color: var(--c); rotate: var(--r); translate: 0 var(--y); margin-right: -.02em; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; }
+.sticker-word { margin: 0; font: 400 120px/1 var(--sticker); padding: 6px 14px 16px; }
+.big-sticker { font: 400 96px/1 var(--sticker); color: var(--gold); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; filter: url(#die-cut); }
+
+/* ---------- Ticket stub, notched at both ends, with a perforated tear-off ---------- */
+.ticket-wrap { filter: drop-shadow(6px 7px 0 var(--shade)); }
+.ticket {
+  position: relative; display: flex; align-items: center; background: var(--ticket);
+  box-shadow: inset 0 0 0 6px var(--ticket), inset 0 0 0 9px var(--ink);
+  -webkit-mask: radial-gradient(circle 18px at 0 50%, transparent 17.5px, #000 18px) left / 51% 100% no-repeat, radial-gradient(circle 18px at 100% 50%, transparent 17.5px, #000 18px) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 18px at 0 50%, transparent 17.5px, #000 18px) left / 51% 100% no-repeat, radial-gradient(circle 18px at 100% 50%, transparent 17.5px, #000 18px) right / 51% 100% no-repeat;
+}
+.ticket .stub { position: absolute; top: 12px; bottom: 12px; border-left: 5px dotted var(--kraft); background: center / 72% auto no-repeat url("cap.svg"); }
+
+/* ---------- The taped photo with a question mark (a clip nobody has seen yet) ---------- */
+.photo { position: relative; background: var(--photo); padding: 12px 12px 16px; box-shadow: var(--lift); }
+.mystery { position: relative; display: grid; place-items: center; background: var(--backdrop) repeating-linear-gradient(-35deg, transparent 0 10px, rgba(255, 255, 255, .07) 10px 12px); }
+.mystery b { font: 400 92px/1 var(--sticker); color: var(--ticket); -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; filter: url(#die-cut); rotate: 6deg; }
+
+/* ---------- The jester puppet: the classic still on a craft stick ---------- */
+.puppet { position: absolute; }
+.puppet img { position: absolute; left: 0; top: 0; width: 100%; filter: url(#sticker); }
+.puppet .stick { position: absolute; left: calc(50% - 10px); width: 20px; bottom: 0; background-color: var(--wood); background-image: linear-gradient(90deg, transparent 28%, rgba(150, 98, 40, .35) 28% 34%, transparent 34% 62%, rgba(150, 98, 40, .3) 62% 67%, transparent 67%); border: 3px solid var(--ink); border-radius: 10px; box-shadow: 3px 4px 0 var(--shade); }
+
+/* ---------- The shoebox stage ---------- */
+.box { --rim: 22px; --band: 8px; --edge: calc(var(--rim) + var(--band)); --ceil: 30px; --side: 40px; --floor: 52px; position: absolute; padding: var(--edge); }
+.box .board-wrap { position: absolute; inset: 0; filter: drop-shadow(8px 10px 0 var(--shade)); }
+.box .board { position: absolute; inset: 0; background: var(--card) var(--grain); clip-path: polygon(0 .6%, 22% 0, 51% .5%, 78% 0, 100% .4%, 99.6% 30%, 100% 62%, 99.5% 100%, 70% 99.4%, 38% 100%, .4% 99.5%, 0 64%, .5% 31%); }
+.box .board::after { content: ""; position: absolute; inset: var(--rim); background: var(--flute) top left / 10px var(--band) repeat-x, var(--flute) bottom left / 10px var(--band) repeat-x, repeating-linear-gradient(90deg, #9C6B3C 0 1px, #E4C595 1px 3.5px); }
+.box .inside { position: relative; height: 100%; padding: var(--ceil) var(--side) var(--floor); }
+.box .walls { position: absolute; inset: 0; border-style: solid; border-width: var(--ceil) var(--side) var(--floor); border-color: var(--ceil-c) var(--side-c) var(--floor-c); }
+.box .stage { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--backdrop); box-shadow: 0 0 0 2px rgba(30, 27, 24, .4); }
+.box .valance { position: absolute; z-index: 3; top: 0; left: 0; right: 0; height: 46px; filter: drop-shadow(0 5px 0 var(--shade)); }
+.box .valance i {
+  display: block; height: 100%;
+  background: #4F7BF0 radial-gradient(circle, #FFFFFF 3.4px, transparent 4px) 0 0 / 18px 18px;
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 16px) no-repeat, radial-gradient(circle at 50% 0, #000 15.5px, transparent 16px) bottom left / 32px 16px repeat-x;
+  mask: linear-gradient(#000 0 0) top / 100% calc(100% - 16px) no-repeat, radial-gradient(circle at 50% 0, #000 15.5px, transparent 16px) bottom left / 32px 16px repeat-x;
+}
+.box .curtain { position: absolute; z-index: 2; top: 0; bottom: calc(var(--floor) * .4); width: calc(var(--side) + 70px); filter: drop-shadow(4px 5px 0 var(--shade)); }
+.box .curtain i { display: block; height: 100%; background-color: #FFF4E8; background-image: linear-gradient(90deg, rgba(217, 58, 43, .5) 50%, transparent 50%), linear-gradient(rgba(217, 58, 43, .5) 50%, transparent 50%); background-size: 22px 22px; }
+.box .curtain.l { left: 0; }
+.box .curtain.r { right: 0; }
+.box .curtain.l i { clip-path: polygon(0 0, 100% 0, 96% 8%, 86% 18%, 70% 30%, 54% 42%, 42% 52%, 38% 57%, 42% 63%, 52% 74%, 63% 86%, 72% 100%, 0 100%); }
+.box .curtain.r i { clip-path: polygon(100% 0, 0 0, 4% 8%, 14% 18%, 30% 30%, 46% 42%, 58% 52%, 62% 57%, 58% 63%, 48% 74%, 37% 86%, 28% 100%, 100% 100%); }
+
+/* ---------- Ballpoint arrows between diagram steps ---------- */
+.pen { fill: none; stroke: var(--pen); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Diagrams: numbered cards on the kraft page, joined by ballpoint arrows ---------- */
+.diagram { position: relative; width: 1600px; padding: 56px 70px 70px; }
+.diagram > .sheet { left: 16px; right: 28px; top: 12px; bottom: 22px; }
+/* A softer, larger grain on the big pictures keeps them under 800 KB. */
+.diagram > .sheet > .kraft { background-image: none; }
+.diagram > .sheet > .kraft::after { content: ""; position: absolute; inset: 0; background: var(--grain) 0 0 / 640px; opacity: .45; }
+.diagram .head { position: relative; display: flex; align-items: center; gap: 30px; margin: 0 0 44px 10px; }
+.diagram .head .tape { font-size: 84px; }
+.diagram .head .typed { font-size: 26px; max-width: 30ch; rotate: 1deg; }
+.cards { position: relative; display: grid; gap: 64px 70px; }
+.card { position: relative; background: var(--photo); box-shadow: var(--lift); padding: 22px 24px 24px; display: grid; align-content: start; gap: 10px; }
+.card:nth-child(odd) { rotate: -.8deg; }
+.card:nth-child(even) { rotate: .8deg; }
+.card .num { position: absolute; top: -30px; left: -22px; font: 400 64px/1 var(--sticker); color: var(--c, var(--ticket)); -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; filter: url(#die-cut); rotate: -8deg; }
+.card h2 { margin: 0 0 0 36px; font: 700 46px/1 var(--hand); letter-spacing: -.045em; }
+.card p { margin: 0; font: 400 21px/1.38 var(--type); }
+.card .art { position: relative; height: 170px; margin: 6px 0 4px; background: var(--backdrop); overflow: hidden; }
+.card .washi { top: -16px; right: 26px; width: 92px; height: 28px; rotate: 4deg; }
+.arrows { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 5; }
+.margin-note { position: absolute; font: 700 30px/1.1 var(--hand); letter-spacing: -.04em; color: var(--pen); white-space: nowrap; }

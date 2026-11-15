@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Devpost hero</title>
+<link rel="stylesheet" href="devpost.css" />
+<style>
+  /* 1600 by 900, the top of the story. The "Fetch" clip from the look mockups (app/public/look/art.svg):
+     a thrower, a dog and a ball, and at the reveal, what the three players actually did. */
+  body { width: 1600px; height: 900px; }
+  .sheet { left: 18px; right: 30px; top: 14px; bottom: 26px; }
+  .w1 { left: 54px; top: 24px; rotate: -9deg; }
+  .w2 { right: 70px; top: 18px; rotate: 8deg; }
+  .w3 { left: 40px; bottom: 50px; rotate: 12deg; }
+
+  .left { position: absolute; left: 86px; top: 92px; width: 560px; display: grid; gap: 34px; justify-items: start; }
+  .wordmark { margin: 0 0 0 -10px; font: 400 158px/1 var(--sticker); padding: 6px 14px 22px; }
+  .wordmark .letters span { -webkit-text-stroke: 8px var(--ink); }
+  .left .note-wrap { rotate: -1deg; margin-left: 6px; }
+  .left .note { --lh: 54px; font-size: 52px; padding: 30px 36px 22px 74px; background-image: linear-gradient(90deg, transparent 52px, #EE9C9C 52px 54px, transparent 54px), repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh)); white-space: nowrap; }
+  .facts { display: flex; flex-wrap: wrap; gap: 16px 18px; max-width: 560px; margin-top: 8px; }
+  .facts .tag { font-size: 24px; }
+  .facts .tag:nth-child(1) { rotate: -2deg; }
+  .facts .tag:nth-child(2) { rotate: 1.5deg; }
+  .facts .tag:nth-child(3) { rotate: -1deg; }
+
+  .box { left: 690px; top: 66px; width: 860px; height: 640px; }
+  .box .stage { background: var(--backdrop) linear-gradient(transparent 80%, #93613A 80%); }
+  .fig { position: absolute; }
+  .fig svg { display: block; width: 100%; height: 100%; overflow: visible; filter: url(#sticker); }
+  .fig .label { position: absolute; left: 50%; translate: -50% 0; white-space: nowrap; }
+  .label .tag { color: var(--ink); font-size: 21px; min-height: 42px; padding: 6px 16px 6px 38px; }
+  .label .tag::before { left: 13px; width: 11px; height: 11px; }
+  .label .dot { display: inline-block; width: 16px; height: 16px; margin-right: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--ink); }
+  .thrower { left: 120px; top: 140px; width: 180px; height: 270px; color: var(--p1); }
+  .thrower .label { top: -58px; rotate: -3deg; }
+  .ball { left: 350px; top: 76px; width: 150px; height: 150px; color: var(--p3); rotate: -14deg; }
+  .ball .label { top: -50px; rotate: 16deg; }
+  .dog { left: 420px; top: 246px; width: 270px; height: 162px; color: var(--p4); }
+  .dog .label { top: -58px; rotate: 2deg; }
+  .clip-name { position: absolute; z-index: 4; right: 40px; bottom: -18px; rotate: -3deg; }
+  .clip-name .tag { font-size: 22px; }
+
+  .host { position: absolute; left: 520px; top: 528px; }
+  .host .puppet { left: 0; top: 0; width: 300px; height: 330px; rotate: -6deg; }
+  .host .puppet .stick { top: 230px; }
+  .host .note-wrap { position: absolute; left: 290px; top: 110px; rotate: 2deg; }
+  .host .note { font-size: 40px; --lh: 46px; white-space: nowrap; }
+  .score { position: absolute; z-index: 5; left: 1340px; top: 600px; rotate: 8deg; font-size: 104px; }
+</style>
+</head>
+<body>
+<svg class="defs" aria-hidden="true">
+  <symbol id="throw" viewBox="0 0 200 300">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M122 82 L158 60 L192 40" stroke-width="20"/><path d="M78 84 L56 112 L38 128" stroke-width="20"/>
+      <path d="M108 160 L136 222 L156 288" stroke-width="24"/><path d="M92 160 L70 224 L44 284" stroke-width="24"/>
+      <path d="M82 80 L118 80 L110 160 L90 160 Z" stroke-width="26" fill="currentColor"/><path d="M100 58 L100 74" stroke-width="18"/>
+    </g>
+    <circle cx="100" cy="38" r="24" fill="currentColor"/>
+  </symbol>
+  <symbol id="crawl" viewBox="0 0 300 180">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M104 86 L92 158 L36 164" stroke-width="24"/><path d="M116 90 L128 160 L74 170" stroke-width="22"/>
+      <path d="M216 90 L224 128 L232 166" stroke-width="18"/><path d="M204 92 L196 130 L204 168" stroke-width="18"/>
+      <path d="M212 82 L108 82" stroke-width="44"/><path d="M226 74 L240 66" stroke-width="18"/>
+    </g>
+    <circle cx="252" cy="58" r="22" fill="currentColor"/>
+  </symbol>
+  <symbol id="tuck" viewBox="0 0 160 160">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72 62 C56 76 54 96 62 112" stroke-width="40"/><path d="M66 110 L108 86" stroke-width="26"/>
+      <path d="M108 86 L112 130" stroke-width="20"/><path d="M80 68 L112 78 L118 104" stroke-width="16"/>
+    </g>
+    <circle cx="96" cy="40" r="22" fill="currentColor"/>
+  </symbol>
+</svg>
+<div class="sheet"><div class="kraft"></div></div>
+
+<div class="left">
+  <h1 class="wordmark"><span data-letters="Jester"></span></h1>
+  <div class="note-wrap"><p class="note">Act out any clip.<br>Get judged.</p></div>
+  <div class="facts">
+    <span class="tag">2 to 4 players</span>
+    <span class="tag">one laptop, one webcam</span>
+    <span class="tag">secret parts, one big reveal</span>
+  </div>
+</div>
+
+<div class="box">
+  <div class="board-wrap"><div class="board"></div></div>
+  <div class="inside">
+    <div class="walls"></div>
+    <div class="stage">
+      <div class="fig thrower"><svg><use href="#throw" /></svg><span class="label"><span class="tag"><i class="dot" style="--c:var(--p1)"></i>the thrower</span></span></div>
+      <div class="fig ball"><svg><use href="#tuck" /></svg><span class="label"><span class="tag"><i class="dot" style="--c:var(--p3)"></i>the ball</span></span></div>
+      <div class="fig dog"><svg><use href="#crawl" /></svg><span class="label"><span class="tag"><i class="dot" style="--c:var(--p4)"></i>the dog</span></span></div>
+    </div>
+    <div class="valance"><i></i></div>
+    <div class="curtain l"><i></i></div><div class="curtain r"><i></i></div>
+  </div>
+  <div class="clip-name"><span class="tag">clip: "Fetch"</span></div>
+</div>
+
+<div class="host">
+  <div class="puppet"><span class="stick"></span><img src="../../app/public/look/jester/classic-still.webp" alt="" /></div>
+  <div class="note-wrap"><p class="note">Surprise.<br>You were the dog.</p></div>
+</div>
+
+<i class="washi w-pink w1"></i><i class="washi w-dots w2"></i><i class="washi w-mint w3"></i>
+<script src="common.js"></script>
+</body>
+</html>

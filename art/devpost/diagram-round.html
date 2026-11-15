@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>How a round runs</title>
+<link rel="stylesheet" href="devpost.css" />
+<style>
+  /* 1600 wide, height from the content. The main game on main: app/src/ui/game.ts (screens), app/src/blind.ts
+     (runBlindGame, deal, playTurn, recordGroupReveal) and engine/src (scorePoseRound, scoreTrajectoryRound). */
+  body { width: 1600px; }
+  .cards { grid-template-columns: repeat(4, 1fr); gap: 118px 74px; }
+  .card { padding: 20px 20px 22px; }
+  .card h2 { font-size: 42px; }
+  .card p { font-size: 20px; }
+  .card .art { height: 150px; }
+  .sil { position: absolute; color: #F3EEE4; }
+  .sil svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .mini { position: absolute; width: 30%; padding: 5px 5px 8px; background: var(--photo); box-shadow: 3px 4px 0 rgba(0,0,0,.35); }
+  .mini i { display: grid; place-items: center; aspect-ratio: 16 / 10; background: #3A55AE repeating-linear-gradient(-35deg, transparent 0 6px, rgba(255,255,255,.08) 6px 7px); font: 400 28px/1 var(--sticker); font-style: normal; color: var(--ticket); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+  .chips { position: absolute; display: flex; gap: 8px; }
+  .chips span { padding: 4px 10px; background: var(--photo); font: 400 16px/1.2 var(--type); box-shadow: 2px 3px 0 rgba(0,0,0,.35); white-space: nowrap; }
+  .chips span.on { background: var(--ticket); box-shadow: 2px 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px var(--ink); }
+  .who { position: absolute; left: 14px; right: 14px; display: flex; align-items: center; gap: 10px; padding: 5px 12px; background: var(--photo); font: 400 18px/1.2 var(--type); box-shadow: 3px 4px 0 rgba(0,0,0,.35); }
+  .who i { width: 16px; height: 16px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--ink); }
+  .who b { margin-left: auto; font: 400 20px/1 var(--sticker); }
+  .name-big { position: absolute; left: 0; right: 0; top: 18px; text-align: center; font: 400 74px/1 var(--sticker); }
+  .look-away { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 700 26px/1 var(--hand); color: var(--photo); letter-spacing: -.03em; }
+  .count { position: absolute; left: 50%; top: 50%; translate: -50% -50%; font: 400 92px/1 var(--sticker); color: var(--stamp); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; filter: url(#die-cut); rotate: -4deg; }
+  .split::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; background: rgba(255,255,255,.3); }
+  .blur { position: absolute; border-radius: 50%; background: rgba(243, 238, 228, .28); filter: blur(10px); }
+  .score-tag { position: absolute; padding: 2px 8px; background: var(--photo); font: 400 15px/1.3 var(--type); white-space: nowrap; box-shadow: 2px 3px 0 rgba(0,0,0,.35); }
+  .spot { position: absolute; inset: 0; background: radial-gradient(ellipse 34% 70% at 50% 62%, rgba(255, 244, 200, .32) 0 60%, rgba(10, 12, 30, .55) 100%); }
+  .crown-j { position: absolute; top: -14px; width: 150px; left: calc(50% - 75px); filter: url(#sticker); }
+  .side-j { position: absolute; top: 34px; width: 104px; opacity: .8; }
+  .foot { position: relative; margin-top: 44px; display: flex; justify-content: space-between; align-items: center; }
+  .foot .note { font-size: 30px; white-space: nowrap; }
+  .foot .typed { font-size: 20px; max-width: 54ch; }
+</style>
+</head>
+<body>
+<svg class="defs" aria-hidden="true">
+  <symbol id="throw" viewBox="0 0 200 300">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M122 82 L158 60 L192 40" stroke-width="20"/><path d="M78 84 L56 112 L38 128" stroke-width="20"/>
+      <path d="M108 160 L136 222 L156 288" stroke-width="24"/><path d="M92 160 L70 224 L44 284" stroke-width="24"/>
+      <path d="M82 80 L118 80 L110 160 L90 160 Z" stroke-width="26" fill="currentColor"/><path d="M100 58 L100 74" stroke-width="18"/>
+    </g>
+    <circle cx="100" cy="38" r="24" fill="currentColor"/>
+  </symbol>
+  <symbol id="stick" viewBox="0 0 200 300">
+    <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M100 62 L100 160"/><path d="M78 84 L122 82"/><path d="M122 82 L158 60 L192 40"/><path d="M78 84 L56 112 L38 128"/>
+      <path d="M90 160 L110 160"/><path d="M108 160 L136 222 L156 288"/><path d="M92 160 L70 224 L44 284"/><circle cx="100" cy="38" r="22"/>
+    </g>
+  </symbol>
+  <symbol id="crawl" viewBox="0 0 300 180">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M104 86 L92 158 L36 164" stroke-width="24"/><path d="M116 90 L128 160 L74 170" stroke-width="22"/>
+      <path d="M216 90 L224 128 L232 166" stroke-width="18"/><path d="M204 92 L196 130 L204 168" stroke-width="18"/>
+      <path d="M212 82 L108 82" stroke-width="44"/><path d="M226 74 L240 66" stroke-width="18"/>
+    </g>
+    <circle cx="252" cy="58" r="22" fill="currentColor"/>
+  </symbol>
+  <symbol id="tuck" viewBox="0 0 160 160">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72 62 C56 76 54 96 62 112" stroke-width="40"/><path d="M66 110 L108 86" stroke-width="26"/>
+      <path d="M108 86 L112 130" stroke-width="20"/><path d="M80 68 L112 78 L118 104" stroke-width="16"/>
+    </g>
+    <circle cx="96" cy="40" r="22" fill="currentColor"/>
+  </symbol>
+  <symbol id="player" viewBox="0 0 300 400">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M104 132 L84 214 L76 292" stroke-width="28"/><path d="M196 132 L216 214 L224 292" stroke-width="28"/>
+      <path d="M134 280 L128 360 L126 420" stroke-width="36"/><path d="M166 280 L172 360 L174 420" stroke-width="36"/>
+      <path d="M106 126 L194 126 L178 286 L122 286 Z" stroke-width="28" fill="currentColor"/><path d="M150 96 L150 118" stroke-width="30"/>
+    </g>
+    <ellipse cx="150" cy="66" rx="32" ry="36" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<div class="diagram">
+  <div class="sheet"><div class="kraft"></div></div>
+  <div class="head">
+    <div class="masking"><h1 class="tape">How a round runs</h1></div>
+    <p class="typed">One laptop, one webcam, 2 to 4 players. From a clip to the reveal to the crown.</p>
+  </div>
+
+  <div class="cards">
+    <section class="card" data-n="1" style="grid-row:1;grid-column:1">
+      <span class="num" style="--c:var(--p3)">1</span><i class="washi w-pink"></i>
+      <h2>Pick a clip</h2>
+      <div class="art">
+        <span class="mini" style="left:6%;top:12%;rotate:-5deg"><i>?</i></span>
+        <span class="mini" style="left:36%;top:8%;rotate:3deg"><i>?</i></span>
+        <span class="mini" style="left:66%;top:14%;rotate:-2deg"><i>?</i></span>
+        <span class="chips" style="left:10%;bottom:14px"><span class="on">Blind</span><span>Watch first</span></span>
+      </div>
+      <p>A clip from the video bank, or Surprise me. Blind or Watch first. Everyone types a name.</p>
+    </section>
+
+    <section class="card" data-n="2" style="grid-row:1;grid-column:2">
+      <span class="num" style="--c:var(--p1)">2</span><i class="washi w-mint"></i>
+      <h2>Deal the parts</h2>
+      <div class="art">
+        <span class="who" style="top:14px;--c:var(--p1);rotate:-1deg"><i></i>Sam<b>?</b></span>
+        <span class="who" style="top:58px;--c:var(--p2);rotate:1deg"><i></i>Ana<b>?</b></span>
+        <span class="who" style="top:102px;--c:var(--p3);rotate:-.5deg"><i></i>Jo<b>?</b></span>
+      </div>
+      <p>Each player gets a secret part of the clip: a person in it, or a thing like the dog or the ball.</p>
+    </section>
+
+    <section class="card" data-n="3" style="grid-row:1;grid-column:3">
+      <span class="num" style="--c:var(--p2)">3</span><i class="washi w-dots"></i>
+      <h2>Pass the laptop</h2>
+      <div class="art" style="background:#16161D">
+        <span class="name-big"><span data-letters="Ana" data-offset="1"></span></span>
+        <span class="look-away">Everyone else, look away.</span>
+      </div>
+      <p>One turn at a time. Only the player whose name is up gets to see the screen.</p>
+    </section>
+
+    <section class="card" data-n="4" style="grid-row:1;grid-column:4">
+      <span class="num" style="--c:var(--p4)">4</span><i class="washi w-blue"></i>
+      <h2>See your part</h2>
+      <div class="art" style="background:#16161D">
+        <span class="sil" style="left:8%;top:8%;width:28%;height:84%;color:var(--p2)"><svg><use href="#stick" /></svg></span>
+        <span class="chips" style="left:42%;top:16px;flex-direction:column;gap:6px"><span class="on">whole body</span><span>a hand</span><span>the head</span></span>
+      </div>
+      <p>Only your part, as a stick figure or an outline. Copy it with your whole body, a hand, your head or a foot.</p>
+    </section>
+
+    <section class="card" data-n="5" style="grid-row:2;grid-column:4">
+      <span class="num" style="--c:var(--stamp)">5</span><i class="washi w-pink"></i>
+      <h2>Play</h2>
+      <div class="art split" style="background:#16161D">
+        <span class="sil" style="left:10%;top:8%;width:28%;height:84%;color:var(--p2)"><svg><use href="#stick" /></svg></span>
+        <span class="sil" style="left:62%;top:12%;width:26%;height:96%;color:#8C93AE"><svg><use href="#player" /></svg></span>
+        <span class="count">3</span>
+      </div>
+      <p>A 3, 2, 1, then you copy it live: your part on the left, you on the right. A whole-body part waits until you fit in frame.</p>
+    </section>
+
+    <section class="card" data-n="6" style="grid-row:2;grid-column:3">
+      <span class="num" style="--c:var(--p3)">6</span><i class="washi w-mint"></i>
+      <h2>Score</h2>
+      <div class="art">
+        <svg viewBox="0 0 320 150" style="position:absolute;inset:0;width:100%;height:100%">
+          <circle cx="70" cy="110" r="9" fill="#F3EEE4"/>
+          <path d="M70 110 L250 42" stroke="#4F7BF0" stroke-width="10" stroke-linecap="round"/>
+          <path d="M70 110 L262 82" stroke="#F47FA6" stroke-width="10" stroke-linecap="round"/>
+          <path d="M190 72 A 124 124 0 0 1 193 92" fill="none" stroke="#FFC93C" stroke-width="5"/>
+          <text x="146" y="140" style="font: 400 20px 'Special Elite'; fill: #F3EEE4">12 degrees off</text>
+          <text x="16" y="34" style="font: 400 18px 'Special Elite'; fill: #9FB2F2">clip's limb</text>
+          <text x="16" y="138" style="font: 400 18px 'Special Elite'; fill: #F7B1C9">your limb</text>
+        </svg>
+      </div>
+      <p>Limb directions, mirrored: full credit within 15 degrees, none past 60, after one delay is found for your reaction. Scores stay hidden.</p>
+    </section>
+
+    <section class="card" data-n="7" style="grid-row:2;grid-column:2">
+      <span class="num" style="--c:var(--p1)">7</span><i class="washi w-dots"></i>
+      <h2>The reveal</h2>
+      <div class="art">
+        <span class="blur" style="left:6%;top:10%;width:30%;height:84%"></span>
+        <span class="sil" style="left:10%;top:16%;width:20%;height:80%;color:var(--p1)"><svg><use href="#throw" /></svg></span>
+        <span class="sil" style="left:44%;top:4%;width:18%;height:38%;color:var(--p3)"><svg><use href="#tuck" /></svg></span>
+        <span class="sil" style="left:56%;top:48%;width:38%;height:46%;color:var(--p4)"><svg><use href="#crawl" /></svg></span>
+        <span class="score-tag" style="left:4%;top:6px;rotate:-3deg">Sam 81</span>
+        <span class="score-tag" style="left:64%;top:10px;rotate:3deg">Jo 64</span>
+      </div>
+      <p>After a drum roll: the original clip, then everyone's cutouts on their parts, with names and scores, recorded to a video.</p>
+    </section>
+
+    <section class="card" data-n="8" style="grid-row:2;grid-column:1">
+      <span class="num" style="--c:var(--p2)">8</span><i class="washi w-blue"></i>
+      <h2>The crown</h2>
+      <div class="art" style="background:var(--backdrop) linear-gradient(transparent 78%, #93613A 78%)">
+        <img class="side-j" style="left:2%" src="../../app/public/look/jester/alex-still.webp" alt="" />
+        <img class="side-j" style="right:2%" src="../../app/public/look/jester/lisa-still.webp" alt="" />
+        <span class="spot"></span>
+        <img class="crown-j" src="../../app/public/look/jester/aaron-still.webp" alt="" />
+      </div>
+      <p>Each player's face on a jester, a spotlight, one winner. Save or send the reveal video.</p>
+    </section>
+  </div>
+
+  <div class="foot">
+    <p class="typed">Bank clips arrive already analysed, so a round starts as soon as the video loads.</p>
+    <div class="note-wrap"><p class="note">Then: same clip, one more go.</p></div>
+  </div>
+</div>
+<script src="common.js"></script>
+<script src="arrows.js"></script>
+<script>
+  document.fonts.ready.then(() => drawArrows([
+    [1, 2, "right"], [2, 3, "right"], [3, 4, "right"], [4, 5, "down"],
+    [5, 6, "left"], [6, 7, "left"], [7, 8, "left"], [6, 3, "up", "next player", true],
+  ]));
+</script>
+</body>
+</html>
