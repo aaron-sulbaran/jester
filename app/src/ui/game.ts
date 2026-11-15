@@ -662,7 +662,7 @@ export function initGame(deps: GameDeps) {
     });
   }
   $("castBack").addEventListener("click", () => show("start"));
-  $("deal").addEventListener("click", () => { void runGame(); });
+  $("deal").addEventListener("click", () => { sfx.deal(Math.min(4, names.length + 1)); void runGame(); });
 
   // ---- The game ----
 
@@ -941,10 +941,11 @@ export function initGame(deps: GameDeps) {
         void el.offsetWidth; // restart the tick animation
         el.classList.add("tick");
         sfx.tick(s);
+        // "Go" sounds inside the last second, so it is over before the moves count and the clip's sound starts.
+        if (s === 1) sfx.go(0.5);
         try { await wait(1000, sig()); } catch (err) { el.hidden = true; throw err; }
       }
       el.hidden = true;
-      sfx.go();
     },
 
     turnStarted(restart) {
@@ -1030,6 +1031,7 @@ export function initGame(deps: GameDeps) {
     if (calm()) return;
     const screen = $("screen-reveal");
     screen.querySelector(".box")?.classList.add("closed");
+    sfx.curtain(false);
     await wait(CURTAIN_MS + 250, sig());
     screen.classList.add("leaving");
     await wait(220, sig());
@@ -1107,6 +1109,7 @@ export function initGame(deps: GameDeps) {
       if (mine === runs) {
         roll();
         sfx.crown();
+        if (rows.some((r) => r.duel) && winners.length === 1) sfx.duelWin();
         say(rows.length === 1 ? "solo" : winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: rows.length === 1 ? rows[0]!.name : winners.map((w) => w.name).join(" and ") });
       }
       spot.style.transition = "none";
@@ -1132,6 +1135,7 @@ export function initGame(deps: GameDeps) {
         await wait(220, sig());
         crownScreen.classList.remove("arriving");
         crownBox?.classList.remove("closed");
+        sfx.curtain(true);
         await wait(Math.round(CURTAIN_MS * 0.65), sig());
       }
       if (!done) void run();
