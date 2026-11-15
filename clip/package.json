@@ -1,0 +1,23 @@
+{
+  "name": "@jester/clip",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jester clip side: turns detections from a video clip into a guide (tracks, cuts, key moments). Pure TypeScript, no DOM, deterministic.",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
