@@ -9,8 +9,9 @@
 // node scripts/chamberlain-bench.ts <cases.json> <review-agent module> <label> [reps] [precedents.json]
 //
 // cases.json: { cases: [{ id, title, credit, facts }] } with frames at frames/<id>-0.jpg .. -3.jpg beside it.
-// Keys: ANTHROPIC_API_KEY from the file JESTER_REVIEW_ENV points at. With LANGSMITH_TRACING=true and a
-// LANGSMITH_API_KEY in the environment, every review is also traced to LANGSMITH_PROJECT.
+// Keys: ANTHROPIC_API_KEY from the file JESTER_REVIEW_ENV points at. Run it with tracing off for real clips:
+// with LANGSMITH_TRACING=true in the environment, reviewSubmission refuses every case not marked
+// `"synthetic": true`, since real submissions' frames, titles and credits must not go to LangSmith.
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -20,7 +21,7 @@ import type { LLMResult } from "@langchain/core/outputs";
 
 type Stage = "planner" | "subagent" | "frames" | "wrap-up";
 interface StageTotals { calls: number; ms: number; input: number; output: number; cacheRead: number; cacheWrite: number }
-interface Case { id: string; title: string | null; credit: string | null; facts: unknown }
+interface Case { id: string; title: string | null; credit: string | null; facts: unknown; synthetic?: boolean }
 
 const [casesPath, agentPath, label, repsArg, precedentsPath] = process.argv.slice(2);
 if (!casesPath || !agentPath || !label) {
@@ -97,7 +98,7 @@ for (let rep = 1; rep <= reps; rep++) {
     const started = Date.now();
     try {
       const d = await agent.reviewSubmission(
-        { title: c.title, credit: c.credit, facts: c.facts, frames: frameUrls(c.id), ...(precedents ? { precedents } : {}) },
+        { title: c.title, credit: c.credit, facts: c.facts, frames: frameUrls(c.id), synthetic: c.synthetic === true, ...(precedents ? { precedents } : {}) },
         { apiKey, model: "claude-sonnet-5-5", callbacks: [meter] },
       );
       results.push({ case: c.id, rep, ms: Date.now() - started, verdict: d.verdict, nameCheck: d.nameCheck, reason: d.reason, stages: meter.totals, decision: d });

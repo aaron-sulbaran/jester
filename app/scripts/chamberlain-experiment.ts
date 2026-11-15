@@ -4,7 +4,8 @@
 //
 // node scripts/chamberlain-experiment.ts <cases.json> <dataset name> <label>=<review-agent module> ...
 //
-// cases.json: { cases: [{ id, title, credit, facts, person: { decision, finalTitle }, expected }] } with
+// Made-up cases only: every case must say "synthetic": true, or the script refuses before sending anything.
+// cases.json: { cases: [{ id, title, credit, facts, person: { decision, finalTitle }, expected, synthetic }] } with
 // frames at frames/<id>-0.jpg .. -3.jpg beside it. `expected` is what the Chamberlain should do given the
 // person's decision: approved as sent = approve, renamed = ask_a_person (only a person names a clip),
 // turned away = reject. Keys: ANTHROPIC_API_KEY from the file JESTER_REVIEW_ENV points at;
@@ -16,7 +17,7 @@ import { pathToFileURL } from "node:url";
 import { Client } from "langsmith";
 import { evaluate } from "langsmith/evaluation";
 
-interface Case { id: string; title: string | null; credit: string | null; facts: unknown; person: { decision: string; finalTitle: string | null }; expected: string }
+interface Case { id: string; title: string | null; credit: string | null; facts: unknown; person: { decision: string; finalTitle: string | null }; expected: string; synthetic?: boolean }
 
 const [casesPath, datasetName, ...versions] = process.argv.slice(2);
 if (!casesPath || !datasetName || versions.length === 0) {
@@ -37,6 +38,10 @@ const apiKey = readEnvFile(process.env.JESTER_REVIEW_ENV).ANTHROPIC_API_KEY;
 if (!apiKey) { console.log("No ANTHROPIC_API_KEY in the file JESTER_REVIEW_ENV points at."); process.exit(1); }
 
 const { cases } = JSON.parse(readFileSync(casesPath, "utf8")) as { cases: Case[] };
+// A dataset and its experiments are copies in LangSmith: made-up cases only, never a real submission's frames,
+// title or credit (the Submit your own notice names only Anthropic).
+const real = cases.filter((c) => c.synthetic !== true);
+if (real.length) { console.log(`Refused: ${real.map((c) => c.id).join(", ")} ${real.length === 1 ? "is a real case" : "are real cases"}. Only cases marked "synthetic": true go to LangSmith.`); process.exit(1); }
 const framesDir = join(dirname(resolve(casesPath)), "frames");
 const frameUrls = (id: string) => [0, 1, 2, 3].map((i) => `data:image/jpeg;base64,${readFileSync(join(framesDir, `${id}-${i}.jpg`)).toString("base64")}`);
 
@@ -65,7 +70,7 @@ for (const version of versions) {
   };
   const target = async (inputs: Record<string, unknown>) => {
     const started = Date.now();
-    const d = await agent.reviewSubmission({ title: inputs.title, credit: inputs.credit, facts: inputs.facts, frames: inputs.frames }, { apiKey, model: "claude-sonnet-5-5" });
+    const d = await agent.reviewSubmission({ title: inputs.title, credit: inputs.credit, facts: inputs.facts, frames: inputs.frames, synthetic: true }, { apiKey, model: "claude-sonnet-5-5" });
     return { verdict: d.verdict, reason: d.reason, name_check: d.nameCheck, seconds: (Date.now() - started) / 1000 };
   };
   const results = await evaluate(target, { data: datasetName, evaluators: [agrees, safe], experimentPrefix: `chamberlain-${label}`, maxConcurrency: 1, client, metadata: { version: label } });

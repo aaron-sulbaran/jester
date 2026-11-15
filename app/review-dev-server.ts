@@ -7,8 +7,10 @@
 // Aaron decides a clip the Chamberlain asked about, a short precedent goes in jester-precedents.json beside
 // it (review-precedents.ts), and the Chamberlain reads the recent ones before each review. With
 // LANGSMITH_API_KEY and JESTER_REVIEW_TRACE=1 in the env file, each review is traced to LangSmith
-// (LANGSMITH_PROJECT, by default jester-chamberlain). Turn that on for real submissions only once the
-// Submit your own notice names LangSmith.
+// (LANGSMITH_PROJECT, by default jester-chamberlain), but every desk review is a real submission, so a review
+// then refuses to run (review-agent.ts tracingRefusal) until the env file also has
+// JESTER_REVIEW_TRACE_REAL=notice-names-langsmith, set only once the Submit your own notice names LangSmith.
+// The same refusal stops LangChain's own LANGSMITH_TRACING switch in the dev server's environment.
 //
 // What leaves the laptop: the four frames, the analysis facts, the submitter's title and credit, and the
 // recent precedents go to Anthropic for each review (and to LangSmith when tracing is on). Nothing else does. Videos come down from Supabase and stay here.
@@ -36,7 +38,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import { readBankIndex } from "./src/bankIndex.ts";
-import { DEFAULT_MODEL, reviewSubmission, type ReviewInput } from "./review-agent.ts";
+import { DEFAULT_MODEL, NOTICE_NAMES_LANGSMITH, reviewSubmission, type ReviewInput } from "./review-agent.ts";
 import { parsePrecedents, precedentFrom, PRECEDENTS_KEPT, type Precedent } from "./review-precedents.ts";
 
 const PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov)$/;
@@ -61,6 +63,7 @@ interface LogEntry {
   /** On a flag: what the Chamberlain decided and judged, so a person's later decision can become a precedent. */
   agentVerdict?: string;
   nameCheck?: string;
+  nameKind?: string;
   contentCheck?: string;
   steering?: boolean;
   playability?: string;
@@ -202,6 +205,9 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     // your own notice does not name yet. So it takes two deliberate settings, and goes only to this run's
     // own tracer, never the whole process.
     const trace = langsmithKey && env.JESTER_REVIEW_TRACE === "1" ? { apiKey: langsmithKey, project: env.LANGSMITH_PROJECT || "jester-chamberlain" } : null;
+    // The second setting: every desk review is a real submission, so with tracing on, reviewSubmission refuses
+    // to run until this says the Submit your own notice names LangSmith.
+    const noticeNamesLangSmith = env.JESTER_REVIEW_TRACE_REAL === NOTICE_NAMES_LANGSMITH;
     const queueMissing = [
       ...(options.envFile ? [] : ["JESTER_REVIEW_ENV (the dev server was started without it)"]),
       ...(url ? [] : ["SUPABASE_URL"]),
@@ -210,7 +216,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     const judgeMissing = anthropicKey ? [] : ["ANTHROPIC_API_KEY"];
     /** No key value may ever leave in a message, whatever the libraries put in their errors. */
     const scrub = (text: string) => [serviceKey, anthropicKey, langsmithKey].reduce((t, k) => (k ? t.split(k).join("[key]") : t), text);
-    return { url, serviceKey, anthropicKey, model, trace, queueMissing, judgeMissing, scrub };
+    return { url, serviceKey, anthropicKey, model, trace, noticeNamesLangSmith, queueMissing, judgeMissing, scrub };
   };
 
   /** The bank's own index, so a row is marked approved only once its clip is really in the bank. */
@@ -303,9 +309,10 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             if (!input.facts || !Array.isArray(input.frames) || input.frames.length > 8) return fail(400, "The review needs the clip's facts and up to 8 frames.");
             try {
               // Exactly what the Chamberlain reads, precedents included, so a saved case replays as it was judged.
-              const judged: ReviewInput = { ...input, precedents: readPrecedents() };
+              // A desk review is always a real submission, whatever the request says.
+              const judged: ReviewInput = { ...input, synthetic: false, precedents: readPrecedents() };
               const callbacks = s.trace ? [await tracerFor(s.trace)] : undefined;
-              return ok(await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, ...(callbacks ? { callbacks } : {}) }));
+              return ok(await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, noticeNamesLangSmith: s.noticeNamesLangSmith, ...(callbacks ? { callbacks } : {}) }));
             } catch (err) {
               return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
@@ -325,6 +332,7 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
           const judged = {
             ...(word(body.agentVerdict) ? { agentVerdict: word(body.agentVerdict)! } : {}),
             ...(word(body.nameCheck) ? { nameCheck: word(body.nameCheck)! } : {}),
+            ...(word(body.nameKind) ? { nameKind: word(body.nameKind)! } : {}),
             ...(word(body.contentCheck) ? { contentCheck: word(body.contentCheck)! } : {}),
             ...(typeof body.steering === "boolean" ? { steering: body.steering } : {}),
             ...(word(body.playability) ? { playability: word(body.playability)! } : {}),
