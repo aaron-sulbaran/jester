@@ -4,6 +4,8 @@
 //   JESTER_SUBAGENT=haiku npm run spike   runs the subagent on Claude Haiku 5.5 instead of Muse.
 
 import { createDeepAgent } from "deepagents";
+import { todoListMiddleware } from "langchain";
+import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import { costUsd, missingKeys, orchestratorModel, subagentModel, usage } from "./models.ts";
 import { evalSummaryTool } from "./tools.ts";
 
@@ -17,6 +19,7 @@ const sub = subagentModel();
 const agent = createDeepAgent({
   model: orchestratorModel(),
   tools: [evalSummaryTool],
+  middleware: [todoListMiddleware()],
   systemPrompt: [
     "You check Jester's scorer. Jester is a game where players copy a person or a thing in a short video on their webcam,",
     "and a deterministic scorer gives 0 to 100. You never score anything yourself and never invent a number:",
@@ -50,7 +53,9 @@ for (const m of result.messages as { tool_calls?: { name: string; args?: Record<
   for (const call of m.tool_calls ?? []) steps.push(call.name === "task" ? `task -> ${String(call.args?.subagent_type ?? call.args?.subagentType ?? "?")}` : call.name);
 }
 const last = result.messages[result.messages.length - 1] as { content: unknown };
-const answer = typeof last.content === "string" ? last.content : JSON.stringify(last.content);
+const answer = Array.isArray(last.content)
+  ? (last.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text).join("\n")
+  : String(last.content);
 
 console.log("\n=== Answer ===\n" + answer);
 console.log("\n=== Orchestrator tool calls, in order ===\n" + (steps.join("\n") || "(none)"));
@@ -70,4 +75,6 @@ const checks = {
 };
 console.log("Checks:", JSON.stringify(checks));
 console.log(process.env.LANGSMITH_TRACING === "true" ? `Trace: smith.langchain.com, project "${process.env.LANGSMITH_PROJECT ?? "default"}".` : "LangSmith tracing is off (LANGSMITH_TRACING).");
-if (!Object.values(checks).every(Boolean)) process.exit(1);
+// Send the last trace data before the process ends (otherwise the final calls stay "pending" in LangSmith).
+await awaitAllCallbacks();
+if (!Object.values(checks).every(Boolean)) process.exitCode = 1;
