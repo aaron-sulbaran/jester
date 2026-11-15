@@ -14,6 +14,7 @@ import { recordingPlayer } from "./recording.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { drawReveal, type RevealRole } from "./composite.ts";
 import { hostedTransportFromEnv } from "./supabaseTransport.ts";
+import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clip = starterClip();
@@ -28,6 +29,7 @@ let player: Player | null = null;
 let playing = false;
 let revealTimer = 0;
 let revealedRound = -1;
+const calibrator = new Calibrator();
 
 const simulated = () => $<HTMLInputElement>("sim").checked;
 const status = (t: string) => { $("status").textContent = t; };
@@ -36,6 +38,18 @@ const clipPoseAt = (ms: number) => (sampleAt(clip.samples, Math.max(0, ms) / 100
 async function getPlayer(): Promise<Player> {
   if ($<HTMLInputElement>("sim").checked) return simulatedPlayer(clip, () => 10);
   return cameraPlayer($<HTMLVideoElement>("cam"));
+}
+
+/** While waiting (not playing), run the tracker with a sink that only checks that your whole body is in frame. */
+function startLobbyTracking() {
+  const el = $("calib");
+  if (!player) return;
+  if (simulated()) { el.textContent = ""; return; }
+  calibrator.reset();
+  player.start((f) => {
+    const r = calibrator.update(f.landmarks as never, 30);
+    el.textContent = r.passed ? "Ready: your whole body is in view." : r.message;
+  }, () => -1);
 }
 
 async function enter(rawCode: string) {
@@ -57,6 +71,7 @@ async function enter(rawCode: string) {
   fitCanvas(clipCanvas, clipAspect); fitCanvas(playerCanvas, clipAspect);
   drawFrame(clipCanvas, null, clipPoseAt(0));
   render();
+  startLobbyTracking();
   // Live preview of yourself while you wait, so you can check you are in frame.
   const preview = () => {
     if (!playing && !simulated()) drawFrame(playerCanvas, $<HTMLVideoElement>("cam"), null, { mirror: true });
@@ -71,6 +86,10 @@ function render() {
   $<HTMLButtonElement>("start").disabled = !room.isHost || playing;
   $("roster").innerHTML = room.roster().map((p: { id: string; name: string }) => `<li>${p.name}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""}</li>`).join("");
   $("standings").innerHTML = (room.standings() as Standing[]).map((r) => `<li>${r.name}: ${r.score ?? "playing..."}</li>`).join("");
+  const waiting = (room.standings() as Standing[]).filter((r) => r.score === null).map((r) => r.name);
+  if (room.round && !playing && waiting.length && waiting.length < room.roster().length) status("Waiting for " + waiting.join(", ") + " to finish...");
+  else if (room.round && room.allDone && !playing) status("Everyone finished. Standings and reveal are below.");
+  else if (!room.round && !room.isHost) status("In the room. Waiting for the host (" + room.roster().find((p: { id: string }) => p.id === room!.hostId)?.name + ") to start.");
   if (room.round && room.allDone && room.round.roundNo !== revealedRound && !playing) showReveal();
 }
 
@@ -84,6 +103,7 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
     await new Promise((r) => setTimeout(r, 100));
   }
   el.classList.add("hidden");
+  player!.stop(); // stop the lobby check; the round starts its own tracking
   playing = true; render();
   status("Go! Copy the clip as if it were a mirror.");
   const rec = recordingPlayer(player!);
@@ -92,6 +112,7 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
     drawFrame(playerCanvas, simulated() ? null : $<HTMLVideoElement>("cam"), f.player as never, { mirror: true, color: "#4cc9f0" });
   });
   playing = false;
+  startLobbyTracking();
   room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs), extra: null });
   status(result.result.score == null ? "Tracking was too poor to score. Stand back so your whole body is in view." : "Your score: " + result.result.score + ". Waiting for the others...");
   render();
