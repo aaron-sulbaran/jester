@@ -11,7 +11,7 @@
 
 import { GRID_HZ } from "../../engine/src/constants.ts";
 import { bucketCredits, rankDuel } from "../../clip/src/match.ts";
-import { unpackPose, type PackedPose } from "../../eval/src/record.ts";
+import { unpackPose, type AnyPackedPose } from "../../eval/src/record.ts";
 import { serializeTimeline } from "../../spikes/pose-match/serialize.mjs";
 import type { DuelClipInfo, DuelStanding, DuelTable } from "./onlineDuel.ts";
 
@@ -29,7 +29,7 @@ export interface GhostRow {
 export interface GhostRecord {
   id: string;
   score: number;
-  player: PackedPose;
+  player: AnyPackedPose;
   result: { score: number | null; lagMs?: number | null; frameCredits?: (number | null)[]; worstLimb?: { label?: string } | null };
 }
 
