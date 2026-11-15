@@ -19,7 +19,8 @@ import { boxFromLandmarks, hideUnsureJoints, type Guide, type Outline } from "..
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
+import { blindView, busierHand, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
+import { addHands } from "./clipside/hands.ts";
 import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
@@ -28,7 +29,7 @@ import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/po
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
 import { playWithSound, setAloud } from "./sound.ts";
-import { castRowShare } from "./recapRules.ts";
+import { castRowShare, dropShrunkCrops } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
 
@@ -585,6 +586,8 @@ function guideAt(g: Guide, ms: number): Guide {
     outlines: [outline],
     timeline: g.timeline && { ...g.timeline, frames: [{ tMs: ms, landmarks }] },
     depths: g.depths ? [depth] : undefined,
+    // Fingers do not blend: the nearer of the two samples, and the busier-hand pick still looks at the whole clip.
+    ...(g.hands ? { handFocus: busierHand(g), hands: [(u < 0.5 ? g.hands[i] : g.hands[j]) ?? g.hands[i] ?? g.hands[j] ?? null] } : {}),
   };
 }
 
@@ -714,10 +717,12 @@ export function dribbleScene(): Scene {
 
 /** A video read by the clip side. Returns the sentence why not when it has no one to copy. */
 export async function videoScene(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<Scene | string> {
-  const prepared = await prepareVideo(file, video, onProgress);
+  const prepared = await prepareVideo(file, video, (share) => onProgress(share * 0.8));
   if (prepared.error !== null) return prepared.error;
-  const { guides, skipped } = subjectGuides(prepared.data);
-  if (guides.length === 0) return skipped[0]?.reason ?? "No one to copy in this clip.";
+  const found = subjectGuides(prepared.data);
+  if (found.guides.length === 0) return found.skipped[0]?.reason ?? "No one to copy in this clip.";
+  // Finger detail for the hands the player has to copy; a failure here leaves the guides as they were.
+  const guides = await addHands(found.guides, file, video, (share) => onProgress(0.8 + share * 0.2));
   const g = guides[0]!;
   return {
     name: file.name, width: g.source.width, height: g.source.height,
@@ -1468,7 +1473,8 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
     seat.face = r.face ?? null;
-    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    // Their own pictures, without frames where the tracker lost the head (dropShrunkCrops), the same on every device.
+    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = dropShrunkCrops(r.cutouts); return seat; }
     // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;

@@ -305,7 +305,7 @@ export function initGame(deps: GameDeps) {
     if (!file) return say("Pick a clip to send.");
     if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
     const title = $<HTMLInputElement>("submitTitle").value.trim();
-    if (!title) return say("Name the move or dance in your clip.");
+    if (!title) return say("Give your clip a name.");
     const send = $<HTMLButtonElement>("submitSend");
     const bar = $<HTMLProgressElement>("submitBar");
     send.disabled = true; bar.hidden = false; bar.value = 0;
