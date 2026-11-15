@@ -109,12 +109,12 @@ body:not(.solo) #solo { display: none; }
 /* A word of letters stays on one line; the line breaks only between words. */
 .letters .word { display: inline-flex; color: inherit; rotate: none; translate: none; margin-right: 0; }
 .wordmark { margin: 0; font: 400 clamp(72px, 10vw, 128px)/1 var(--sticker); padding: 6px 14px 16px; }
-/* The crown on the J, tipped like a hat: the doodled crown from the scrapbook mockups. It sits inside the letter
-   stickers, so it shares their white edge, grown round (#die-cut-round) so its points get a smooth rim like the
-   letters. It rests on the corner of the J. */
+/* The jester's hat on the J, tipped a little: the same hat as the favicon. It sits inside the letter stickers, so it
+   shares their white edge, grown round (#die-cut-round) so its points get a smooth rim like the letters. It rests
+   on the top of the J. The --hat-* variables tune its place, size and tilt by eye. */
 .wordmark .letters { filter: url(#die-cut-round); }
 .wordmark .letters > span:first-child { position: relative; }
-.wordmark-crown { position: absolute; left: var(--crown-x, -.19em); top: var(--crown-y, -.15em); width: var(--crown-w, .66em); height: calc(var(--crown-w, .66em) * .72); overflow: visible; rotate: var(--crown-r, -38deg); }
+.wordmark-hat { position: absolute; left: var(--hat-x, -.36em); top: var(--hat-y, -.56em); width: var(--hat-w, 1.1em); height: calc(var(--hat-w, 1.1em) * .71); overflow: visible; rotate: var(--hat-r, -14deg); }
 
 /* ---------- Buttons ---------- */
 /* The main action: a ticket stub, notched at both ends, with a perforated tear-off. */
@@ -127,11 +127,11 @@ body:not(.solo) #solo { display: none; }
   -webkit-mask: radial-gradient(circle 13px at 0 50%, transparent 12.5px, #000 13px) left / 51% 100% no-repeat, radial-gradient(circle 13px at 100% 50%, transparent 12.5px, #000 13px) right / 51% 100% no-repeat;
   mask: radial-gradient(circle 13px at 0 50%, transparent 12.5px, #000 13px) left / 51% 100% no-repeat, radial-gradient(circle 13px at 100% 50%, transparent 12.5px, #000 13px) right / 51% 100% no-repeat;
 }
-/* The tear-off stub on the right: a dotted perforation and a little cap stamp. */
+/* The tear-off stub on the right: a dotted perforation and the jester's hat as a red stamp. */
 .btn-main .ticket::after {
   content: ""; position: absolute; top: 9px; bottom: 9px; right: 16px; width: 42px;
   border-left: 4px dotted var(--kraft);
-  background: center / 26px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 150'%3E%3Cpath d='M60 112 C46 84 34 62 14 44 C42 50 72 72 94 106 Z M140 112 C154 84 166 62 186 44 C158 50 128 72 106 106 Z M78 108 C82 74 90 42 100 16 C110 42 118 74 122 108 Z M48 110 Q100 94 152 110 L152 132 Q100 118 48 132 Z' fill='%23D93A2B'/%3E%3C/svg%3E");
+  background: center / 30px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-6 -2 92 64'%3E%3Cg fill='%23D93A2B' stroke='%23FFC93C' stroke-width='4' stroke-linejoin='round'%3E%3Cpath d='M40 36 C33 8 13 -4 4 18 C12 20 19 31 23 49 Z'/%3E%3Cpath d='M40 36 C47 8 67 -4 76 18 C68 20 61 31 57 49 Z'/%3E%3Cpath d='M20 47 Q40 40 60 47 L60 57 Q40 50 20 57 Z'/%3E%3Ccircle cx='4.5' cy='21' r='6'/%3E%3Ccircle cx='75.5' cy='21' r='6'/%3E%3C/g%3E%3C/svg%3E");
 }
 .btn-main:hover { transform: translateY(-3px) rotate(1deg); filter: drop-shadow(8px 10px 0 var(--shade)); }
 .btn-main:active { transform: translateY(2px) scale(.97); filter: drop-shadow(2px 2px 0 var(--shade)); }
@@ -323,23 +323,56 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
   .send-card-text { font-size: 18px; }
 }
 
-/* Its own screen: what happens next, then what you can and can't send beside the form. */
+/* Its own screen: how it works as four steps, then one form card. On laptops the fields fill its left half and
+   what not to send sits on the right, over the privacy line and the ticket, so it is read before sending. Every
+   rule here is under #screen-submit or #sendSteps: the start screen has its own .send-card. */
 #screen-submit { justify-content: flex-start; gap: 18px; }
-.send-when { font-size: 16px; }
-.send-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 34px; width: min(100%, 1040px); align-items: start; text-align: left; }
-.send-rules { display: grid; gap: 26px; }
-.rule-card { position: relative; padding: 24px 22px 18px; background: var(--photo); box-shadow: var(--lift); rotate: -.8deg; }
-.rule-card.cannot { rotate: .7deg; }
-.rule-card .washi { top: -13px; left: 28px; width: 88px; height: 24px; rotate: -3deg; }
-.rule-card h3 { margin: 0 0 10px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
-.rule-card.can li::marker { color: var(--p4); }
-.rule-card.cannot li::marker { color: var(--stamp); }
-.send-form { padding: 22px 24px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .4deg; }
-/* After a send: the thanks note, then "Send another clip" under it, clear of the paper's edge. */
-#submitThanks { display: grid; gap: 18px; justify-items: start; }
+#screen-submit .send-form { width: min(100%, 1040px); padding: 22px 26px 24px; background: var(--photo); box-shadow: var(--lift); rotate: -.3deg; text-align: left; }
+#submitForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 44px; align-items: start; }
+#submitForm .send-fields, #submitForm .send-go { display: grid; gap: 12px; }
+#submitForm .send-dont h3 { margin: 0 0 6px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
+#submitForm .send-dont li::marker { color: var(--stamp); }
+#submitCredit::placeholder { color: #6B5A48; opacity: 1; font-weight: 400; }
+
+/* The four steps, built like How to play's. Each picture is a little scene on the desk made of the game's own
+   parts, the same clip card in all four: picked, named, looked over, let in. A scene is 24em by 12em, where 1em
+   is a 24th of the picture's width, so it scales with the step; parts are placed in percent of the scene. */
+#sendSteps { width: min(100%, 1040px); gap: 22px; margin-top: 8px; }
+#sendSteps .step { padding: 12px 12px 16px; }
+#sendSteps .step b { font-size: 25px; }
+#sendSteps .step-pic { position: relative; aspect-ratio: 2 / 1; overflow: hidden; container-type: inline-size; background: var(--kraft) var(--grain); }
+#sendSteps .send-step-scene { position: absolute; inset: 0; font-size: calc(100cqw / 24); }
+#sendSteps .send-step-card { position: absolute; left: 18%; top: 15%; width: 11em; padding: .45em .45em 1.3em; background: var(--photo); box-shadow: .3em .35em 0 var(--shade); rotate: -3deg; }
+#sendSteps .send-step-photo { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; overflow: hidden; background: #2E4593 repeating-linear-gradient(-35deg, transparent 0 .6em, rgba(255, 255, 255, .07) .6em .75em); }
+#sendSteps .clip-q { font-size: 3.4em; -webkit-text-stroke-width: .07em; filter: url(#sticker); }
+#sendSteps .send-step-star { position: absolute; top: -1.5em; right: -1.5em; width: 4em; height: 4em; rotate: 12deg; }
+#sendSteps .send-step-player { width: auto; height: 92%; color: var(--ticket); }
+/* Pick: one card from a pile, starred like a picked clip in the bank. */
+#sendSteps .send-step-back { left: 8%; top: 22%; rotate: -10deg; }
+#sendSteps .send-step-back + .send-step-card { left: 40%; top: 11%; rotate: 4deg; }
+/* The name: a punched paper tag in the Jester's pen, tucked under the card's corner. */
+#sendSteps .send-step-tag {
+  position: absolute; left: 54%; top: 56%; padding: .15em .7em .25em 1.75em; background: var(--photo); border-radius: .2em;
+  box-shadow: .12em .15em 0 var(--shade); rotate: 8deg; font: 700 2.4em/1 var(--hand); letter-spacing: -.04em; color: var(--pen);
+}
+#sendSteps .send-step-tag::before { content: ""; position: absolute; left: .55em; top: 50%; width: .5em; height: .5em; translate: 0 -50%; border-radius: 50%; background: var(--kraft); box-shadow: inset 0 0 0 .1em #B48C61; }
+/* Checked: the name ringed in pen. */
+#sendSteps .send-step-ringed::after { content: ""; position: absolute; inset: -.3em -.35em -.25em -.3em; border: .09em solid var(--pen); border-radius: 50%; rotate: -5deg; }
+/* Let in: the red stamp across the card, and the jester cheers. */
+#sendSteps li:last-child .send-step-card { left: 7%; top: 13%; }
+#sendSteps .send-step-stamp {
+  position: absolute; left: 50%; bottom: .15em; translate: -50% 0; rotate: -9deg; padding: .12em .35em .05em; white-space: nowrap;
+  border: .12em solid var(--stamp); border-radius: .15em; background: var(--photo); font: 400 2.1em/1 var(--type); color: var(--stamp);
+}
+#sendSteps .send-step-jester { position: absolute; left: 58%; top: 9%; width: 9.6em; height: 9.6em; background: url("/jester/classic-win.webp") calc(9 / 23 * 100%) 0 / 2400% 100% no-repeat; filter: url(#sticker); }
+/* Tablets: two by two, so a step's name never breaks into three lines. */
+@media (min-width: 761px) and (max-width: 900px) { #sendSteps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* After a send the form's paper steps aside: the Jester's note sits on the desk, centred, with "Send another clip"
+   under it. */
+#screen-submit .send-form:has(> #submitThanks:not([hidden])) { width: auto; padding: 6px 0 0; background: none; box-shadow: none; rotate: 0deg; }
+#submitThanks { display: grid; gap: 18px; justify-items: center; }
 .send-privacy { display: block; font-size: 13px; line-height: 1.45; color: #6B5A48; text-align: left; }
 .how { margin: 0; padding-left: 20px; font-size: 16px; line-height: 1.5; }
-#submitForm { display: grid; gap: 12px; }
 .field { display: grid; gap: 4px; font-size: 15px; }
 .field input[type="text"] { min-height: 44px; padding: 6px 10px; border: 0; background: #FFFEFA; box-shadow: inset 0 0 0 2px #C9B497; font: 700 22px var(--hand); color: var(--pen); }
 .field small { font-size: 13px; color: #6B5A48; }
@@ -347,7 +380,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .field input[type="file"]::file-selector-button { min-height: 44px; margin-right: 12px; padding: 8px 16px; border: 0; border-radius: 3px; background: var(--ticket); box-shadow: 3px 4px 0 var(--shade); font: 400 16px var(--type); color: var(--ink); cursor: pointer; }
 .consent { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; font-size: 15px; cursor: pointer; }
 .consent input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--pen); }
-#submitSend { justify-self: start; }
+#submitSend { justify-self: start; margin-top: 4px; }
 .aside { display: flex; flex-wrap: wrap; gap: 6px 22px; justify-content: center; }
 .aside .upload { position: relative; overflow: hidden; display: inline-flex; align-items: center; min-height: 44px; }
 
@@ -617,8 +650,15 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   #screen-start > * { width: 100%; }
   #screen-start .masthead { width: auto; }
   #surpriseCard .clip-star { right: -8px; }
-  .send-layout { grid-template-columns: minmax(0, 1fr); gap: 26px; }
   #startActions { justify-content: center; }
+  #screen-submit .send-form { padding: 20px 18px 22px; }
+  #submitForm { grid-template-columns: minmax(0, 1fr); }
+  /* Each step is one row: the picture on the left, its words on the right. */
+  #sendSteps { gap: 16px; }
+  #sendSteps .step { grid-template-columns: minmax(0, 46%) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 12px; row-gap: 2px; padding: 8px 10px 10px 8px; }
+  #sendSteps .step-pic { grid-row: 1 / 3; align-self: center; }
+  #sendSteps .step b { font-size: 22px; align-self: end; }
+  #sendSteps .step > span:last-child { font-size: 14px; }
   .side-nav { top: 8px; right: 8px; gap: 8px; }
   .side-nav .btn-quiet { min-height: 40px; padding: 6px 12px 6px 30px; font-size: 14px; }
   .side-nav .btn-quiet::before { left: 11px; }
@@ -679,13 +719,24 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 
 /* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
 /* Framing, before a whole-body turn (blind.ts): a paper tag at the bottom of the stage. After 12 s it becomes a
-   button ("Click here to start anyway"), for a room too small to fit in. */
+   button ("Tap here to start"), for a room too small to fit in. */
 .framing-hint {
   position: absolute; z-index: 6; left: 50%; bottom: 6%; translate: -50% 0; max-width: 86%; pointer-events: none;
   padding: 10px 18px 12px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg;
   font: 400 clamp(17px, 1.8vw, 24px)/1.3 var(--type); color: var(--ink); text-align: center;
 }
 .framing-hint.late { pointer-events: auto; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+/* Where to stand: a taped frame on the mirror view at the subject's place and size. It says where and how big, never who. */
+.fit-frame { position: absolute; z-index: 3; pointer-events: none; border: 3px dashed rgba(255, 254, 250, .9); box-shadow: 0 0 0 1px rgba(30, 27, 24, .45), inset 0 0 0 1px rgba(30, 27, 24, .45); transition: left .25s linear, top .25s linear, width .25s linear, height .25s linear, opacity .4s var(--ease), border-color .3s var(--ease); }
+.fit-frame::before, .fit-frame::after { content: ""; position: absolute; width: 42px; height: 14px; background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, .2) 0 3px, transparent 3px 10px); box-shadow: 1px 2px 0 var(--shade); }
+.fit-frame::before { top: -9px; left: -16px; rotate: -38deg; }
+.fit-frame::after { bottom: -9px; right: -16px; rotate: -38deg; }
+.fit-frame[data-fit="good"] { border-style: solid; border-color: var(--who); }
+/* Full strength while framing (and a little heavier); faint only once the turn's moves count. */
+#fitFrame[data-phase="turn"] { opacity: .45; }
+#fitFrame[data-phase="framing"] { border-width: 4px; box-shadow: 0 0 0 2px rgba(30, 27, 24, .6), inset 0 0 0 2px rgba(30, 27, 24, .6); }
+#screen-turn[data-state="play"] .framing-hint { left: 50%; max-width: min(92%, 620px); font-size: clamp(15px, 1.6vw, 21px); }
+@media (prefers-reduced-motion: reduce) { .fit-frame { transition: none; } }
 /* Scoped to the notice: the crowning marks losing jesters .lost too, and a bare .lost pulled them onto the winner. */
 #lostNotice { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
 .place-who .aside { text-align: left; }
