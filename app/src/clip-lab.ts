@@ -1,10 +1,12 @@
 // Clip lab: run the clip side on one video and check the result by eye.
 // URL options: ?clip=<file in /_clips/> runs that file as if picked, ?pick=<number> chooses that
-// person, ?fresh=1 ignores the saved analysis. After each run, window.__clipLab holds a summary.
+// person, ?fresh=1 ignores the saved analysis, ?overlay=skeleton|outline|both, ?look=outline|stick
+// and ?place=fit|exact set the switches. After each run, window.__clipLab holds a summary.
 
-import type { Box, Guide } from "../../clip/src/index.ts";
+import type { Box, Guide, Placement, View } from "../../clip/src/index.ts";
 import type { LandmarkObject } from "../../engine/src/index.ts";
 import { finishClip, prepareClip, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
+import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
 interface LabSummary {
@@ -17,7 +19,7 @@ interface LabSummary {
   saved: "saved" | "fresh" | null;
   warnings: string[];
   error: string | null;
-  guide: { label: string; range: Guide["range"]; channel: Guide["channel"]; pace: Guide["pace"]; keyMoments: number; timelineFrames: number } | null;
+  guide: { label: string; range: Guide["range"]; channel: Guide["channel"]; pace: Guide["pace"]; keyMoments: number; timelineFrames: number; outlineFrames: number } | null;
 }
 
 declare global { interface Window { __clipLab?: LabSummary } }
@@ -31,7 +33,29 @@ const confirmCanvas = $<HTMLCanvasElement>("confirm");
 const overlay = $<HTMLCanvasElement>("overlay");
 const people = $("people");
 const facts = $<HTMLTableElement>("facts");
+const blindCanvas = $<HTMLCanvasElement>("blind");
 const params = new URLSearchParams(location.search);
+
+type Overlay = "skeleton" | "outline" | "both";
+
+/** A radio group whose value is one of `values`; starts from the URL option, else `fallback`. */
+function radioGroup<T extends string>(name: string, values: readonly T[], fallback: T, onChange: () => void): () => T {
+  const asked = params.get(name) as T | null;
+  let value: T = asked && values.includes(asked) ? asked : fallback;
+  for (const input of document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
+    input.checked = input.value === value;
+    input.addEventListener("change", () => {
+      if (input.checked) { value = input.value as T; onChange(); }
+    });
+  }
+  return () => value;
+}
+
+let view: View | null = null;
+const resetView = () => { view = null; };
+const overlayMode = radioGroup<Overlay>("overlay", ["skeleton", "outline", "both"], "both", () => {});
+const look = radioGroup<Look>("look", ["outline", "stick"], "outline", () => {});
+const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
 
 let prepared: Prepared | null = null;
 let summary: LabSummary | null = null;
@@ -124,9 +148,13 @@ function start(p: Prepared, trackId: number) {
   summary.guide = {
     label: guide.subject.label, range: guide.range, channel: guide.channel, pace: guide.pace,
     keyMoments: guide.keyMoments.length, timelineFrames: guide.timeline?.frames.length ?? 0,
+    outlineFrames: guide.outlines.filter((o) => o !== null).length,
   };
-  setStatus([`Playing ${guide.subject.label}.`, ...guide.warnings]);
+  const outlined = summary.guide.outlineFrames;
+  const outlineNote = `Outline in ${outlined} of ${guide.outlines.length} frames.`;
+  setStatus([`Playing ${guide.subject.label}.`, outlineNote, ...guide.warnings]);
   fitCanvas(overlay, p.source.width / p.source.height);
+  resetView();
   show("play", true);
   video.currentTime = guide.range.startMs / 1000;
   void video.play();
@@ -158,9 +186,22 @@ function tick() {
   const nowMs = video.currentTime * 1000;
   const frames = guide.timeline.frames;
   const index = Math.min(frames.length - 1, Math.max(0, Math.round((nowMs - startMs) / frameMs)));
-  drawFrame(overlay, video, toObjects(frames[index]?.landmarks ?? null));
+  const mode = overlayMode();
+  drawFrame(overlay, video, mode === "outline" ? null : toObjects(frames[index]?.landmarks ?? null));
+  const outline = guide.outlines[index];
+  if (mode !== "skeleton" && outline) {
+    const ctx = overlay.getContext("2d")!;
+    traceOutline(ctx, outline, (x, y) => [x * overlay.width, y * overlay.height]);
+    ctx.strokeStyle = "#4fc3f7";
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  }
   const box = guide.boxTrack.frames[index]?.box;
-  if (box) strokeBox(overlay, box, "", "#f5c542");
+  if (box && mode === "skeleton") strokeBox(overlay, box, "", "#f5c542");
+
+  view ??= blindView(guide, blindCanvas, place());
+  drawBlind(blindCanvas, guide, guideFrameAt(guide, nowMs), look(), view);
 }
 
 async function run(file: File) {
