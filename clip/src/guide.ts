@@ -4,6 +4,17 @@ import { keyMoments, paceOf } from "./moments.ts";
 import type { ClipSource, FrameDetections, Guide, Outline, Track } from "./types.ts";
 
 /**
+ * Where a shot really ends in media time: where the next shot starts, or the end of what was read
+ * (`source.durationMs`) for the last shot. Not the last sample's time, which is up to one sample short.
+ */
+export function shotEndMs(frames: readonly { tMs: number }[], shot: { start: number; end: number }, source: Pick<ClipSource, "durationMs">): number {
+  const next = frames[shot.end];
+  if (next) return next.tMs;
+  const last = frames[shot.end - 1]!.tMs;
+  return Math.max(last, source.durationMs);
+}
+
+/**
  * Builds the guide for one subject in one shot. Timeline time starts at 0 at the shot's first
  * frame; `range` holds the matching media times. Frames where the track has no point are null.
  */
@@ -38,7 +49,7 @@ export function buildGuide(input: {
     schema: "guide/1",
     fingerprint: input.fingerprint,
     source,
-    range: { startMs, endMs: frames[shot.end - 1]!.tMs },
+    range: { startMs, endMs: shotEndMs(frames, shot, source) },
     subject: { kind: "person", label: input.label },
     channel: skeletonGate(timeline).channel,
     timeline,

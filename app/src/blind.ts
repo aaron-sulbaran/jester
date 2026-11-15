@@ -26,7 +26,7 @@ import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
-import { playWithSound } from "./sound.ts";
+import { playWithSound, setAloud } from "./sound.ts";
 import { castRowShare } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
@@ -123,6 +123,11 @@ export interface GameOptions {
   colors?: readonly string[];
   /** How the recorded reveal looks (default: the dark card). Set by the look. */
   theme?: Partial<RevealTheme>;
+  /**
+   * Play the reveal's sound on this device's speakers (default true). Online, only the host's laptop does, so two
+   * laptops side by side do not play it twice; every device's recorded reveal still has the sound.
+   */
+  revealAloud?: boolean;
   /**
    * Record the reveal video at the end (default true). Online blind mode turns it off: each device plays
    * one role, so the group reveal is drawn from everyone's results once they are all in.
@@ -829,6 +834,30 @@ interface ClipSound {
 /** The sound playing now, so a new one (or leaving) never leaves an old one running. */
 let playingSound: ClipSound | null = null;
 
+/** The clip's sound fades in over this long when a turn or preview starts, and out over this long when it ends, instead of cutting. */
+const FADE_IN_MS = 150, FADE_OUT_MS = 400;
+/** The fade running on each clip, so a new fade, a seek or a new sound cancels it. */
+const fades = new WeakMap<HTMLVideoElement, () => void>();
+
+/**
+ * Moves the clip's volume to `to` over `ms`, then calls `done`. Anything that seeks the clip meanwhile (the
+ * next turn, the reveal) cancels the fade and puts the volume back to full, so a fade never pauses or quiets
+ * someone else's playback.
+ */
+function fadeVolume(video: HTMLVideoElement, to: number, ms: number, done?: () => void) {
+  fades.get(video)?.();
+  const from = video.volume, t0 = performance.now();
+  const cancel = () => { clearInterval(timer); video.removeEventListener("seeking", interrupted); fades.delete(video); };
+  const interrupted = () => { cancel(); video.volume = 1; };
+  const timer = window.setInterval(() => {
+    const u = Math.min(1, (performance.now() - t0) / ms);
+    video.volume = from + (to - from) * u;
+    if (u >= 1) { cancel(); done?.(); }
+  }, 20);
+  video.addEventListener("seeking", interrupted);
+  fades.set(video, cancel);
+}
+
 function clipSound(scene: Scene, speed: number): ClipSound {
   playingSound?.stop();
   const video = scene.video;
@@ -838,7 +867,9 @@ function clipSound(scene: Scene, speed: number): ClipSound {
     ready() {
       if (!video) return Promise.resolve();
       return seek ??= (async () => {
+        fades.get(video)?.();
         video.pause();
+        video.volume = 1;
         video.currentTime = scene.startMs / 1000;
         await seeked(video);
       })();
@@ -850,8 +881,11 @@ function clipSound(scene: Scene, speed: number): ClipSound {
         if (stopped) return;
         video.playbackRate = speed;
         video.preservesPitch = true;
+        fades.get(video)?.();
+        video.volume = 0;
         await playWithSound(video);
-        if (stopped) { video.pause(); return; }
+        if (stopped) { video.pause(); video.volume = 1; return; }
+        fadeVolume(video, 1, FADE_IN_MS);
       }
       started = lastWall = performance.now();
       lastMs = 0;
@@ -868,8 +902,14 @@ function clipSound(scene: Scene, speed: number): ClipSound {
       return lastMs + (wall - lastWall);
     },
     stop() {
+      if (stopped) return;
       stopped = true;
-      if (video) { video.pause(); video.playbackRate = 1; }
+      if (video) {
+        const settle = () => { video.pause(); video.playbackRate = 1; video.volume = 1; };
+        // Still sounding: fade out, then pause. The turn's clock and frames have already ended.
+        if (started >= 0 && !video.paused && !video.ended) fadeVolume(video, 0, FADE_OUT_MS, settle);
+        else { fades.get(video)?.(); settle(); }
+      }
       if (playingSound === sound) playingSound = null;
     },
   };
@@ -1162,7 +1202,7 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   }));
 }
 
-async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }): Promise<string | null> {
+async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }, aloud = true): Promise<string | null> {
   const scene = played;
   // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
   // about 7 times. Wide clips stay 960 wide.
@@ -1216,7 +1256,11 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
-  return recordSegments(canvas, segments, onProgress, control, video);
+  if (!video || aloud) return recordSegments(canvas, segments, onProgress, control, video);
+  // Recorded with its sound, played without it here (setAloud), then the speakers come back for the next turn.
+  setAloud(video, false);
+  try { return await recordSegments(canvas, segments, onProgress, control, video); }
+  finally { setAloud(video, true); }
 }
 
 // ---- The game ----
@@ -1288,7 +1332,7 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
   ui.results(rows);
   if (options.reveal === false) return rows;
   if (ui.revealControl) ui.revealControl.speed = 1;
-  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl);
+  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl, options.revealAloud ?? true);
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
   return rows;
