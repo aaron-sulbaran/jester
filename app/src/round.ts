@@ -9,6 +9,7 @@ import { createWebcamTracker as createTrackerJs } from "../../spikes/pose-match/
 import { simulatedPlayerPose } from "../../spikes/pose-match/synthetic.mjs";
 import type { Clip } from "./clip.ts";
 import { live } from "./liveHands.ts";
+import { stampAt } from "./stamp.ts";
 import { preloadModels } from "./preload.ts";
 
 // Warm the browser cache with the tracking models a moment after the page opens, so the first round starts sooner.
@@ -42,6 +43,7 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
   let sink: ((f: WebcamFrame) => void) | null = null;
   let clock: () => number = () => -1;
   let capture: CaptureFn | null = null;
+  let shotAt = -1;
   // The camera permission prompt and the tracker's models load at the same time, not one after the other.
   const streamPromise = navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   streamPromise.catch(() => {}); // a refusal is reported below; this keeps it from also being reported as unhandled
@@ -52,13 +54,20 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
     onFrame: (f: any) => {
       live.hands = f.hands ?? []; live.at = performance.now(); // fingers, drawn by draw.ts
       if (!sink) return;
-      const clipMs = clock();
+      const clipMs = stampAt(clock(), performance.now(), shotAt);
       sink({ t: f.t, landmarks: f.landmarks, aspect: f.aspect, mirrored: f.mirrored, clipTimeMs: clipMs });
       // The camera element still shows the frame just tracked, so the crop matches these landmarks.
       if (capture && f.landmarks && clipMs >= 0) capture({ landmarks: f.landmarks, mask: f.mask ?? null, source: cam, width: cam.videoWidth, height: cam.videoHeight, clipMs });
     },
   });
   cam.srcObject = await streamPromise;
+  // When the camera frame now showing was taken (or, failing that, shown), so each pose is stamped with the
+  // moment it happened rather than when tracking it finished. The browser calls this just before the
+  // tracker's next look, so it is the frame the tracker reads.
+  if (typeof cam.requestVideoFrameCallback === "function") {
+    const watch = (_now: number, meta: VideoFrameCallbackMetadata) => { shotAt = meta.captureTime ?? meta.presentationTime; cam.requestVideoFrameCallback(watch); };
+    cam.requestVideoFrameCallback(watch);
+  }
   await cam.play();
   tracker.start();
   return {

@@ -4,10 +4,15 @@
 // server's storage, and only after a round; the room page says so.
 
 import type { Cutout } from "./cutout.ts";
+import { dropShrunkCrops, packTier } from "./recapRules.ts";
 
 const MAX_CHARS = 2_500_000;
-/** Size, WebP quality and the least gap between cutouts in ms, tried in turn until the pack fits. */
-const TIERS: readonly [number, number, number][] = [[192, 0.65, 200], [160, 0.6, 240], [128, 0.55, 280], [96, 0.5, 320]];
+/**
+ * Size, WebP quality and the least gap between cutouts in ms, tried in turn until the pack fits. The first is the
+ * size the cutouts are captured at (cutout.ts SIDE): a remote player is drawn about as large as a local one, so a
+ * smaller copy is drawn several times its size on a tall reveal and smears.
+ */
+export const TIERS: readonly [number, number, number][] = [[256, 0.7, 200], [224, 0.65, 200], [192, 0.65, 200], [160, 0.6, 240], [128, 0.55, 280], [96, 0.5, 320]];
 const SAFE_PREFIX = /^data:image\/(webp|png|jpeg);base64,/;
 
 function toDataUrl(src: HTMLCanvasElement, size: number, quality: number): string {
@@ -41,20 +46,31 @@ export async function unpackFace(text: string | undefined): Promise<HTMLCanvasEl
   return text ? loadCanvas(text) : null;
 }
 
-/** The player's cutouts as one string, thinned to about 5 a second and shrunk until it fits a room's message budget. */
+/**
+ * The player's cutouts as one string, thinned to about 5 a second and shrunk only as far as it must to fit a room's
+ * message budget. A tier stops encoding as soon as it is over budget, so trying the larger sizes first costs little.
+ */
 export function packCutouts(cutouts: readonly Cutout[]): string {
-  for (const [size, quality, gap] of TIERS) {
-    let last = -Infinity;
+  let text = JSON.stringify({ v: 1, items: [] });
+  // Frames where the tracker lost the head are left out first, so the thinning below picks a whole body instead.
+  cutouts = dropShrunkCrops(cutouts);
+  packTier(TIERS.length, MAX_CHARS, (i) => {
+    const [size, quality, gap] = TIERS[i]!;
+    let last = -Infinity, chars = 0;
     const items: { t: number; a: unknown; d: string }[] = [];
     for (const c of cutouts) {
       if (c.clipMs - last < gap) continue;
       last = c.clipMs;
-      items.push({ t: Math.round(c.clipMs), a: c.anchor ?? null, d: toDataUrl(c.image, size, quality) });
+      const d = toDataUrl(c.image, size, quality);
+      chars += d.length;
+      if (chars > MAX_CHARS) return Infinity;
+      items.push({ t: Math.round(c.clipMs), a: c.anchor ?? null, d });
     }
-    const text = JSON.stringify({ v: 1, items });
-    if (text.length <= MAX_CHARS) return text;
-  }
-  return JSON.stringify({ v: 1, items: [] });
+    const packed = JSON.stringify({ v: 1, items });
+    if (packed.length <= MAX_CHARS) text = packed;
+    return packed.length;
+  });
+  return text;
 }
 
 export async function unpackCutouts(text: string | undefined): Promise<Cutout[]> {

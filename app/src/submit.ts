@@ -14,7 +14,8 @@ type Kind = keyof typeof TYPES;
 const NOT_A_VIDEO = "That file is not a video.";
 const TOO_BIG = "That video is over 25 MB. Trim it and try again.";
 const WRONG_KIND = "Jester takes MP4, WebM or MOV videos. Save it as one of those and try again.";
-const TITLE_TOO_LONG = "Keep the title to 80 characters or fewer.";
+const NO_NAME = "Give your clip a name.";
+const TITLE_TOO_LONG = "Keep the name to 80 characters or fewer.";
 const CREDIT_TOO_LONG = "Keep the credit to 60 characters or fewer.";
 const NOT_SET_UP = "Submitting is not set up on this copy of the game.";
 const UPLOAD_FAILED = "The video did not upload. Check your connection and try again.";
@@ -66,7 +67,7 @@ function upload(url: string, key: string, path: string, body: Blob, onProgress?:
  */
 export async function submitClip(
   file: File,
-  info: { title?: string; credit?: string },
+  info: { title: string; credit?: string },
   onProgress?: (share: number) => void,
 ): Promise<{ data: { id: string }; error: null } | { data: null; error: string }> {
   const kind = kindOf(file);
@@ -74,7 +75,9 @@ export async function submitClip(
   if (file.size > MAX_BYTES) return { data: null, error: TOO_BIG };
   if (kind === "other video") return { data: null, error: WRONG_KIND };
   const title = tidy(info.title), credit = tidy(info.credit);
-  if (title && title.length > 80) return { data: null, error: TITLE_TOO_LONG };
+  // The name is what the bank shows; the Chamberlain checks that it fits the clip.
+  if (!title) return { data: null, error: NO_NAME };
+  if (title.length > 80) return { data: null, error: TITLE_TOO_LONG };
   if (credit && credit.length > 60) return { data: null, error: CREDIT_TOO_LONG };
 
   const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;

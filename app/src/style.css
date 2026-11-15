@@ -106,6 +106,8 @@ body:not(.solo) #solo { display: none; }
 /* Alphabet stickers: each letter its own colour, one white backing, one hard shadow. */
 .letters { display: inline-flex; flex-wrap: wrap; justify-content: center; filter: url(#die-cut); }
 .letters span { display: inline-block; color: var(--c); rotate: var(--r); translate: 0 var(--y); margin-right: -.02em; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
+/* A word of letters stays on one line; the line breaks only between words. */
+.letters .word { display: inline-flex; color: inherit; rotate: none; translate: none; margin-right: 0; }
 .wordmark { margin: 0; font: 400 clamp(72px, 10vw, 128px)/1 var(--sticker); padding: 6px 14px 16px; }
 
 /* ---------- Buttons ---------- */
@@ -159,9 +161,13 @@ body:not(.solo) #solo { display: none; }
 #screen-start .wordmark { font-size: clamp(60px, 7.5vw, 104px); padding-bottom: 12px; }
 .masthead { display: grid; gap: 10px; justify-items: center; }
 .masthead .note-wrap { max-width: min(700px, 100%); }
-/* How to play: a paper tag in the top right corner, where the Home tab sits on the left once a game starts. */
-.start-nav { position: absolute; z-index: 5; top: clamp(14px, 2.4vh, 24px); right: var(--gutter); }
-.start-nav .btn-quiet { rotate: 2deg; }
+/* Top right on every screen, across from the Home tab: How to play (start screen only) and Sound. */
+.side-nav { position: fixed; z-index: 20; top: 14px; right: 14px; display: flex; gap: 10px; align-items: center; }
+.side-nav .btn-quiet { min-height: 44px; padding: 8px 16px 8px 36px; font-size: 16px; }
+.side-nav .btn-quiet::before { left: 13px; width: 10px; height: 10px; }
+.side-nav #howtoLink { rotate: 2deg; }
+.side-nav #soundToggle { rotate: -1.5deg; }
+#soundToggle[aria-pressed="false"] { color: #6B5A48; }
 .clips { display: flex; flex-wrap: wrap; gap: 34px; justify-content: center; }
 /* Nobody sees the clip in blind mode, so each starter is a taped photo hidden under a question mark. */
 .clip {
@@ -206,11 +212,19 @@ body:not(.solo) #solo { display: none; }
 #screen-start .mode[aria-checked="true"] { background: var(--ticket); box-shadow: inset 0 0 0 2px var(--ink); }
 .mode-says { margin-top: -6px; font-size: 16px; min-height: 1.4em; }
 
-/* The bank: taped photos. Posters show in Watch first; in Blind they stay under the question mark. */
-.bank { display: flex; flex-wrap: wrap; gap: 28px 34px; justify-content: center; max-width: 1100px; }
+/* The bank: taped photos. Posters show in Normal; in Blind they stay under the question mark. */
+/* One row of taped photos you scroll sideways, so a full bank never pushes the Play ticket off the screen. The
+   padding leaves room for the tape, the picked clip's star and the hard shadows inside the scrolling row. */
+.bank {
+  display: flex; flex-wrap: nowrap; gap: 30px; justify-content: safe center; align-items: flex-start;
+  width: 100%; max-width: 1240px; overflow: auto hidden; overscroll-behavior-x: contain;
+  padding: 30px 26px 24px; margin: -12px 0 -8px; scroll-snap-type: x proximity; scroll-padding-inline: 26px;
+  scrollbar-width: thin; scrollbar-color: #B48C61 transparent;
+}
+.bank .clip { flex: 0 0 auto; scroll-snap-align: start; }
 .clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 body[data-mode="blind"] .clip-pic img { display: none; }
-body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
+body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .clip-credit { font-size: 12px; color: #6B5A48; min-height: 1em; }
 .clip.surprise .clip-pic { background: var(--stamp) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
 .bank-note { max-width: 46ch; }
@@ -277,6 +291,26 @@ body[data-mode="watch"] .clip-pic:has(img) .clip-q { display: none; }
 .curtain.r { right: 0; }
 .curtain.l i { clip-path: polygon(0 0, 100% 0, 96% 8%, 86% 18%, 70% 30%, 54% 42%, 42% 52%, 38% 57%, 42% 63%, 52% 74%, 63% 86%, 72% 100%, 0 100%); }
 .curtain.r i { clip-path: polygon(100% 0, 0 0, 4% 8%, 14% 18%, 30% 30%, 46% 42%, 58% 52%, 62% 57%, 58% 63%, 48% 74%, 37% 86%, 28% 100%, 100% 100%); }
+/* Closing curtains: two straight panels tucked out of sight that meet in the middle when a show ends
+   (.box.closed), on the reveal, and part again to open the crowning. One curve and one length for both. */
+.drapes { --curtain-ms: 900ms; position: absolute; z-index: 2; inset: 0 0 calc(var(--floor) * .4); overflow: hidden; pointer-events: none; }
+.drape { position: absolute; top: 0; bottom: 0; width: calc(50% + 2px); transition: translate var(--curtain-ms) cubic-bezier(.3, .7, .2, 1); }
+.drape.l { left: 0; translate: -101% 0; filter: drop-shadow(5px 0 0 var(--shade)); }
+.drape.r { right: 0; translate: 101% 0; filter: drop-shadow(-5px 0 0 var(--shade)); }
+.drape i {
+  display: block; height: 100%; background-color: #FFF4E8;
+  background-image: repeating-linear-gradient(90deg, rgba(30, 27, 24, .07) 0 3px, transparent 3px 46px), linear-gradient(90deg, rgba(217, 58, 43, .5) 50%, transparent 50%), linear-gradient(rgba(217, 58, 43, .5) 50%, transparent 50%);
+  background-size: auto, 20px 20px, 20px 20px;
+}
+.box.closed .drape { translate: 0 0; }
+/* The picture goes dark under the closing curtains, so the show never ends on a frozen frame. */
+#revealStage { transition: opacity 900ms cubic-bezier(.3, .7, .2, 1); }
+.box.closed #revealStage { opacity: 0; }
+/* Between acts: the reveal fades out once its curtains are shut, the crowning fades in with its own shut. */
+.screen.leaving { opacity: 0; transition: opacity .22s ease-out; }
+.screen.arriving { animation: arrive .22s ease-out both; }
+@keyframes arrive { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .drape, #revealStage { transition: none; } .screen.arriving { animation: none; } }
 .curtain .washi { top: calc(57% - 13px); width: 62%; height: 24px; }
 .curtain.l .washi { left: -6px; rotate: -10deg; }
 .curtain.r .washi { right: -6px; rotate: 9deg; }
@@ -462,7 +496,12 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .btn-main { width: 100%; }
   .btn-main .ticket { width: 100%; justify-content: center; }
   /* No sticky bars: on a phone a pinned ticket covered the first clip and the part chips. */
-  .start-nav { position: static; }
+  .bank .clip { width: 68vw; }
+  .side-nav { top: 8px; right: 8px; gap: 8px; }
+  .side-nav .btn-quiet { min-height: 40px; padding: 6px 12px 6px 30px; font-size: 14px; }
+  .side-nav .btn-quiet::before { left: 11px; }
+  /* Room for the corner tags above the wordmark. */
+  body[data-screen="start"] .screen { padding-top: 68px; }
   .modes-pick { gap: 12px; }
   .mode b { font-size: 26px; }
   #screen-start .modes-pick { width: 100%; }
@@ -517,5 +556,23 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
 
 /* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
-.lost { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
+/* Framing, before a whole-body turn (blind.ts): a paper tag at the bottom of the stage. After 12 s it becomes a
+   button ("Click here to start anyway"), for a room too small to fit in. */
+.framing-hint {
+  position: absolute; z-index: 6; left: 50%; bottom: 6%; translate: -50% 0; max-width: 86%; pointer-events: none;
+  padding: 10px 18px 12px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg;
+  font: 400 clamp(17px, 1.8vw, 24px)/1.3 var(--type); color: var(--ink); text-align: center;
+}
+.framing-hint.late { pointer-events: auto; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+/* Scoped to the notice: the crowning marks losing jesters .lost too, and a bare .lost pulled them onto the winner. */
+#lostNotice { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
 .place-who .aside { text-align: left; }
+
+/* Your clip is in: a note taped to the bottom left corner, over the page; hidden during a turn. */
+#clipReady { position: fixed; z-index: 30; left: 14px; bottom: 14px; width: min(420px, calc(100vw - 28px)); display: grid; gap: 10px; justify-items: start; }
+#clipReady .note { --lh: 30px; font-size: 22px; padding: 16px 18px 10px 50px; }
+#clipReady .row-actions { justify-content: flex-start; gap: 12px; padding-left: 8px; }
+#clipReady .link { background: var(--photo); box-shadow: var(--lift); padding: 8px 14px; }
+body[data-screen="turn"] #clipReady { display: none; }
+/* On a phone it sits at the top, under the corner tags, clear of the Play ticket at the bottom. */
+@media (max-width: 760px) { #clipReady { left: 8px; right: 8px; top: 62px; bottom: auto; width: auto; } }

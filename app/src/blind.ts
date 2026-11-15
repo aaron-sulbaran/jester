@@ -15,18 +15,20 @@
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
-import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index.ts";
+import { boxFromLandmarks, hideUnsureJoints, type Guide, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { blindView, busierHand, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { addHands } from "./clipside/hands.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
-import { playWithSound } from "./sound.ts";
+import { playWithSound, setAloud } from "./sound.ts";
+import { castRowShare, dropShrunkCrops } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
 
@@ -58,6 +60,8 @@ interface Seat {
   result: { score: number | null; tier: string | null; lagMs: number } | null;
   /** The performance in Lisa's recorder format (pose only), for her stick figure reveal. */
   recording: unknown;
+  /** Normal mode: the clip itself plays under the role during the turn (no effect on a drawn scene with no video). */
+  withClip?: boolean;
 }
 
 export interface BlindDeps {
@@ -123,10 +127,21 @@ export interface GameOptions {
   /** How the recorded reveal looks (default: the dark card). Set by the look. */
   theme?: Partial<RevealTheme>;
   /**
+   * Play the reveal's sound on this device's speakers (default true). Online, only the host's laptop does, so two
+   * laptops side by side do not play it twice; every device's recorded reveal still has the sound.
+   */
+  revealAloud?: boolean;
+  /**
    * Record the reveal video at the end (default true). Online blind mode turns it off: each device plays
    * one role, so the group reveal is drawn from everyone's results once they are all in.
    */
   reveal?: boolean;
+  /**
+   * Normal mode (default false, Blind): during each turn the clip's own video plays on the role's side, in time
+   * with the turn's clock, with the role drawn over it so the player knows who to copy. A drawn scene with no
+   * video plays as in Blind. Scoring is the same either way.
+   */
+  showClip?: boolean;
 }
 
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -513,12 +528,17 @@ function steadyRole(g: Guide): Guide {
   return { ...g, timeline, boxTrack };
 }
 
-/** The role as drawn: every point shown, using the tracker's best guess where it was unsure. Scoring keeps the real visibility. */
+/**
+ * The role as drawn: every point shown, using the tracker's best guess where it was briefly unsure, except
+ * joints it stays unsure of for a while (hideUnsureJoints), which are left out so limbs do not flicker at
+ * guessed spots. Scoring keeps the real visibility.
+ */
 function fullFigure(g: Guide): Guide {
   if (!g.timeline || isThing(g)) return g;
+  const shown = hideUnsureJoints(g.timeline);
   return {
     ...g,
-    timeline: { ...g.timeline, frames: g.timeline.frames.map((f) => ({ ...f, landmarks: f.landmarks && f.landmarks.map(([x, y, v]) => [x, y, Math.max(v, DRAWN_VISIBILITY)] as const) })) },
+    timeline: { ...shown, frames: shown.frames.map((f) => ({ ...f, landmarks: f.landmarks && f.landmarks.map(([x, y, v]) => [x, y, v === 0 ? 0 : Math.max(v, DRAWN_VISIBILITY)] as const) })) },
   };
 }
 
@@ -562,6 +582,8 @@ function guideAt(g: Guide, ms: number): Guide {
     boxTrack: { ...g.boxTrack, frames: [{ tMs: ms, box }] },
     outlines: [outline],
     timeline: g.timeline && { ...g.timeline, frames: [{ tMs: ms, landmarks }] },
+    // Fingers do not blend: the nearer of the two samples, and the busier-hand pick still looks at the whole clip.
+    ...(g.hands ? { handFocus: busierHand(g), hands: [(u < 0.5 ? g.hands[i] : g.hands[j]) ?? g.hands[i] ?? g.hands[j] ?? null] } : {}),
   };
 }
 
@@ -681,10 +703,12 @@ export function dribbleScene(): Scene {
 
 /** A video read by the clip side. Returns the sentence why not when it has no one to copy. */
 export async function videoScene(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<Scene | string> {
-  const prepared = await prepareVideo(file, video, onProgress);
+  const prepared = await prepareVideo(file, video, (share) => onProgress(share * 0.8));
   if (prepared.error !== null) return prepared.error;
-  const { guides, skipped } = subjectGuides(prepared.data);
-  if (guides.length === 0) return skipped[0]?.reason ?? "No one to copy in this clip.";
+  const found = subjectGuides(prepared.data);
+  if (found.guides.length === 0) return found.skipped[0]?.reason ?? "No one to copy in this clip.";
+  // Finger detail for the hands the player has to copy; a failure here leaves the guides as they were.
+  const guides = await addHands(found.guides, file, video, (share) => onProgress(0.8 + share * 0.2));
   const g = guides[0]!;
   return {
     name: file.name, width: g.source.width, height: g.source.height,
@@ -739,21 +763,50 @@ function simulatedFor(s: Seat, scene: Scene, deps: BlindDeps): Player {
 
 /** How a role is drawn for its player: a person centred and sized to fill the view, a thing in its place so its travel shows. */
 function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
+  // Normal mode: the whole clip in its own shape, the role drawn in place on it.
+  const video = s.withClip ? scene.video : null;
+  if (video) {
+    fitCanvas(canvas, scene.width / scene.height);
+    return { view: blindView(s.guide, canvas, "exact"), style: { background: "transparent", color: s.color }, video };
+  }
   // A person fills whatever space the screen gives the role (half the stage while playing); a thing keeps
   // the clip's shape, so where it travels stays true.
   const shown = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 0;
   fitCanvas(canvas, !isThing(s.guide) && shown ? shown : scene.width / scene.height);
-  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color } };
+  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color }, video: null };
+}
+
+/** Normal mode: the clip's current frame on `canvas`, where the role's view puts the clip, a little dimmed so the role reads on top. */
+function paintClip(canvas: HTMLCanvasElement, video: HTMLVideoElement, view: ReturnType<typeof roleView>, g: Guide) {
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#16161d";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (video.readyState < 2) return;
+  const { scale, offsetX, offsetY } = view.view;
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.drawImage(video, offsetX, offsetY, g.source.width * scale, g.source.height * scale);
+  ctx.restore();
 }
 
 /** The role's first frame, the only thing the player sees of it before the turn. */
 function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   const { guideCanvas } = ui.playStage();
-  const { view, style } = roleView(s, guideCanvas, scene);
+  const shown = roleView(s, guideCanvas, scene);
+  const { view, style, video } = shown;
   const g = s.guide;
   // The first frame where the subject is visible.
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
-  drawBlind(guideCanvas, g, first, s.look, view, style);
+  const draw = () => {
+    if (video) paintClip(guideCanvas, video, shown, g);
+    drawBlind(guideCanvas, g, first, s.look, view, style);
+  };
+  draw();
+  // Normal mode: show the clip at that moment under the role (only while nothing else is playing it).
+  if (video && video.paused) {
+    video.currentTime = (scene.startMs + (s.original.boxTrack.frames[first]?.tMs ?? 0)) / 1000;
+    void seeked(video).then(() => { if (video.paused) draw(); });
+  }
 }
 
 /**
@@ -763,8 +816,9 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
 function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof roleView>, ms: number, leadMs: number, scratch: HTMLCanvasElement) {
   if (leadMs > 0) {
     scratch.width = canvas.width; scratch.height = canvas.height;
-    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style);
+    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.video ? { ...view.style, background: "#000" } : view.style);
   }
+  if (view.video) paintClip(canvas, view.video, view, s.guide);
   drawBlind(canvas, guideAt(s.guide, ms), 0, s.look, view.view, view.style);
   if (leadMs > 0) {
     const ctx = canvas.getContext("2d")!;
@@ -780,7 +834,8 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
 async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement }, onFrame: (f: { landmarks: LandmarkObject[] | null; aspect: number }) => void) {
   const host = stage.guideCanvas.parentElement!;
   const hint = document.createElement("div");
-  hint.style.cssText = "position:absolute;left:0;right:0;bottom:6%;text-align:center;font:800 clamp(18px,3vw,34px) system-ui,sans-serif;color:#fff;text-shadow:0 2px 8px #000,0 0 3px #000;padding:0 14px;z-index:6;pointer-events:none";
+  // Styled by the look (.framing-hint in style.css): a paper tag at the bottom of the stage.
+  hint.className = "framing-hint";
   hint.textContent = "Step into view so your whole body is in the picture.";
   host.appendChild(hint);
   stage.playerCanvas.style.opacity = "1"; // the camera is hidden until the countdown; bring it in so they can position themselves
@@ -788,11 +843,11 @@ async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasEl
   await new Promise<void>((resolve) => {
     let finished = false;
     const done = () => { if (!finished) { finished = true; resolve(); } };
-    const late = window.setTimeout(() => { hint.style.pointerEvents = "auto"; hint.style.cursor = "pointer"; hint.onclick = done; hint.dataset.late = "1"; }, 12000);
+    const late = window.setTimeout(() => { hint.classList.add("late"); hint.onclick = done; hint.dataset.late = "1"; }, 12000);
     player.start((f) => {
       onFrame({ landmarks: f.landmarks as LandmarkObject[] | null, aspect: f.aspect });
       const r = calibrator.update(f.landmarks as never, 30);
-      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " (Click here to start anyway.)" : "");
+      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " Can't fit? Click here to start anyway." : "");
       if (r.passed) { clearTimeout(late); done(); }
     }, () => -1);
   });
@@ -822,6 +877,30 @@ interface ClipSound {
 /** The sound playing now, so a new one (or leaving) never leaves an old one running. */
 let playingSound: ClipSound | null = null;
 
+/** The clip's sound fades in over this long when a turn or preview starts, and out over this long when it ends, instead of cutting. */
+const FADE_IN_MS = 150, FADE_OUT_MS = 400;
+/** The fade running on each clip, so a new fade, a seek or a new sound cancels it. */
+const fades = new WeakMap<HTMLVideoElement, () => void>();
+
+/**
+ * Moves the clip's volume to `to` over `ms`, then calls `done`. Anything that seeks the clip meanwhile (the
+ * next turn, the reveal) cancels the fade and puts the volume back to full, so a fade never pauses or quiets
+ * someone else's playback.
+ */
+function fadeVolume(video: HTMLVideoElement, to: number, ms: number, done?: () => void) {
+  fades.get(video)?.();
+  const from = video.volume, t0 = performance.now();
+  const cancel = () => { clearInterval(timer); video.removeEventListener("seeking", interrupted); fades.delete(video); };
+  const interrupted = () => { cancel(); video.volume = 1; };
+  const timer = window.setInterval(() => {
+    const u = Math.min(1, (performance.now() - t0) / ms);
+    video.volume = from + (to - from) * u;
+    if (u >= 1) { cancel(); done?.(); }
+  }, 20);
+  video.addEventListener("seeking", interrupted);
+  fades.set(video, cancel);
+}
+
 function clipSound(scene: Scene, speed: number): ClipSound {
   playingSound?.stop();
   const video = scene.video;
@@ -831,7 +910,9 @@ function clipSound(scene: Scene, speed: number): ClipSound {
     ready() {
       if (!video) return Promise.resolve();
       return seek ??= (async () => {
+        fades.get(video)?.();
         video.pause();
+        video.volume = 1;
         video.currentTime = scene.startMs / 1000;
         await seeked(video);
       })();
@@ -843,8 +924,11 @@ function clipSound(scene: Scene, speed: number): ClipSound {
         if (stopped) return;
         video.playbackRate = speed;
         video.preservesPitch = true;
+        fades.get(video)?.();
+        video.volume = 0;
         await playWithSound(video);
-        if (stopped) { video.pause(); return; }
+        if (stopped) { video.pause(); video.volume = 1; return; }
+        fadeVolume(video, 1, FADE_IN_MS);
       }
       started = lastWall = performance.now();
       lastMs = 0;
@@ -861,8 +945,14 @@ function clipSound(scene: Scene, speed: number): ClipSound {
       return lastMs + (wall - lastWall);
     },
     stop() {
+      if (stopped) return;
       stopped = true;
-      if (video) { video.pause(); video.playbackRate = 1; }
+      if (video) {
+        const settle = () => { video.pause(); video.playbackRate = 1; video.volume = 1; };
+        // Still sounding: fade out, then pause. The turn's clock and frames have already ended.
+        if (started >= 0 && !video.paused && !video.ended) fadeVolume(video, 0, FADE_OUT_MS, settle);
+        else { fades.get(video)?.(); settle(); }
+      }
       if (playingSound === sound) playingSound = null;
     },
   };
@@ -960,7 +1050,8 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
   // The shape to copy follows how big you look: closer to the camera makes it bigger, further makes it smaller.
   const matcher = new SizeMatcher();
-  const sizeToPlayer = !followsBox(s) && !isThing(g);
+  // In Normal mode the role stays in its place on the clip.
+  const sizeToPlayer = !followsBox(s) && !isThing(g) && !view.video;
   const shownHeight = (c: HTMLCanvasElement) => {
     const r = c.getBoundingClientRect();
     return displayedHeight(r.width, r.height, c.width, c.height, getComputedStyle(c).objectFit === "cover" ? "cover" : "contain");
@@ -1092,14 +1183,14 @@ export const REVEAL_THEME: RevealTheme = { card: "#16161d", ink: "#f2f2f5", soft
 let theme: RevealTheme = { ...REVEAL_THEME };
 const font = (H: number, k: number, weight = 600) => `${weight} ${Math.round(H * k)}px ${theme.font}`;
 
-/** The opening card. */
+/** The opening card. Every line is held to the card's width (fillText's last argument): a tall clip makes a narrow card. */
 function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneName: string, players: number, ms: number) {
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = Math.min(1, ms / 400);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4);
-  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
-  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
+  ctx.fillStyle = theme.accent; ctx.font = font(H, 0.12, 800); ctx.fillText(theme.title, W / 2, H * 0.4, W * 0.9);
+  ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56, W * 0.9);
+  ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66, W * 0.9);
   ctx.globalAlpha = 1;
 }
 
@@ -1107,11 +1198,11 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
 function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows: ResultRow[], faces: (HTMLCanvasElement | null)[], ms: number) {
   ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "middle";
-  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13);
+  ctx.textAlign = "center"; ctx.fillStyle = theme.accent; ctx.font = font(H, 0.08, 800); ctx.fillText("The cast", W / 2, H * 0.13, W * 0.9);
   const rowH = Math.min(H * 0.17, (H * 0.78) / Math.max(1, rows.length));
   rows.forEach((r, i) => {
-    // Rows slide in one after another.
-    const t = Math.min(1, Math.max(0, (ms - 300 - i * 450) / 350));
+    // Rows slide in one after another; the first is there at once, so the card never shows only its title.
+    const t = castRowShare(ms, i);
     if (t <= 0) return;
     const y = H * 0.25 + i * rowH + rowH / 2;
     ctx.globalAlpha = t;
@@ -1121,8 +1212,8 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
     if (img) ctx.drawImage(img, x0, y - face / 2, face, face);
     ctx.strokeStyle = r.color; ctx.lineWidth = 3; ctx.strokeRect(x0, y - face / 2, face, face);
     ctx.textAlign = "left";
-    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15);
-    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2);
+    ctx.fillStyle = r.color; ctx.font = font(H, 0.05, 700); ctx.fillText(r.name, x0 + face + W * 0.025, y - rowH * 0.15, W * 0.92 - (x0 + face + W * 0.025) - W * 0.14);
+    ctx.fillStyle = theme.ink; ctx.font = font(H, 0.038, 400); ctx.fillText(`as ${r.role}`, x0 + face + W * 0.025, y + rowH * 0.2, W * 0.92 - (x0 + face + W * 0.025) - W * 0.14);
     ctx.textAlign = "right";
     ctx.fillStyle = r.winner ? theme.accent : theme.ink; ctx.font = font(H, 0.07, 800);
     ctx.fillText(r.score == null ? "-" : String(r.score), W * 0.92, y - rowH * 0.08);
@@ -1140,11 +1231,12 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
 /** Each player's cutouts placed on their role, in reveal ms (the clip's own speed) from the start of the stretch. */
 function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   const toPlay = (ms: number) => ms / speed;
-  // Players who drew the same role stand side by side around it instead of on top of each other.
+  // Players who drew the same role stand on it together, each nudged a little aside so both stay visible. The
+  // step is small (0.4 of a body): at 1.3 each player landed beside the person they were copying, not on them.
   const shiftOf = (s: Seat) => {
     const same = seats.filter((o) => o.guide === s.guide);
     const k = same.indexOf(s);
-    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 1.3;
+    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 0.4;
   };
   return seats.map((s) => ({
     cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
@@ -1154,7 +1246,7 @@ function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   }));
 }
 
-async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }): Promise<string | null> {
+async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void, control?: { speed: number }, aloud = true): Promise<string | null> {
   const scene = played;
   // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
   // about 7 times. Wide clips stay 960 wide.
@@ -1190,8 +1282,10 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     c.fillStyle = color; c.fillText(text, W / 2, H * 0.1);
     c.restore();
   };
-  // Each player's picture on the cast card: a cutout from the middle of their turn.
-  const faces = seats.map((s) => s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
+  // Each player's picture on the cast card: their face, the same picture the crowning jesters wear, so it always
+  // shows who they are; a cutout from the middle of their turn only when no face was caught (a crop there can
+  // miss the head).
+  const faces = seats.map((s) => s.face ?? s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
   const segments: Segment[] = [
     { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
     {
@@ -1206,7 +1300,11 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
-  return recordSegments(canvas, segments, onProgress, control, video);
+  if (!video || aloud) return recordSegments(canvas, segments, onProgress, control, video);
+  // Recorded with its sound, played without it here (setAloud), then the speakers come back for the next turn.
+  setAloud(video, false);
+  try { return await recordSegments(canvas, segments, onProgress, control, video); }
+  finally { setAloud(video, true); }
 }
 
 // ---- The game ----
@@ -1235,7 +1333,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   const scene = slowScene({ ...clip, guides: clip.guides.map(fullFigure) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
-  for (const s of seats) s.original = clip.guides[scene.guides.indexOf(s.guide)]!;
+  for (const s of seats) { s.original = clip.guides[scene.guides.indexOf(s.guide)]!; s.withClip = !!options.showClip; }
   (window as any).__jesterBlind = { seats, scene, speed };
   for (let i = 0; i < seats.length; i++) {
     const s = seats[i]!;
@@ -1278,7 +1376,7 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
   ui.results(rows);
   if (options.reveal === false) return rows;
   if (ui.revealControl) ui.revealControl.speed = 1;
-  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl);
+  const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share), ui.revealControl, options.revealAloud ?? true);
   (window as any).__jesterBlindReveal = url;
   ui.revealReady(url);
   return rows;
@@ -1319,7 +1417,8 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
     seat.face = r.face ?? null;
-    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    // Their own pictures, without frames where the tracker lost the head (dropShrunkCrops), the same on every device.
+    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = dropShrunkCrops(r.cutouts); return seat; }
     // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;

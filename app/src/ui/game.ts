@@ -3,12 +3,13 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
-import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
+import { demoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
+import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
 import { playWithSound } from "../sound.ts";
-import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
+import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, motionOf, rankFor } from "../feelText.ts";
@@ -20,6 +21,7 @@ import { BANK_PREFIX, UPLOAD_ID, getHostUpload, sceneFromBank, waitForUploadedSc
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
 import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
 import { unpackCutouts, unpackFace } from "../packMedia.ts";
+import { keepFinished, sameDancer } from "../recapRules.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -56,17 +58,18 @@ const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((re
   signal?.addEventListener("abort", stop, { once: true });
 });
 
-const SCREENS = ["howto", "start", "room", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "start", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 /** Screens where a game is under way: leaving from these asks first. */
-const MID_GAME: readonly ScreenName[] = ["watch", "handover", "turn", "drumroll", "reveal"];
+const MID_GAME: readonly ScreenName[] = ["handover", "turn", "drumroll", "reveal"];
 
 /** Shows one screen and hides the rest. The body carries the name too, so the look can theme per screen. */
 function show(name: ScreenName) {
   for (const s of SCREENS) $(`screen-${s}`).hidden = s !== name;
   document.body.dataset.screen = name;
-  // Home shows everywhere except the start screen and How to play.
+  // Home shows everywhere except the start screen and How to play; How to play's tag only on the start screen.
   $("gameNav").hidden = name === "start" || name === "howto";
+  $("howtoLink").hidden = name !== "start";
   window.scrollTo(0, 0);
 }
 
@@ -77,8 +80,8 @@ const HOWTO_SEEN = "jester.howtoSeen";
 
 interface StarterClip { id: string; title: string; hint: string; make: () => Scene }
 
-/** Blind: you only see your shape, everyone finds out at the end. Watch first: everyone watches the clip, then plays it. */
-type Mode = "blind" | "watch";
+/** Blind: you only see your shape, everyone finds out at the end. Normal: you dance along with the clip itself. */
+type Mode = "blind" | "normal";
 /** What the Play ticket will start. A surprise is a random bank clip nobody sees first. */
 type Pick = { kind: "bank"; clip: BankClip } | { kind: "starter"; starter: StarterClip } | { kind: "surprise" };
 
@@ -110,14 +113,19 @@ function letters(el: HTMLElement, text: string, color?: string) {
   const wrap = document.createElement("span");
   wrap.className = "letters";
   wrap.setAttribute("aria-hidden", "true");
+  // Letters are grouped by word (each word keeps its trailing space), so a long line such as "Lisa and Aaron
+  // tie!" wraps between words on a phone, never in the middle of one.
+  let word: HTMLSpanElement | null = null;
   [...text].forEach((ch, i) => {
+    if (!word) { word = document.createElement("span"); word.className = "word"; wrap.appendChild(word); }
     const span = document.createElement("span");
     span.textContent = ch === " " ? "\u00a0" : ch;
     span.style.setProperty("--c", ch === " " ? "transparent" : color ?? STICKER_COLORS[i % STICKER_COLORS.length]!);
     span.style.setProperty("--r", `${TILT[i % TILT.length]}deg`);
     span.style.setProperty("--y", `${BOB[i % BOB.length]}px`);
     span.style.setProperty("--n", String(i));
-    wrap.appendChild(span);
+    word.appendChild(span);
+    if (ch === " ") word = null;
   });
   el.removeAttribute("aria-label");
   el.replaceChildren(said, wrap);
@@ -178,7 +186,7 @@ export function initGame(deps: GameDeps) {
       b.querySelector(".clip-pic")!.prepend(img);
     }
     const [name, hint, credit] = p.kind === "surprise" ? ["Surprise me", "A clip from the bank. Nobody sees it until the end.", ""]
-      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? `by ${p.clip.credit}` : ""]
+      : p.kind === "bank" ? [p.clip.title, castLine(p.clip.people, p.clip.things, p.clip.durationMs), p.clip.credit ? (/^sent in/i.test(p.clip.credit) ? p.clip.credit : `by ${p.clip.credit}`) : ""]
       : [p.starter.title, p.starter.hint, ""];
     b.querySelector(".clip-name")!.textContent = name;
     b.querySelector(".clip-hint")!.textContent = hint;
@@ -230,6 +238,38 @@ export function initGame(deps: GameDeps) {
     if (r.error) startProblem(`The bank did not load: ${r.error}`);
   });
 
+  // ---- Your clip is in: a clip sent from this tab joined the bank (submissionWatch.ts) ----
+  let readyClip: BankClip | null = null;
+  /** Playing it starts from the start screen, so mid-round the notice waits for the round to end. */
+  const syncReady = () => {
+    if (!readyClip) return;
+    const between = document.body.dataset.screen === "start" || document.body.dataset.screen === "results";
+    $("clipReadyText").textContent = between
+      ? `Good news! "${readyClip.title}" is in the bank. The Chamberlain let it in.`
+      : `Good news! "${readyClip.title}" is in the bank. It's on the start screen after this round.`;
+    $("clipReadyPlay").hidden = !between;
+  };
+  new MutationObserver(syncReady).observe(document.body, { attributes: true, attributeFilter: ["data-screen"] });
+  watchSubmissions((clip) => {
+    if (!bank.some((c) => c.id === clip.id)) bank = [...bank, clip];
+    renderBank();
+    readyClip = clip;
+    $("clipReady").hidden = false;
+    syncReady();
+  });
+  $("clipReadyPlay").addEventListener("click", () => {
+    const clip = readyClip;
+    readyClip = null;
+    $("clipReady").hidden = true;
+    if (!clip) return;
+    if (document.body.dataset.screen !== "start") show("start");
+    choose({ kind: "bank", clip });
+  });
+  $("clipReadyLater").addEventListener("click", () => {
+    readyClip = null;
+    $("clipReady").hidden = true;
+  });
+
   $("play").addEventListener("click", async () => {
     if (!pick) return;
     $("startProblem").hidden = true;
@@ -252,14 +292,17 @@ export function initGame(deps: GameDeps) {
     problem.hidden = true;
     if (!file) return say("Pick a clip to send.");
     if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
+    const title = $<HTMLInputElement>("submitTitle").value.trim();
+    if (!title) return say("Give your clip a name.");
     const send = $<HTMLButtonElement>("submitSend");
     const bar = $<HTMLProgressElement>("submitBar");
     send.disabled = true; bar.hidden = false; bar.value = 0;
-    const title = $<HTMLInputElement>("submitTitle").value.trim();
     const credit = $<HTMLInputElement>("submitCredit").value.trim();
-    const r = await submitClip(file, { ...(title ? { title } : {}), ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
+    const r = await submitClip(file, { title, ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
     send.disabled = false; bar.hidden = true;
     if (r.error !== null) return say(r.error);
+    // This tab watches the bank for it, and says so when it is let in (submissionWatch.ts).
+    void rememberSubmission(file, title);
     $("submitForm").hidden = true;
     $("submitThanks").hidden = false;
   });
@@ -358,8 +401,7 @@ export function initGame(deps: GameDeps) {
     for (const n of cast) restartsLeft.set(n, RESTARTS_PER_PLAYER);
     running = true;
     try {
-      if (mode === "watch") await watchFirst(scene);
-      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme() });
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme(), showClip: mode === "normal" });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -375,7 +417,7 @@ export function initGame(deps: GameDeps) {
   // Each player plays their own part on their own device, so there is no "pass the laptop" screen: the handover
   // is skipped, nobody's results are shown until everyone is in, then everyone sees the same reveal and results.
 
-  const lobby = initRoomLobby({ clipVideo: deps.clipVideo, show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+  const lobby = initRoomLobby({ clipVideo: deps.clipVideo, mode: () => mode, show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
 
   /** The scene a round names: built in, from the bank, or the host's upload (the host has it; the others wait for it). */
   async function sceneForRound(room: LobbyRoom, round: OnlineRound): Promise<{ data: Scene; error: null } | { data: null; error: string }> {
@@ -407,13 +449,16 @@ export function initGame(deps: GameDeps) {
     const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
     const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
     try {
-      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false, showClip: round.extra?.mode === "normal" });
       await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
+      type Standing = { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null };
+      // Everyone who finished, as of now: the room forgets a player it drops while their pictures are still coming.
+      const finished = room.standings() as Standing[];
       await whenMediaIn(room as never); // their pictures, so the recap and the crowning show real people
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const standings = keepFinished(finished, room.standings() as Standing[]);
       const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
         name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
@@ -422,12 +467,23 @@ export function initGame(deps: GameDeps) {
         face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
       })));
       // What this device got from each player, for finding out why someone is missing from a recap.
-      const summary = results.map((r) => ({ name: r.name, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
+      const summary = results.map((r) => ({ name: r.name, role: r.guideIndex, cutouts: r.cutouts?.length ?? 0, face: !!r.face, poseFrames: r.timeline?.frames.length ?? 0 }));
       console.info("[online] recap inputs", summary);
+      // A dealt role with nobody on it in the recap: that dancer stays as filmed, neither covered nor replaced.
+      const dealt = Object.keys(round.extra?.assign ?? {});
+      const missing = dealt.filter((id) => !standings.some((s) => s.id === id));
+      if (missing.length) console.warn("[online] dealt a role but missing from the recap:", missing, "players now:", standings.map((s) => s.id));
+      // Two roles that follow the same dancer (a tracking slip in the clip) stack both players on one dancer.
+      const people = played.guides.map((g, i) => ({ i, g })).filter(({ g }) => g.subject.kind === "person");
+      for (let a = 0; a < people.length; a++) for (let b = a + 1; b < people.length; b++) {
+        const share = sameDancer(people[a]!.g.boxTrack.frames.map((f) => f.box), people[b]!.g.boxTrack.frames.map((f) => f.box));
+        if (share > 0.2) console.warn(`[online] roles ${people[a]!.i} and ${people[b]!.i} are on the same dancer in ${Math.round(share * 100)}% of the clip`);
+      }
       (window as unknown as { __jesterRecap?: unknown }).__jesterRecap = summary;
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
-      await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });
+      // Only the host's laptop plays the recap's sound aloud, so laptops side by side do not play it twice, out of step.
+      await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme(), revealAloud: !!room.isHost });
       live();
     } catch (err) {
       if (game?.signal.aborted) return; // they left on purpose
@@ -489,6 +545,17 @@ export function initGame(deps: GameDeps) {
     restart();
   });
 
+  // ---- Sound: one switch for the game's sounds and the host's voice (sfx.ts keeps it, default on) ----
+
+  const soundButton = $<HTMLButtonElement>("soundToggle");
+  const showSound = () => {
+    const on = sfx.soundOn();
+    soundButton.setAttribute("aria-pressed", String(on));
+    soundButton.textContent = on ? "Sound: on" : "Sound: off";
+  };
+  soundButton.addEventListener("click", () => { sfx.setSound(!sfx.soundOn()); showSound(); });
+  showSound();
+
   // ---- How to play ----
 
   $("howtoLink").addEventListener("click", () => show("howto"));
@@ -496,37 +563,6 @@ export function initGame(deps: GameDeps) {
     try { localStorage.setItem(HOWTO_SEEN, "1"); } catch { /* private window: it just shows again next time */ }
     show("start");
   });
-
-  /** Watch first: the whole group watches the clip once (or more) before the parts are dealt. */
-  async function watchFirst(s: Scene) {
-    show("watch");
-    const canvas = $<HTMLCanvasElement>("watchStage");
-    canvas.height = Math.round(canvas.width * (s.height / s.width));
-    const ctx = canvas.getContext("2d")!;
-    let raf = 0;
-    const play = () => {
-      cancelAnimationFrame(raf);
-      const t0 = performance.now();
-      if (s.video) { s.video.currentTime = s.startMs / 1000; void playWithSound(s.video); }
-      const frame = () => {
-        const ms = performance.now() - t0;
-        if (s.video) ctx.drawImage(s.video, 0, 0, canvas.width, canvas.height);
-        else drawDemoScene(ctx, canvas.width, canvas.height, s, Math.min(ms, s.durationMs));
-        if (ms < s.durationMs) raf = requestAnimationFrame(frame);
-        else s.video?.pause();
-      };
-      raf = requestAnimationFrame(frame);
-    };
-    const again = $("watchAgain");
-    again.addEventListener("click", play);
-    play();
-    try { await clicked($("watchGo"), sig()); }
-    finally {
-      again.removeEventListener("click", play);
-      cancelAnimationFrame(raf);
-      s.video?.pause();
-    }
-  }
 
   const ui: BlindUi = {
     async handover(player, previous) {
@@ -557,7 +593,7 @@ export function initGame(deps: GameDeps) {
       turn.dataset.state = "part";
       turn.style.setProperty("--who", player.color);
       $("turnName").textContent = `${player.name}'s turn`;
-      $("turnSecret").textContent = mode === "watch" ? "You saw the clip. This shape is your part." : "What are you? You'll find out at the end.";
+      $("turnSecret").textContent = mode === "normal" ? "Dance along with the clip. Your part is in your colour." : "What are you? You'll find out at the end.";
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       if (!startingOver || role.problem) {
@@ -649,6 +685,9 @@ export function initGame(deps: GameDeps) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
+      // A fresh show: the curtains open and the picture is up (the last game left them shut).
+      $("screen-reveal").classList.remove("leaving");
+      $("screen-reveal").querySelector(".box")?.classList.remove("closed");
       show("reveal");
     },
 
@@ -657,15 +696,41 @@ export function initGame(deps: GameDeps) {
       videoUrl = url;
       // The game itself has finished; the crowning and results need no leave check.
       running = false;
-      try { await crown(); } catch { return; /* left from the crowning */ }
+      try { await curtainCall(); await crown(); } catch { return; /* left from the curtain call or the crowning */ }
       showResults();
     },
   };
 
   /** Each player wears the jester colourway that matches their colour (player 1 is p1, and so on). */
   function variantOf(row: ResultRow) {
-    const i = playerColors().indexOf(row.color);
-    return variantFor(i < 0 ? rows.indexOf(row) : i);
+    const own = variantOfColour(row.color);
+    if (own) return own;
+    // A colour with no rendered jester gets the first colourway nobody else at the table is wearing, so two
+    // players never crown as the same jester.
+    const taken = new Set(rows.map((r) => variantOfColour(r.color)).filter((v): v is string => v !== null));
+    const free = VARIANTS.filter((v) => !taken.has(v));
+    const unmatched = rows.filter((r) => variantOfColour(r.color) === null);
+    return free[unmatched.indexOf(row)] ?? variantFor(rows.indexOf(row));
+  }
+
+  // ---- Between the reveal and the crowning: the curtain call ----
+
+  /** How long the curtains take to close or open; style.css uses the same length (.drapes, #revealStage). */
+  const CURTAIN_MS = 900;
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /**
+   * The show is over: the reveal's curtains close while the picture goes dark, a beat with them shut, then the
+   * screen fades out. The crowning then fades in with its own curtains shut and opens them (see crown()).
+   * With reduced motion the crowning simply follows, as before.
+   */
+  async function curtainCall() {
+    if (calm()) return;
+    const screen = $("screen-reveal");
+    screen.querySelector(".box")?.classList.add("closed");
+    await wait(CURTAIN_MS + 250, sig());
+    screen.classList.add("leaving");
+    await wait(220, sig());
   }
 
   // ---- The crowning ----
@@ -675,6 +740,12 @@ export function initGame(deps: GameDeps) {
    * and lands on the winner, who does the win dance while the rest slump. Resolves on "See the scores".
    */
   async function crown() {
+    // The crowning arrives with its curtains shut, as the reveal left them, and opens them before the drum roll.
+    const crownScreen = $("screen-crown");
+    const crownBox = crownScreen.querySelector(".box");
+    const opening = !calm();
+    crownBox?.classList.toggle("closed", opening);
+    crownScreen.classList.toggle("arriving", opening);
     show("crown");
     // Stand them in seat order, not score order, so the spotlight has somewhere to travel.
     const seated = [...rows].sort((a, b) => playerColors().indexOf(a.color) - playerColors().indexOf(b.color));
@@ -751,9 +822,21 @@ export function initGame(deps: GameDeps) {
 
     const again = () => { cancel = true; void run(); };
     $("crownAgain").addEventListener("click", again);
-    void run();
+    let done = false;
+    // The curtains part once the screen has faded in; the drum roll and spotlight start about two thirds open.
+    const begin = async () => {
+      if (opening) {
+        await wait(220, sig());
+        crownScreen.classList.remove("arriving");
+        crownBox?.classList.remove("closed");
+        await wait(Math.round(CURTAIN_MS * 0.65), sig());
+      }
+      if (!done) void run();
+    };
+    void begin().catch(() => { /* left mid-opening */ });
     try { await clicked($("crownGo"), sig()); }
     finally {
+      done = true;
       cancel = true;
       roll();
       $("crownAgain").removeEventListener("click", again);

@@ -4,8 +4,9 @@
 
 import type { Guide } from "../../clip/src/index.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
+import { addHands } from "./clipside/hands.ts";
 import {
-  BANK_SCHEMA, bankEntry, emptyBankIndex, guidesJson, readBankIndex, slugFor, withClip,
+  BANK_SCHEMA, bankEntry, bankIdFor, cleanText, emptyBankIndex, guidesJson, readBankIndex, withClip,
   type BankEntry, type BankIndex,
 } from "./bankIndex.ts";
 
@@ -122,11 +123,13 @@ export const titleFrom = (name: string) => name.replace(/\.[^.]+$/, "").replace(
 /** People and things in the clip, by the calls blind mode uses. `video` is left pointing at the file. */
 export async function analyseClip(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<Result<Found>> {
   video.pause();
-  const prepared = await prepareVideo(file, video, onProgress, { things: true });
+  const prepared = await prepareVideo(file, video, (share) => onProgress(share * 0.8), { things: true });
   if (prepared.error !== null) return { data: null, error: prepared.error };
   const found = subjectGuides(prepared.data);
   if (found.guides.length === 0) return { data: null, error: found.skipped[0]?.reason ?? "No one to copy in this clip." };
-  return { data: found, error: null };
+  // Finger detail for every person in the clip (a second pass at a larger size).
+  const guides = await addHands(found.guides, file, video, (share) => onProgress(0.8 + share * 0.2));
+  return { data: { ...found, guides }, error: null };
 }
 
 export function whenReady(video: HTMLVideoElement): Promise<void> {
@@ -148,6 +151,17 @@ export function seek(video: HTMLVideoElement, seconds: number): Promise<void> {
 
 // ---- Writing a clip into the bank ----
 
+let bankQueue: Promise<unknown> = Promise.resolve();
+/**
+ * Runs bank changes one at a time on this page: each reads index.json, changes it and writes it back, so two at
+ * once (an approval and a rename) would each write their own copy and one would be lost.
+ */
+export function bankLock<T>(change: () => Promise<T>): Promise<T> {
+  const run = bankQueue.then(change, change);
+  bankQueue = run.catch(() => {});
+  return run;
+}
+
 async function posterOf(video: HTMLVideoElement, g: Guide): Promise<Blob> {
   video.pause();
   await whenReady(video);
@@ -161,11 +175,18 @@ async function posterOf(video: HTMLVideoElement, g: Guide): Promise<Blob> {
 }
 
 /** Writes the clip's files, then its index entry last, so a clip that fails halfway never shows up in the game. */
-export async function addClip(folder: FileSystemDirectoryHandle, video: HTMLVideoElement, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
+export function addClip(folder: FileSystemDirectoryHandle, video: HTMLVideoElement, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
+  return bankLock(() => addClipNow(folder, video, file, type, guides, title, credit));
+}
+
+async function addClipNow(folder: FileSystemDirectoryHandle, video: HTMLVideoElement, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
+  // The name players see: refused when nothing is left of it after cleaning (only spaces or invisible characters).
+  if (!cleanText(title, 80)) return { data: null, error: "Give your clip a name." };
   const index = await readIndex(folder);
   if (index.error !== null) return index;
   const g = guides[0]!;
-  const id = slugFor(title, index.data.clips.map((c) => c.id));
+  // A backend id: the title as a slug plus a piece of the clip's fingerprint. Players only ever see the title.
+  const id = bankIdFor(cleanText(title, 80), g.fingerprint, index.data.clips.map((c) => c.id));
   try {
     const clipFolder = await folder.getDirectoryHandle(id, { create: true });
     await writeFile(clipFolder, `clip.${type}`, file);
