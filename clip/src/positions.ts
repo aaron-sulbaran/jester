@@ -33,14 +33,27 @@ export function meanCentreX(guide: Guide): number | null {
 }
 
 /**
+ * Where a guide's subject stands for most of the clip: the median centre x of its box over the frames
+ * it is seen in, or null if never seen. Unlike the mean, a dancer who steps across for a moment, or
+ * swaps sides late in the clip, keeps the side they stand on most of the time.
+ */
+export function medianCentreX(guide: Guide): number | null {
+  const xs = guide.boxTrack.frames.flatMap((frame) => (frame.box ? [frame.box.cx] : [])).sort((a, b) => a - b);
+  if (xs.length === 0) return null;
+  const mid = xs.length >> 1;
+  return xs.length % 2 === 1 ? xs[mid]! : (xs[mid - 1]! + xs[mid]!) / 2;
+}
+
+/**
  * Copies of the guides with every person named by where they stand on screen (see `positionNames`),
- * from each one's mean box centre over the frames it is seen in. Ties, and anyone never seen, keep
+ * from where each one stands for most of the clip (`medianCentreX`). Two dancers who swap sides are
+ * named by the side each holds for longer. Ties, and anyone never seen, keep
  * their order in `guides` (unseen people go after the seen ones). Things keep their labels, and the
  * order of the guides does not change. Run it on guides that share one stretch of the clip.
  */
 export function nameByPosition(guides: readonly Guide[]): Guide[] {
   const people = guides
-    .map((guide, index) => ({ index, x: guide.subject.kind === "person" ? meanCentreX(guide) : null, person: guide.subject.kind === "person" }))
+    .map((guide, index) => ({ index, x: guide.subject.kind === "person" ? medianCentreX(guide) : null, person: guide.subject.kind === "person" }))
     .filter((p) => p.person)
     .sort((a, b) => (a.x ?? Infinity) - (b.x ?? Infinity) || a.index - b.index);
   const names = positionNames(people.length);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { meanCentreX, nameByPosition, positionNames } from "../src/index.ts";
+import { meanCentreX, medianCentreX, nameByPosition, positionNames } from "../src/index.ts";
 import type { Box, Guide } from "../src/index.ts";
 
 /** A guide whose subject's box centre is at each x in turn (null where it is not seen). */
@@ -56,4 +56,25 @@ test("nameByPosition: does not change the guides it is given", () => {
   const guides = [guideAt("person", "Person 1", [0.7]), guideAt("person", "Person 2", [0.3])];
   nameByPosition(guides);
   assert.deepEqual(labels(guides), ["Person 1", "Person 2"]);
+});
+
+test("medianCentreX: where the subject stands for most of the frames it is seen in", () => {
+  assert.equal(medianCentreX(guideAt("person", "a", [0.2, null, 0.4, 0.9])), 0.4);
+  assert.equal(medianCentreX(guideAt("person", "a", [0.2, 0.4])), 0.30000000000000004);
+  assert.equal(medianCentreX(guideAt("person", "a", [null])), null);
+});
+
+test("nameByPosition: a dancer who steps across for a moment keeps the side they stand on most of the time", () => {
+  // Dancer a stands left of b for 8 frames in 10, then runs far right; the mean would put a on the right.
+  const a = guideAt("person", "a", [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.95, 0.95]);
+  const b = guideAt("person", "b", Array(10).fill(0.5));
+  assert.ok(meanCentreX(a)! > meanCentreX(b)!);
+  assert.deepEqual(labels(nameByPosition([a, b])), ["the dancer on the left", "the dancer on the right"]);
+});
+
+test("nameByPosition: two dancers who swap sides are named by the side each holds for longer", () => {
+  // They swap after 7 frames in 10: a is on the left for most of the clip.
+  const a = guideAt("person", "a", [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.7, 0.7, 0.7]);
+  const b = guideAt("person", "b", [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.3, 0.3, 0.3]);
+  assert.deepEqual(labels(nameByPosition([b, a])), ["the dancer on the right", "the dancer on the left"]);
 });
