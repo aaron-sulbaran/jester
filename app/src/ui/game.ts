@@ -447,7 +447,8 @@ export function initGame(deps: GameDeps) {
       (window as unknown as { __jesterRecap?: unknown }).__jesterRecap = summary;
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
-      await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });
+      // Only the host's laptop plays the recap's sound aloud, so laptops side by side do not play it twice, out of step.
+      await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme(), revealAloud: !!room.isHost });
       live();
     } catch (err) {
       if (game?.signal.aborted) return; // they left on purpose
