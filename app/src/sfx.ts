@@ -170,12 +170,12 @@ export function tick(left = 3) {
 }
 
 /** The countdown hits zero: a bright stab with a little whoosh. */
-export function go() {
+export function go(at = 0) {
   const ch = channel();
   if (!ch) return;
-  for (const f of [C5, E5, G5]) tone(ch, { freq: f, decay: 0.35, type: "triangle", peak: 0.3, glide: f * 1.02 });
-  tone(ch, { freq: C6, at: 0.05, decay: 0.4, type: "sine", peak: 0.25 });
-  noise(ch, { decay: 0.3, peak: 0.18, filter: "highpass", freq: 2500, attack: 0.04 });
+  for (const f of [C5, E5, G5]) tone(ch, { freq: f, at, decay: 0.35, type: "triangle", peak: 0.3, glide: f * 1.02 });
+  tone(ch, { freq: C6, at: at + 0.05, decay: 0.3, type: "sine", peak: 0.25 });
+  noise(ch, { at, decay: 0.3, peak: 0.18, filter: "highpass", freq: 2500, attack: 0.04 });
 }
 
 /**
@@ -267,4 +267,52 @@ export function oops() {
   if (!ch) return;
   tone(ch, { freq: E4, decay: 0.28, type: "sawtooth", peak: 0.18, attack: 0.02, soften: 1400 });
   tone(ch, { freq: E4 * 0.94, at: 0.3, decay: 0.6, type: "sawtooth", peak: 0.18, attack: 0.02, soften: 1400, glide: E4 * 0.75, vibrato: 5 });
+}
+
+// ---- More moments (none plays during the scored part of a turn, and none over the clip's own sound) ----
+
+/** A main ticket is pressed: the paper tap with a little punch under it. */
+export function ticket() {
+  const ch = channel();
+  if (!ch) return;
+  noise(ch, { decay: 0.04, peak: 0.26, freq: 2200, q: 1.2 });
+  tone(ch, { freq: 180, decay: 0.08, type: "sine", peak: 0.3, glide: 110 });
+  tone(ch, { freq: 880, at: 0.03, decay: 0.06, type: "triangle", peak: 0.12 });
+}
+
+/** The parts are dealt: a few cards flicked onto the table. */
+export function deal(cards = 4) {
+  const ch = channel();
+  if (!ch) return;
+  for (let i = 0; i < cards; i++) {
+    const at = 0.08 + i * 0.09;
+    noise(ch, { at, decay: 0.05, peak: 0.24, freq: 3200 + i * 300, q: 1.4, attack: 0.004 });
+    noise(ch, { at: at + 0.03, decay: 0.03, peak: 0.12, filter: "lowpass", freq: 900 });
+  }
+}
+
+/** The player has just fitted the frame before their turn: a soft rising chime. */
+export function fitGood() {
+  const ch = channel();
+  if (!ch) return;
+  tone(ch, { freq: G5, decay: 0.16, type: "sine", peak: 0.18 });
+  tone(ch, { freq: C6, at: 0.1, decay: 0.3, type: "sine", peak: 0.16 });
+}
+
+/** The stage curtains close (`open` false) or part: a soft swish of cloth. */
+export function curtain(open = false) {
+  const ch = channel();
+  if (!ch) return;
+  noise(ch, { decay: 0.55, peak: 0.16, filter: "bandpass", freq: open ? 900 : 1400, q: 0.6, attack: 0.12 });
+  noise(ch, { at: 0.18, decay: 0.4, peak: 0.1, filter: "bandpass", freq: open ? 1300 : 800, q: 0.6, attack: 0.1 });
+}
+
+/** A duel is won: two bell strikes after the crowning's crash. */
+export function duelWin(at = 0.9) {
+  const ch = channel();
+  if (!ch) return;
+  for (const [k, f] of [[0, E5], [0.22, C6]] as const) {
+    tone(ch, { freq: f, at: at + k, decay: 0.7, type: "sine", peak: 0.2 });
+    tone(ch, { freq: f * 2.76, at: at + k, decay: 0.35, type: "sine", peak: 0.05 });
+  }
 }

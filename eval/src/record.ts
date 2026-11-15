@@ -109,7 +109,8 @@ export interface RoundRecord {
     /** Left out of frozen cases. */
     cores?: number | null;
     gpu: string | null;
-    camera: { label: string; width: number | null; height: number | null; frameRate: number | null } | null;
+    /** `label` is the camera's name, kept on dev server rounds only; live-site rounds since Nov 15 4 AM have null. */
+    camera: { label: string | null; width: number | null; height: number | null; frameRate: number | null } | null;
     /** Frames with a body found per second of the round, from the player's timeline. */
     playerFps: number | null;
   };
