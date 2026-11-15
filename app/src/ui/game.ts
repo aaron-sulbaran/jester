@@ -151,6 +151,8 @@ export function initGame(deps: GameDeps) {
   let names: string[] = ["", "", ""];
   /** Each seat's jester colour, picked on the cast screen; seats start on different colours. */
   let seatColors: string[] = [];
+  /** The colours of the game being played, in seat order: the picked ones here, the roster's online. */
+  let gameColors: string[] = [];
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
   let videoUrl: string | null = null;
@@ -414,6 +416,7 @@ export function initGame(deps: GameDeps) {
     try {
       if (mode === "watch") await watchFirst(scene);
       settleColors();
+      gameColors = seatColors.slice(0, cast.length);
       await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: seatColors.slice(0, cast.length), theme: revealTheme() });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
@@ -458,6 +461,7 @@ export function initGame(deps: GameDeps) {
     restartsLeft.set(room.name, RESTARTS_PER_PLAYER);
     running = true;
     const colors = playerColors();
+    gameColors = colors;
     const roster = room.roster() as { id: string; name: string }[];
     const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
     const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
@@ -786,7 +790,8 @@ export function initGame(deps: GameDeps) {
     crownScreen.classList.toggle("arriving", opening);
     show("crown");
     // Stand them in seat order, not score order, so the spotlight has somewhere to travel.
-    const seated = [...rows].sort((a, b) => seatColors.indexOf(a.color) - seatColors.indexOf(b.color));
+    const seatOf = (row: ResultRow) => { const i = gameColors.indexOf(row.color); return i < 0 ? gameColors.length + rows.indexOf(row) : i; };
+    const seated = [...rows].sort((a, b) => seatOf(a) - seatOf(b));
     const castRow = $("crownCast");
     const jesters = seated.map((row) => {
       const j = new FaceJester(row.face, variantOf(row), 320);
