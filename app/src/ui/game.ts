@@ -16,6 +16,7 @@ import { jesterBars } from "./jesterBar.ts";
 import { startRide, type Ride } from "./ride.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, headlineFor, motionOf, rankFor, winnersOf } from "../feelText.ts";
+import { DUEL_WINNER_AWARD, duelHeadline, podiumOrder } from "../duelPlay.ts";
 import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
@@ -186,21 +187,33 @@ export function initGame(deps: GameDeps) {
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
-  // How you play: how many of you, for two of you together or a duel, and a name to look for in the library.
-  let count = 2;
-  let duelOn = false;
+  // How you play: how many are playing (remembered), and for two or more how: taking turns on this laptop, a duel,
+  // or each on your own device (the online room). Then a name to look for in the library.
+  type How = "turns" | "duel" | "online";
+  const PLAYERS_KEY = "jester.players";
+  const HOW_KEY = "jester.how";
+  const saved = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+  const keep = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* private mode: not remembered */ } };
+  // A first visit starts at one player: a judge trying it alone is the likeliest first player.
+  let count = Math.min(4, Math.max(1, Number(saved(PLAYERS_KEY)) || 1));
+  let how: How = (["turns", "duel", "online"] as const).find((h) => h === saved(HOW_KEY)) ?? "turns";
   let query = "";
+  /** The library first shows the clips made for this many players; this shows the rest too. */
+  let showAll = false;
   /** Each clip with a thing in it (a ball, a dog) plays the thing as a part unless the cast screen turns it off. */
   const thingsOff = new Set<string>();
   const withThingsFor = (c: BankClip) => !thingsOff.has(c.id);
   const partsOf = (c: BankClip) => playersFor(c.people, c.things, withThingsFor(c));
-  const isDuel = () => count === 2 && duelOn;
-  // One of you, or a duel, takes a clip with exactly one person; otherwise a clip needs a part for each of you.
-  // More parts than players is fine (not every part gets played).
-  const fits = (c: BankClip) => (count === 1 || isDuel() ? c.people === 1 : partsOf(c) >= count);
-  /** The clips the library shows right now. */
-  const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query)));
-  /** Surprise me draws from every clip that fits; the name search is for finding one clip. */
+  const isDuel = () => count >= 2 && how === "duel";
+  const isOnline = () => count >= 2 && how === "online";
+  // Made for this many: one player gets one-part clips, a duel one-person clips, taking turns a part each.
+  const madeFor = (c: BankClip) => (isDuel() ? c.people === 1 : count === 1 ? partsOf(c) === 1 : partsOf(c) >= count);
+  // The rest, behind "Show bigger clips too" (one player plays one part) or "Show smaller clips too" (some share).
+  // A duel needs one person, so it has no rest.
+  const fits = (c: BankClip) => madeFor(c) || (showAll && !isDuel());
+  /** The clips the library shows right now, the ones made for this many first. */
+  const shown = () => bank.filter((c) => fits(c) && (!query || searchable(c.title).includes(query))).sort((x, y) => Number(madeFor(y)) - Number(madeFor(x)));
+  /** Surprise me draws from what the library shows, the name search aside. */
   const surprises = () => bank.filter(fits);
   /** "for 2 players", "for a duel". */
   const forPick = () => (isDuel() ? "for a duel" : `for ${count} ${count === 1 ? "player" : "players"}`);
@@ -253,9 +266,15 @@ export function initGame(deps: GameDeps) {
     $("startOr").hidden = bank.length === 0;
     surpriseCard.disabled = surprises().length === 0;
     // In Blind a library pick still shows its name; a surprise keeps even that from whoever picked it.
-    $("surpriseHint").textContent = `Any clip ${isDuel() ? "with one person" : forPick()}.` + (mode === "blind" ? " Not even you know which." : "");
+    $("surpriseHint").textContent = `Any clip ${isDuel() ? "with one person" : showAll ? "shown here" : forPick()}.` + (mode === "blind" ? " Not even you know which." : "");
     $("libraryHead").hidden = bank.length === 0;
     $("libraryCount").textContent = `${list.length} ${list.length === 1 ? "clip" : "clips"}`;
+    const rest = bank.filter((c) => !madeFor(c)).length;
+    const more = $<HTMLButtonElement>("libraryMore");
+    more.hidden = isDuel() || rest === 0;
+    more.textContent = showAll ? (count === 1 ? "Hide bigger clips" : "Hide smaller clips") : (count === 1 ? "Show bigger clips too" : "Show smaller clips too");
+    // Each on your own device: the room has its own clip pick, so the library steps aside.
+    $("screen-start").dataset.how = isOnline() ? "online" : "here";
     const none = $("libraryNone");
     none.hidden = !bank.length || list.length > 0;
     const wanted = $<HTMLInputElement>("clipSearch").value.trim();
@@ -296,15 +315,15 @@ export function initGame(deps: GameDeps) {
   function choose(p: Pick | null) {
     pick = p;
     for (const b of $("screen-start").querySelectorAll<HTMLButtonElement>(".clip")) b.setAttribute("aria-pressed", String(!!p && b.dataset.key === keyOf(p)));
-    $("playLabel").textContent = !p ? "Play" : p.kind === "surprise" ? "Play a surprise clip" : `Play ${p.kind === "bank" ? p.clip.title : p.starter.title}`;
-    $<HTMLButtonElement>("play").disabled = !p;
+    $("playLabel").textContent = isOnline() ? "Make or join a room" : !p ? "Play" : p.kind === "surprise" ? "Play a surprise clip" : `Play ${p.kind === "bank" ? p.clip.title : p.starter.title}`;
+    $<HTMLButtonElement>("play").disabled = !p && !isOnline();
   }
 
   /** Shows `clip` in the library: the name search is cleared, and the pick changes to fit it if it has to. */
   function showInLibrary(clip: BankClip) {
     query = "";
     $<HTMLInputElement>("clipSearch").value = "";
-    if (!fits(clip)) setCount(Math.min(4, Math.max(1, partsOf(clip))), false);
+    if (!fits(clip)) { showAll = true; if (isDuel() || isOnline()) setHow("turns"); }
     renderBank();
   }
 
@@ -314,25 +333,35 @@ export function initGame(deps: GameDeps) {
     renderBank();
   });
 
-  // The lines under the switches: the picked mode's, and for two of you, together's or the duel's.
+  // The lines under the picks: the mode's, and for two or more, what the How? pick means.
   const sayMode = () => {
-    const line = (sel: string) => { const s = document.createElement("span"); s.textContent = document.querySelector(`${sel} span`)?.textContent ?? ""; return s; };
-    $("modeSays").replaceChildren(line(`.mode[data-mode="${mode}"]`), ...(count === 2 ? [line(`.mode[data-duel="${duelOn ? "on" : "off"}"]`)] : []));
+    const line = (text: string) => { const s = document.createElement("span"); s.textContent = text; return s; };
+    const howSays = document.querySelector<HTMLButtonElement>(`[data-how="${how}"]`)?.dataset.says ?? "";
+    // The room plays in the mode picked here too, so its line stays for every How?.
+    const modeLine = line(document.querySelector(`.mode[data-mode="${mode}"] span`)?.textContent ?? "");
+    $("modeSays").replaceChildren(modeLine, ...(count >= 2 ? [line(count === 2 ? howSays.replace("You all", "You both") : howSays)] : []));
   };
-  function setCount(n: number, duel = duelOn) {
+  function setCount(n: number) {
     count = n;
-    duelOn = n === 2 && duel;
-    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-count]")) o.setAttribute("aria-checked", String(Number(o.dataset.count) === n));
-    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-duel]")) o.setAttribute("aria-checked", String((o.dataset.duel === "on") === duelOn));
-    $("duelPick").hidden = n !== 2;
+    showAll = false;
+    keep(PLAYERS_KEY, String(n));
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-players]")) o.setAttribute("aria-checked", String(Number(o.dataset.players) === n));
+    $("howPick").hidden = n < 2;
     sayMode();
   }
-  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-count]")) {
-    b.addEventListener("click", () => { setCount(Number(b.dataset.count)); renderBank(); });
+  function setHow(h: How) {
+    how = h;
+    keep(HOW_KEY, h);
+    for (const o of document.querySelectorAll<HTMLButtonElement>("[data-how]")) o.setAttribute("aria-checked", String(o.dataset.how === h));
+    sayMode();
   }
-  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-duel]")) {
-    b.addEventListener("click", () => { setCount(2, b.dataset.duel === "on"); renderBank(); });
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-players]")) {
+    b.addEventListener("click", () => { setCount(Number(b.dataset.players)); renderBank(); });
   }
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-how]")) {
+    b.addEventListener("click", () => { setHow(b.dataset.how as How); renderBank(); });
+  }
+  $("libraryMore").addEventListener("click", () => { showAll = !showAll; renderBank(); });
   for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
@@ -342,6 +371,7 @@ export function initGame(deps: GameDeps) {
       renderBank();
     });
   }
+  setHow(how);
   setCount(count);
 
   void listBank().then((r) => {
@@ -385,6 +415,8 @@ export function initGame(deps: GameDeps) {
   });
 
   $("play").addEventListener("click", async () => {
+    // Each on your own device: the online room takes over from here, with its own clip pick.
+    if (isOnline()) { $("playOnline").click(); return; }
     if (!pick) return;
     $("startProblem").hidden = true;
     if (pick.kind === "starter") { castClip = null; fullScene = scene = pick.starter.make(); openCast(); return; }
@@ -555,7 +587,7 @@ export function initGame(deps: GameDeps) {
     const parts = scene?.guides.length ?? names.length;
     const extra = names.length - parts;
     $("castParts").textContent = (duelGame()
-      ? `This clip has 1 person. ${names.length === 2 ? "You both copy them" : "You all copy them"}; the best copy wins.`
+      ? `${names.length === 2 ? "You both" : "You all"} copy the same person. Best copy wins.`
       : (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
         + (names.length === 1 && parts > 1 ? " You play one of them." : extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : ""))
       + " Tap your dot to change your jester's colour.";
@@ -697,7 +729,7 @@ export function initGame(deps: GameDeps) {
       live();
       const standings = keepFinished(finished, room.standings() as Standing[]);
       const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
-        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
+        name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? null,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
         // My own pictures are already here at full size; the others' arrive packed.
         cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
@@ -842,6 +874,9 @@ export function initGame(deps: GameDeps) {
       }
       const chips = $("partChips");
       chips.innerHTML = "";
+      // A duel is copied with the whole body only: no part to pick, so a hand is never ranked against a whole body.
+      chips.hidden = !!role.duel;
+      turn.querySelector<HTMLElement>(".part-ask")!.hidden = !!role.duel;
       let chosen: BodyPart = role.parts[0]?.key ?? "body";
       role.parts.forEach((p, i) => {
         const b = document.createElement("button");
@@ -1007,7 +1042,7 @@ export function initGame(deps: GameDeps) {
     });
     castRow.replaceChildren(...jesters.map((x) => x.slot));
     const winners = winnersOf(rows);
-    const headline = headlineFor(rows);
+    const headline = rows.some((r) => r.duel) ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows);
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
@@ -1124,15 +1159,19 @@ export function initGame(deps: GameDeps) {
 
   function showResults() {
     stopPodium();
-    const winners = winnersOf(rows);
-    letters($("resultsHeadline"), headlineFor(rows));
+    // A duel lists players by their place (timing breaks a tie on score), so the crowned player is first.
+    const duel = rows.some((r) => r.duel);
+    const podium = podiumOrder(rows);
+    const listed = podium.map((p) => p.row);
+    const winners = winnersOf(listed);
+    letters($("resultsHeadline"), duel ? duelHeadline(winners.map((w) => w.name)) : headlineFor(rows));
     const list = $("podium");
     list.innerHTML = "";
     // Everyone leaves with something: the crown, or an award from how they played.
-    const awards = awardsFor(rows.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })));
-    rows.forEach((r, i) => {
-      // Tied scores share a place.
-      const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
+    const awards = awardsFor(listed.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })))
+      .map((award, i) => (duel && listed[i]!.winner && !listed[i]!.tied ? DUEL_WINNER_AWARD : award));
+    listed.forEach((r, i) => {
+      const place = podium[i]!.place;
       const li = document.createElement("li");
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);

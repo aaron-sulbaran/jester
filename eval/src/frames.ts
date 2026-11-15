@@ -135,12 +135,24 @@ export function png(cv: Canvas): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array(0))]);
 }
 
-/** `count` frames of a stick figure doing `move`, as PNG data URLs, with optional lines of words painted on top. */
-export function figureFrames(move: Move, opts: { count?: number; words?: string[] } = {}): string[] {
+/** A parked car on the right, behind where the figure stands: a body, a cabin, two wheels. */
+function parkedCar(cv: Canvas) {
+  const red: Rgb = [178, 40, 40], glass: Rgb = [150, 190, 210], tyre: Rgb = [30, 30, 30];
+  cv.rect(222, 168, 92, 34, red);
+  cv.rect(240, 146, 54, 24, red);
+  cv.rect(246, 151, 18, 15, glass);
+  cv.rect(270, 151, 18, 15, glass);
+  cv.disc(242, 204, 10, tyre);
+  cv.disc(294, 204, 10, tyre);
+}
+
+/** `count` frames of a stick figure doing `move`, as PNG data URLs, with optional words painted on top and an optional parked car. */
+export function figureFrames(move: Move, opts: { count?: number; words?: string[]; car?: boolean } = {}): string[] {
   const frames: string[] = [];
   for (let i = 0; i < (opts.count ?? 4); i++) {
     const cv = new Canvas([238, 232, 220]);
     cv.rect(0, 214, W, H - 214, [196, 182, 160]);
+    if (opts.car) parkedCar(cv);
     figure(cv, pose(move, i), [40, 40, 52]);
     (opts.words ?? []).forEach((line, j) => text(cv, line, 10 + j * 20, 2, [180, 30, 30]));
     frames.push(`data:image/png;base64,${png(cv).toString("base64")}`);
