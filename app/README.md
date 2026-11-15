@@ -91,6 +91,24 @@ The link lab, http://localhost:5173/link-lab.html (dev server only), takes a You
 
 What is kept: only the people analysis (boxes, joints, outlines, times). Jester never downloads, saves or uploads the video or any frame of it. Each captured frame is read once for people and dropped, and no tool or service that fetches video files from YouTube, TikTok or Instagram is used.
 
+## Video bank (clips with their moves found ahead of time)
+
+The game's clips come from a bank of static files: `index.json` (schema `bank/1`) and, per clip, `<id>/clip.mp4` (or `.webm`), `<id>/poster.jpg` and `<id>/guides.json` (the array `subjectGuides` returns, people then things). The files are not in git (no videos in the repo): they live in `jester-deploy/bank/` on Aaron's laptop, and the deploy copies them to `/bank` with an open cross-origin header.
+
+```ts
+const listed = await listBank();                       // src/bank.ts: /bank, or the public site's bank in a local run
+const scene = await bankScene(listed.data[0], video);  // src/bankRound.ts: the same Scene videoScene builds, no analysis
+const guides = await loadBankGuides(clip);             // the saved guides, for a solo round: bankSoloClip or thingObjectClip
+```
+
+Every call returns `{ data, error }` with a sentence a player can read. `index.json` reading is pure (`src/bankIndex.ts`, tested in `clip/test/bank.test.ts`).
+
+- Adding clips: `bank-lab.html` (dev server only). Pick the bank folder once, pick a video, check the outlines sit on the cast, type a title and a credit, Add to the bank. "Add many at once" takes a batch (file names become titles, one credit for all). MOV files go in as `clip.mp4` (same container). "Add the starter clips" adds the credited Wikimedia Commons clips from `public/_clips/`. Remove deletes a clip's folder.
+- Two banks: `jester-deploy/bank/` is copied into every deploy of the public site, so it holds only clips we may share. Clips saved from TikTok or Instagram for testing go in `hack-princeton/jester-private-bank/`, which never leaves the laptop: run the dev server with `JESTER_BANK_DIR` pointing at it.
+- Local runs: start the dev server with `JESTER_BANK_DIR=<bank folder>` and it serves that folder at `/bank` (`bank-dev-server.ts`); without it the game reads the public site's bank.
+- Submit your own: `submitClip(file, { title, credit }, onProgress)` in `src/submit.ts` uploads to the private bucket `submissions` as `<uuid>.<mp4|webm|mov>` (25 MB at most) and adds one row to table `submissions` (`video_path`, `title`, `credit`). The page's key can add but never read. A person reviews each one; an approved clip goes in through the bank lab. The table and bucket rules are in `supabase/migrations/20261115_submissions_queue.sql`.
+- Known limits (submissions): anyone with the page can submit as many videos as they like, and an upload is not tied to its row (a video can arrive with no row, or a row with no video). A later version should hand out short-lived upload links from a rate-limited server step.
+
 ## Checked
 
 - Typecheck and build pass.
