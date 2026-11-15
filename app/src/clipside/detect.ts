@@ -8,6 +8,11 @@ import { binarizeMask, downsampleMask, extractOutline, MP_BUNDLE, MP_WASM, MODEL
 import type { FrameCanvas } from "./frames.ts";
 
 const MAX_PEOPLE = 4;
+
+/** "full" is what the game uses; "lite" and "heavy" are there to time in the clip lab. */
+export type PoseModel = "lite" | "full" | "heavy";
+const HEAVY_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task";
+const MODEL_PATHS: Record<PoseModel, string> = { lite: MODEL_URLS.lite, full: MODEL_URLS.full, heavy: HEAVY_MODEL_URL };
 const OUTLINE_POINTS = 60;
 /** The outline is traced on a mask shrunk so its long side is about this many cells. */
 const OUTLINE_GRID = 180;
@@ -51,12 +56,12 @@ function loadVision(): Promise<{ mp: any; vision: any }> {
   return visionPromise;
 }
 
-export async function createPeopleDetector(): Promise<{ data: PeopleDetector; error: null } | { data: null; error: string }> {
+export async function createPeopleDetector(model: PoseModel = "full"): Promise<{ data: PeopleDetector; error: null } | { data: null; error: string }> {
   let landmarker: any;
   try {
     const { mp, vision } = await loadVision();
     const make = (delegate: "GPU" | "CPU") => mp.PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_URLS.full, delegate },
+      baseOptions: { modelAssetPath: MODEL_PATHS[model], delegate },
       runningMode: "VIDEO", numPoses: MAX_PEOPLE, outputSegmentationMasks: true,
     });
     try { landmarker = await make("GPU"); } catch { landmarker = await make("CPU"); }

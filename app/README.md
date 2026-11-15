@@ -18,7 +18,13 @@ npm run build    # typecheck + static build in dist/
 
 The clip lab, http://localhost:5173/clip-lab.html (dev server only, not in the build), runs the clip side on one video so the result can be checked by eye. `?clip=<name>` runs `public/_clips/<name>` (git ignored, put test clips there), `?pick=<number>` chooses that person, `?fresh=1` ignores the saved analysis. After each run `window.__clipLab` holds a summary.
 
-The lab's switches can be set from the URL too: `?overlay=skeleton|outline|both`, `?look=outline|stick`, `?place=fit|exact`. Its table shows how many blind mode roles the clip gives.
+The lab's switches can be set from the URL too: `?overlay=skeleton|outline|both`, `?look=outline|stick`, `?place=fit|exact`. Its table shows how many blind mode roles the clip gives, and how many track pieces were joined into how many tracks.
+
+On the pick frame, a dashed box is a person who is not in that frame, drawn where they are nearest to it, so every person found can be chosen.
+
+`?model=heavy` (or `lite`) runs a fresh analysis with that pose model and does not save it; the table's "Seconds taken" is the number to compare with the default `full`. The game always uses `full`.
+
+People the pose model drops for a while (behind another dancer, at the back) come back as a new track. `analyze.ts` links with a 1 second gap and then joins pieces with `rejoinTracks` from `clip/` (up to 3 seconds apart, near where the earlier piece ended or was heading, a similar size). Saved analyses keep their frames and run this again when opened, so they pick up the joining without a fresh analysis.
 
 `?nocam=1` ticks "Simulated player": a stand-in copies the clip with 150 ms lag and an adjustable wobble, no camera needed.
 

@@ -3,10 +3,10 @@
 
 import {
   buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkTracks, pickConfirmFrame,
-  rankCandidates, shotRanges, withConfirmBoxes,
+  rankCandidates, rejoinTracks, shotRanges, withConfirmBoxes,
 } from "../../../clip/src/index.ts";
 import type { Candidate, ClipSource, FrameDetections, Guide, Track } from "../../../clip/src/index.ts";
-import { createPeopleDetector } from "./detect.ts";
+import { createPeopleDetector, type PoseModel } from "./detect.ts";
 import { sha256Hex } from "./fingerprint.ts";
 import { readFrames, type FrameCanvas, type VideoInfo } from "./frames.ts";
 import { loadPrepared, savePrepared } from "./store.ts";
@@ -18,6 +18,8 @@ const MAX_MS = 30000;
 const MAX_SIDE = 720;
 const SIGNATURE_WIDTH = 32;
 const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are used.";
+/** A person lost for up to this long (behind someone, at the back) is joined back into one track. */
+const REJOIN_SECONDS = 3;
 
 export interface Prepared {
   fingerprint: string; source: ClipSource; frames: FrameDetections[]; cuts: number[];
@@ -28,6 +30,8 @@ export interface Prepared {
 export interface PrepareOptions {
   /** Analyse again even when a saved analysis exists. The new result is still saved. */
   ignoreSaved?: boolean;
+  /** Pose model to try, for timing in the lab. Anything but the default "full" ignores and does not save the analysis. */
+  model?: PoseModel;
 }
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
@@ -47,6 +51,20 @@ function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] 
   const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
   ctx.drawImage(canvas, 0, 0, SIGNATURE_WIDTH, height);
   return frameSignature(ctx.getImageData(0, 0, SIGNATURE_WIDTH, height).data, SIGNATURE_WIDTH, height);
+}
+
+/**
+ * Follows each person through the frames, joins people the tracker split into pieces, ranks them
+ * and picks the frame to choose from. Pure and quick, so saved analyses run it again too.
+ */
+function findPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
+  const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
+  const tracks = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect: source.width / source.height });
+  const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
+  const confirmFrame = pickConfirmFrame(ranked, tracks);
+  const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
+  const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
+  return { tracks, candidates, confirmFrame, confirmTMs: frames[confirmFrame]?.tMs ?? 0, verdict };
 }
 
 let videoUrl: string | null = null;
@@ -72,11 +90,16 @@ export async function prepareClip(
   attach(file, video);
   onProgress(0);
   const fingerprint = await sha256Hex(file);
-  if (!options.ignoreSaved) {
+  const model = options.model ?? "full";
+  if (!options.ignoreSaved && model === "full") {
     const saved = await loadPrepared(fingerprint);
     if (saved) {
+      // The saved frames are kept as read; following the people again picks up the current rules.
+      const { verdict, ...people } = findPeople(saved.frames, saved.cuts, saved.source);
       onProgress(1);
-      return { data: saved, error: null };
+      if (verdict.refuse !== null) return { data: null, error: verdict.refuse, facts: { decoder: saved.decoder, frames: saved.frames.length } };
+      const warnings = [...saved.warnings.filter((w) => w === LONG_CLIP), ...verdict.warnings];
+      return { data: { ...saved, ...people, warnings }, error: null };
     }
   }
 
@@ -84,7 +107,7 @@ export async function prepareClip(
   const refuse = (error: string, decoder: PrepareFacts["decoder"] = null): PrepareResult =>
     ({ data: null, error, facts: { decoder, frames: frames.length } });
 
-  const detector = await createPeopleDetector();
+  const detector = await createPeopleDetector(model);
   if (detector.error !== null) return refuse(detector.error);
   const scratch = document.createElement("canvas");
   let read: Awaited<ReturnType<typeof readFrames>>;
@@ -109,20 +132,15 @@ export async function prepareClip(
     sampleHz: SAMPLE_HZ,
   };
   const cuts = findCuts(frames.map((f) => f.signature));
-  const tracks = linkTracks(frames, cuts);
-  const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
-  const confirmFrame = pickConfirmFrame(ranked, tracks);
-  const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
-  const verdict = checkClip({ durationMs: source.durationMs, cuts, candidates });
+  const { verdict, ...people } = findPeople(frames, cuts, source);
   if (verdict.refuse !== null) return refuse(verdict.refuse, info.decoder);
 
   const warnings = [...(info.durationMs > MAX_MS ? [LONG_CLIP] : []), ...verdict.warnings];
   const prepared: Prepared = {
-    fingerprint, source, frames, cuts, tracks, candidates, confirmFrame,
-    confirmTMs: frames[confirmFrame]?.tMs ?? 0,
+    fingerprint, source, frames, cuts, ...people,
     warnings, decoder: info.decoder, fromSaved: false,
   };
-  await savePrepared(prepared);
+  if (model === "full") await savePrepared(prepared);
   onProgress(1);
   return { data: prepared, error: null };
 }
