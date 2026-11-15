@@ -10,7 +10,7 @@ A round keeps the exact two timelines the engine compared (33 points per frame a
 
 ## Test cases on purpose
 
-Add `?dev=1` to any page (it stays on for the tab), or `?tag=nailed` to tag every round on that page load. A small panel in the corner asks what you are about to do on purpose before the round: `nailed`, `stood-still`, `seated`, `late-half-second`, `wrong-moves`, `left-right-swapped`, `walked-out-of-frame`. The tag counts for one round. `app/eval-lab.html` does the same with one clip at a time and no game screens.
+Add `?dev=1` to any page (it stays on for the tab), or `?tag=nailed` to tag every round on that page load. A small panel in the corner asks what you are about to do on purpose before the round: `nailed`, `stood-still`, `seated`, `late-half-second`, `wrong-moves`, `left-right-swapped`, `walked-out-of-frame`. The tag stays picked for every round (each blind mode turn is its own round) until you change it; the note counts for one round. `app/eval-lab.html` does the same with one clip at a time and no game screens.
 
 What each tag promises is in `expectations.ts`, one file:
 
