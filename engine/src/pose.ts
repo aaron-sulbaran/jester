@@ -5,7 +5,7 @@ import { GRID_MS, LAG, MOTION, ORIENTATION, PLACEMENT, POSE, ROUND, SCORER_VERSI
 import { scorePlacement } from "./placement.ts";
 import { LIMBS, LIMB_NAMES, limbDirection, mirrorLandmarks, swapSide, type Direction } from "./geometry.ts";
 import { gridLength, resamplePoses } from "./resample.ts";
-import { clamp01, falloff, mapToScore, tierFor, timingCredit } from "./scoring.ts";
+import { clamp01, falloff, mapToScore, smoothstep, tierFor, timingCredit } from "./scoring.ts";
 import type { Landmarks, LimbBreakdown, Orientation, PoseRoundResult, PoseTimeline } from "./types.ts";
 
 const RAD = 180 / Math.PI;
@@ -289,6 +289,28 @@ export function movedShare(refTurns: (Turn | null)[][], playerTurns: (Turn | nul
   return total > 1e-9 ? clamp01(moved / total) : 1;
 }
 
+/**
+ * The round's gain from its motion numbers (0.12.0). Two terms, the larger wins:
+ * - the gain over still, counted as far as the player moved at all (stillGate);
+ * - the plain accuracy credit, counted as far as the gate is open.
+ * The gate opens on either of two signals. shareGate: the player's motion was in step with the clip's (linear
+ * from MOTION.gateLow to gateHigh, as in 0.9.0). gainGate (new): the player moved (times stillGate), matched
+ * the clip's poses clearly better than standing still would have (smoothstep from MOTION.gainGateLow to
+ * gainGateHigh) and some of the motion was in step (smoothstep from MOTION.gainGateShareLow to
+ * gainGateShareHigh, well under gateLow). Before, a share just under gateLow threw the plain credit away:
+ * Alex's honest round with share 0.14 and accuracy 0.86 scored 28, the turn before with share 0.66 scored 83. The still gate keeps a statue,
+ * whose own standing pose can beat the fixed still pose, from opening the new gate; wrong moves rarely beat
+ * still or move in step at all, so for them the gate is the share gate alone, as before.
+ */
+export function motionGain(share: number, stillGate: number, gainOverStill: number, credit: number): { shareGate: number; gainGate: number; gate: number; gain: number } {
+  const shareGate = clamp01((share - MOTION.gateLow) / (MOTION.gateHigh - MOTION.gateLow));
+  const gainGate = stillGate
+    * smoothstep((gainOverStill - MOTION.gainGateLow) / (MOTION.gainGateHigh - MOTION.gainGateLow))
+    * smoothstep((share - MOTION.gainGateShareLow) / (MOTION.gainGateShareHigh - MOTION.gainGateShareLow));
+  const gate = Math.max(shareGate, gainGate);
+  return { shareGate, gainGate, gate, gain: Math.max(stillGate * gainOverStill, gate * credit) };
+}
+
 export interface PoseRoundOptions {
   /**
    * Apply the mirror rule to the player (default true). With eitherSide on, this only picks which reading
@@ -340,7 +362,7 @@ function scorePoseOriented(reference: PoseTimeline, player: PoseTimeline, orient
 
   const empty = (failure: PoseRoundResult["failure"]): PoseRoundResult => ({
     channel: "pose", scorerVersion: SCORER_VERSION, score: null, orientation, tier: null, failure,
-    accuracy: 0, stillBaseline: 0, motion: { share: 0, gate: 0, credit: 0, moved: 0, stillGate: 0, gainOverStill: 0, gain: 0 }, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
+    accuracy: 0, stillBaseline: 0, motion: { share: 0, shareGate: 0, gainGate: 0, gate: 0, credit: 0, moved: 0, stillGate: 0, gainOverStill: 0, gain: 0 }, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
     placement: { used: false, credit: 0, stillBaseline: 0, gain: 0, worst: null, outlineFit: null, outlineHints: { distance: null, side: null } },
   });
   if (n === 0 || refDirs.every((d) => d === null)) return empty("no-reference");
@@ -428,14 +450,14 @@ function scorePoseOriented(reference: PoseTimeline, player: PoseTimeline, orient
   const refTurns = limbTurns(refDirs), playerTurns = limbTurns(playerDirs);
   const validFrames = frameCredits.map((c) => c !== null);
   const share = motionShare(refTurns, playerTurns, frameMatch, validFrames);
-  const gate = clamp01((share - MOTION.gateLow) / (MOTION.gateHigh - MOTION.gateLow));
   const absoluteCredit = clamp01((accuracy - MOTION.accuracyFloor) / (MOTION.accuracyFull - MOTION.accuracyFloor));
   // 2c. Still gate (0.10.0): the gain over the fixed arms-down pose counts only as far as the player moved at
   //     all. On a clip that mostly stands, a player's own standing pose beats the fixed pose by a lot, so
   //     without this a statue scored up to 66. A clip that never moves cannot tell them apart: moved is 1.
   const moved = movedShare(refTurns, playerTurns, frameMatch, validFrames);
   const stillGate = clamp01((moved - MOTION.movedLow) / (MOTION.movedHigh - MOTION.movedLow));
-  const gain = Math.max(stillGate * gainOverStill, gate * absoluteCredit);
+  // 2d. Gain gate (0.12.0): see motionGain.
+  const { shareGate, gainGate, gate, gain } = motionGain(share, stillGate, gainOverStill, absoluteCredit);
   const lagMs = Math.round(lag * GRID_MS);
   const timing = timingCredit(lagMs);
 
@@ -514,7 +536,7 @@ function scorePoseOriented(reference: PoseTimeline, player: PoseTimeline, orient
     failure: failed ? "low-tracking" : null,
     accuracy: clamp01(accuracy),
     stillBaseline,
-    motion: { share, gate, credit: absoluteCredit, moved, stillGate, gainOverStill, gain },
+    motion: { share, shareGate, gainGate, gate, credit: absoluteCredit, moved, stillGate, gainOverStill, gain },
     timing,
     lagMs,
     validShare,

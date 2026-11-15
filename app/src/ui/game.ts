@@ -7,6 +7,7 @@ import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame,
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
+import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
@@ -237,6 +238,38 @@ export function initGame(deps: GameDeps) {
     if (r.error) startProblem(`The bank did not load: ${r.error}`);
   });
 
+  // ---- Your clip is in: a clip sent from this tab joined the bank (submissionWatch.ts) ----
+  let readyClip: BankClip | null = null;
+  /** Playing it starts from the start screen, so mid-round the notice waits for the round to end. */
+  const syncReady = () => {
+    if (!readyClip) return;
+    const between = document.body.dataset.screen === "start" || document.body.dataset.screen === "results";
+    $("clipReadyText").textContent = between
+      ? `Good news! "${readyClip.title}" is in the bank. The Chamberlain let it in.`
+      : `Good news! "${readyClip.title}" is in the bank. It's on the start screen after this round.`;
+    $("clipReadyPlay").hidden = !between;
+  };
+  new MutationObserver(syncReady).observe(document.body, { attributes: true, attributeFilter: ["data-screen"] });
+  watchSubmissions((clip) => {
+    if (!bank.some((c) => c.id === clip.id)) bank = [...bank, clip];
+    renderBank();
+    readyClip = clip;
+    $("clipReady").hidden = false;
+    syncReady();
+  });
+  $("clipReadyPlay").addEventListener("click", () => {
+    const clip = readyClip;
+    readyClip = null;
+    $("clipReady").hidden = true;
+    if (!clip) return;
+    if (document.body.dataset.screen !== "start") show("start");
+    choose({ kind: "bank", clip });
+  });
+  $("clipReadyLater").addEventListener("click", () => {
+    readyClip = null;
+    $("clipReady").hidden = true;
+  });
+
   $("play").addEventListener("click", async () => {
     if (!pick) return;
     $("startProblem").hidden = true;
@@ -268,6 +301,8 @@ export function initGame(deps: GameDeps) {
     const r = await submitClip(file, { title, ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
     send.disabled = false; bar.hidden = true;
     if (r.error !== null) return say(r.error);
+    // This tab watches the bank for it, and says so when it is let in (submissionWatch.ts).
+    void rememberSubmission(file, title);
     $("submitForm").hidden = true;
     $("submitThanks").hidden = false;
   });
