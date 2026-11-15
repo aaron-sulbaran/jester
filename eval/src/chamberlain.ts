@@ -7,7 +7,7 @@
 //   npm run chamberlain -- --dry-run             list the cases and their truth; no model calls
 //   npm run chamberlain -- --source synthetic    only the committed synthetic cases (or: desk)
 //   npm run chamberlain -- --only name-missing,steer-frame-words
-//   npm run chamberlain -- --mode fast           deep (the default: a plan and the playability-checker subagent) or fast (one call)
+//   npm run chamberlain -- --mode fast           deep (the default: the playability-checker subagent) or fast (one call)
 //   npm run chamberlain -- --model claude-opus-5-5 --concurrency 2
 //
 // Keys: read from the review env file by absolute path (JESTER_REVIEW_ENV, else jester-deploy/.env.review found
