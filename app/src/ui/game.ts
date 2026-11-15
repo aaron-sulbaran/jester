@@ -12,6 +12,7 @@ import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { JESTER_COLOURS } from "../clipside/puppet.ts";
+import { castJesters } from "../clipside/cardJesters.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { startRide, type Ride } from "./ride.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
@@ -264,6 +265,8 @@ export function initGame(deps: GameDeps) {
     b.querySelector(".clip-name")!.textContent = name;
     b.querySelector(".clip-hint")!.textContent = hint;
     b.querySelector(".clip-credit")!.textContent = credit;
+    // The flat silhouettes become 3D jesters, one per person in their own colours, once the 3D jester has loaded.
+    if (p.kind === "bank") castJesters(b.querySelector<HTMLElement>(".clip-pic")!, b.querySelector(".clip-cast"), p.clip.people, withThingsFor(p.clip) ? Math.min(2, p.clip.things) : 0, i);
     b.addEventListener("click", () => choose(p));
     return b;
   }
