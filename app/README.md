@@ -139,3 +139,7 @@ A real camera. First person at a laptop: run a round and post the score and how 
 - The `<video>` element fallback decoder: every test clip decoded with WebCodecs in this Chrome.
 - A tracker failure partway through ("The pose tracker stopped working. Reload the page and try again."): only shown to pass through `readFrames`, not triggered in the lab.
 - Clips over 30 seconds: none in the set.
+
+## Round log and eval lab (dev server only)
+
+Every round scored on a dev server is saved to `eval/data/rounds` without any game file knowing: `round-log-dev-server.ts` points the app's engine import at `src/dev/roundTap.ts`, which returns the scorer's result untouched and saves the round when the page is idle. Production builds do not include it; `JESTER_ROUND_LOG=0` turns it off. Add `?dev=1` to any page for a corner panel that tags the next round as a test case (nailed, stood-still, seated, and so on). The eval lab, `eval-lab.html`, plays one tagged round at a time on a bank clip or the starter dance. Reading the results: `eval/README.md`.
