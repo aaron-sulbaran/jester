@@ -2,3 +2,4 @@ node_modules/
 # Every round the dev server saved, and what `npm run pull` downloads. Freeze the ones worth keeping.
 data/
 report.md
+serve-report.md
