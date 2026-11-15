@@ -9,8 +9,11 @@ import { loadBankGuides, refreshBank, type BankClip } from "./bank.ts";
 
 const KEY = "jester.submitted";
 const POLL_MS = 20000;
-/** Stop watching after this long: a clip still waiting by then is reviewed on another day. */
-const GIVE_UP_MS = 3 * 60 * 60 * 1000;
+/**
+ * Stop watching a clip after an hour: one that was turned away never joins the bank, and the tab cannot see a
+ * rejection, so it would otherwise keep reading the bank for nothing.
+ */
+const GIVE_UP_MS = 60 * 60 * 1000;
 
 export interface Sent { fingerprint: string; title: string; at: number }
 
@@ -52,7 +55,8 @@ export async function rememberSubmission(file: File, title: string): Promise<voi
 
 /**
  * Checks the bank every 20 seconds while this tab has a clip waiting, and calls `onReady` once for each one that
- * has joined it. Returns a stop function.
+ * has joined it. With nothing waiting (none sent, all found, or older than an hour) it makes no request at all.
+ * Returns a stop function.
  */
 export function watchSubmissions(onReady: (clip: BankClip, sent: Sent) => void): () => void {
   let stopped = false;
@@ -60,6 +64,7 @@ export function watchSubmissions(onReady: (clip: BankClip, sent: Sent) => void):
   const check = async () => {
     if (stopped || checking) return;
     const waiting = stillWaiting([...readSent(), ...memory], Date.now());
+    // Nothing waiting (none sent, all found, or older than an hour): no request at all.
     if (waiting.length === 0) return;
     checking = true;
     try {
@@ -85,6 +90,7 @@ export function watchSubmissions(onReady: (clip: BankClip, sent: Sent) => void):
       checking = false;
     }
   };
+  // The timer stays so a clip sent later in this tab is watched too; while nothing waits it only reads sessionStorage.
   const timer = window.setInterval(() => void check(), POLL_MS);
   void check();
   return () => { stopped = true; clearInterval(timer); };

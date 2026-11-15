@@ -22,7 +22,7 @@ test("stillWaiting: drops malformed entries and ones older than the watch lasts"
   const now = 10_000_000_000;
   const sent = [
     { fingerprint: fp, title: "The Dougie", at: now - 60_000 },
-    { fingerprint: other, title: "old", at: now - 4 * 60 * 60 * 1000 },
+    { fingerprint: other, title: "old", at: now - 61 * 60 * 1000 },
     { fingerprint: "not-a-hash", title: "bad", at: now },
   ];
   assert.deepEqual(stillWaiting(sent, now).map((s) => s.title), ["The Dougie"]);
