@@ -276,9 +276,9 @@ export const INHERITED_TRACING = ["LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING_V2"
 
 /**
  * A tracing variable left in the shell that started the dev server or a script would make LangChain trace every
- * review on its own, real frames and names included. It is removed from this process before any review, with a
- * warning, so the desk keeps working; tracing then happens only through a tracer passed in, which
- * tracingRefusal() still refuses for a real submission.
+ * review on its own. A real submission never gets this far with one set: tracingRefusal() runs first, against
+ * the environment as inherited, and refuses it. For a review that passed (a synthetic case, or no tracing at
+ * all) the variables are then removed, so tracing happens only through a tracer passed in.
  */
 export function stopInheritedTracing(): string[] {
   const removed = INHERITED_TRACING.filter((k) => process.env[k] !== undefined);
@@ -342,11 +342,13 @@ function textOf(content: unknown): string {
 /** One review. Throws when the model cannot be reached (a wrong key, no network); the caller says so. */
 export async function reviewSubmission(input: ReviewInput, settings: ReviewSettings): Promise<Decision> {
   const mode = settings.mode ?? "deep";
-  // Before anything is loaded or sent: first drop inherited tracing, then refuse a tracer on a real submission.
-  const removed = stopInheritedTracing();
-  if (removed.length) console.warn(`[review] Ignored ${removed.join(", ")} from the environment: the Chamberlain is traced only through a tracer passed in.`);
+  // Before anything is loaded or sent. The refusal comes first, against the environment as inherited: a real
+  // submission is refused while any tracing switch or tracer is on (a parent run could otherwise trace it through
+  // its context). Only a review that passed has the inherited switches removed.
   const refusal = tracingRefusal(input, { env: process.env, callbacks: settings.callbacks, noticeNamesLangSmith: settings.noticeNamesLangSmith });
   if (refusal) throw new Error(refusal);
+  const removed = stopInheritedTracing();
+  if (removed.length) console.warn(`[review] Ignored ${removed.join(", ")} from the environment: this review is traced only through a tracer passed in.`);
   // Loaded only when a review runs, so the dev server and `vite build` start without the agent packages.
   const [{ createDeepAgent }, { ChatAnthropic }, { tool }, { z }] = await Promise.all([
     import("deepagents"),

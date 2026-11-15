@@ -89,6 +89,21 @@ function checkoutAround(dir: string): string | null {
   }
 }
 
+/** A bank folder (one holding a bank index.json) at or above `dir`, or null: the same check as app/review-cases.ts. */
+function bankAround(dir: string): string | null {
+  let at = resolve(dir);
+  while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+  try { at = realpathSync(at); } catch { /* keep the resolved path */ }
+  for (;;) {
+    try {
+      const index = JSON.parse(readFileSync(join(at, "index.json"), "utf8")) as { schema?: unknown; clips?: unknown };
+      if (index.schema === "bank/1" && Array.isArray(index.clips)) return at;
+    } catch { /* no index here */ }
+    if (dirname(at) === at) return null;
+    at = dirname(at);
+  }
+}
+
 /** Writes through a fresh temporary file, owner-only, so an interrupted write never looks like a report. */
 function writeQuietly(path: string, text: string) {
   const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
@@ -166,6 +181,11 @@ async function main(): Promise<number> {
   const repo = casesDir ? checkoutAround(casesDir) : null;
   if (repo) {
     console.error(`The cases folder ${casesDir} is inside the git checkout ${repo}. Keep JESTER_REVIEW_ENV outside every repo.`);
+    return 2;
+  }
+  const bank = casesDir ? bankAround(casesDir) : null;
+  if (bank) {
+    console.error(`The cases folder ${casesDir} is inside the bank folder ${bank}, which is published. Keep JESTER_REVIEW_ENV outside the bank.`);
     return 2;
   }
   const runsDir = casesDir ? join(casesDir, "runs") : null;

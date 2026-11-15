@@ -5,12 +5,14 @@
 //
 // The files hold real frames and real titles, so they live OUTSIDE every repo: in `chamberlain-cases/` beside
 // the env file JESTER_REVIEW_ENV points at (jester-deploy/), readable by this user only. Nothing is saved when
-// that folder is inside a git checkout (an env file placed in a repo, or in app/public/), so a case can never
-// be committed or served. Never copy them into a repo.
+// that folder is inside a git checkout (an env file placed in a repo, or in app/public/) or inside a bank folder
+// (the given one, or any folder holding a bank index.json), so a case can never be committed, published or
+// served. Never copy them into a repo. The dev server saves cases only when the env file has
+// JESTER_REVIEW_CAPTURE=1.
 
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, isAbsolute } from "node:path";
 import type { Decision, ReviewInput, Verdict } from "./review-agent.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
@@ -73,10 +75,36 @@ export function checkoutAround(dir: string): string | null {
   }
 }
 
-/** Why `dir` may not hold cases, or null when it may. */
-function refusal(dir: string): string | null {
+/** `dir` with symlinks resolved as far as it exists. */
+function real(dir: string): string {
+  let at = resolve(dir), rest = "";
+  while (!existsSync(at) && dirname(at) !== at) { rest = join(at.slice(dirname(at).length + 1), rest); at = dirname(at); }
+  try { at = realpathSync(at); } catch { /* keep the resolved path */ }
+  return rest ? join(at, rest) : at;
+}
+
+const within = (dir: string, folder: string) => {
+  const r = relative(real(folder), real(dir));
+  return r === "" || (!r.startsWith("..") && !isAbsolute(r));
+};
+
+/** The bank folder `dir` would sit in: one holding a bank index.json at or above it, or null. */
+export function bankAround(dir: string): string | null {
+  for (let at = real(dir); ; at = dirname(at)) {
+    try {
+      const index = JSON.parse(readFileSync(join(at, "index.json"), "utf8")) as { schema?: unknown; clips?: unknown };
+      if (index.schema === "bank/1" && Array.isArray(index.clips)) return at;
+    } catch { /* no index here */ }
+    if (dirname(at) === at) return null;
+  }
+}
+
+/** Why `dir` may not hold cases, or null when it may. `bankDir` is the bank folder the dev server serves, if any. */
+function refusal(dir: string, bankDir?: string): string | null {
   const repo = checkoutAround(dir);
-  return repo ? `The cases folder ${dir} is inside the git checkout ${repo}, so no case was saved. Keep JESTER_REVIEW_ENV outside every repo.` : null;
+  if (repo) return `The cases folder ${dir} is inside the git checkout ${repo}, so no case was saved. Keep JESTER_REVIEW_ENV outside every repo.`;
+  const bank = bankDir && within(dir, bankDir) ? bankDir : bankAround(dir);
+  return bank ? `The cases folder ${dir} is inside the bank folder ${bank}, which is published, so no case was saved. Keep JESTER_REVIEW_ENV outside the bank.` : null;
 }
 
 function readCase(path: string): ChamberlainCase | null {
@@ -111,11 +139,11 @@ function writeCase(dir: string, id: string, c: ChamberlainCase) {
  */
 export function saveJudged(dir: string | undefined, j: {
   id: string | null; videoPath: string | null; model: string; prompt: string; input: ReviewInput; decision: Decision | null; error?: string;
-}): Result<string> {
+}, bankDir?: string): Result<string> {
   if (!dir) return { data: null, error: "No cases folder: the dev server was started without JESTER_REVIEW_ENV." };
   const id = j.id ?? inputId(j.input);
   if (!SAFE_ID.test(id)) return { data: null, error: "That is not a submission id." };
-  const refused = refusal(dir);
+  const refused = refusal(dir, bankDir);
   if (refused) return { data: null, error: refused };
   try {
     const before = readCase(pathOf(dir, id));
@@ -133,9 +161,9 @@ export function saveJudged(dir: string | undefined, j: {
 }
 
 /** Adds the final outcome to a judged clip's case. `data` is false when the clip was never judged (no case). */
-export function saveOutcome(dir: string | undefined, id: string, outcome: Omit<CaseOutcome, "at">): Result<boolean> {
+export function saveOutcome(dir: string | undefined, id: string, outcome: Omit<CaseOutcome, "at">, bankDir?: string): Result<boolean> {
   if (!dir || !SAFE_ID.test(id)) return { data: false, error: null };
-  const refused = refusal(dir);
+  const refused = refusal(dir, bankDir);
   if (refused) return { data: null, error: refused };
   const path = pathOf(dir, id);
   if (!existsSync(path)) return { data: false, error: null };
