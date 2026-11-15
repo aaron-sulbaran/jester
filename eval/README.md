@@ -33,7 +33,7 @@ npm run freeze -- --tagged            # copy every tagged local round into cases
 npm run freeze -- r-abc123-xyz789     # or name rounds
 npm run eval -- --save                # save the headline numbers to baseline.json
 npm run eval -- --set ROUND.ceiling=0.9   # what-if: change engine constants for this run only
-npm run upload / npm run pull         # share rounds through the Supabase table `rounds` (needs app/.env.local)
+npm run upload / npm run pull         # share rounds through the Supabase table `rounds` (settings from app/.env.local or the live site)
 npm run check                         # typecheck and tests
 ```
 

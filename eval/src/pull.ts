@@ -3,7 +3,7 @@
 import { saveDataRound } from "./store.ts";
 import { fetchRounds, settings } from "./supabase.ts";
 
-const s = settings();
+const s = await settings();
 if (s.error !== null) { console.error(s.error); process.exit(1); }
 const rounds = await fetchRounds(s.data);
 if (rounds.error !== null) { console.error(rounds.error); process.exit(1); }

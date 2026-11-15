@@ -14,7 +14,10 @@ type Result<T> = { data: T; error: null } | { data: null; error: string };
 
 interface Settings { url: string; key: string }
 
-export function settings(): Result<Settings> {
+/** The live page publishes the same two public values (app/vite.config.ts reads them the same way). */
+const LIVE_SETTINGS = "https://jester-pi.vercel.app/public-config.json";
+
+export async function settings(): Promise<Result<Settings>> {
   let url = process.env.VITE_SUPABASE_URL;
   let key = process.env.VITE_SUPABASE_ANON_KEY;
   const file = join(REPO_DIR, "app", ".env.local");
@@ -25,7 +28,16 @@ export function settings(): Result<Settings> {
       if (m?.[1] === "VITE_SUPABASE_ANON_KEY") key ??= m[2];
     }
   }
-  if (!url || !key) return { data: null, error: "No Supabase settings: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or put app/.env.local in this checkout." };
+  if (!url || !key) {
+    try {
+      const response = await fetch(LIVE_SETTINGS, { signal: AbortSignal.timeout(4000) });
+      const found = (await response.json()) as { supabaseUrl?: string; supabasePublishableKey?: string };
+      if (response.ok) { url ??= found.supabaseUrl; key ??= found.supabasePublishableKey; }
+    } catch {
+      // Offline: fall through to the message below.
+    }
+  }
+  if (!url || !key) return { data: null, error: "No Supabase settings: no app/.env.local here and the live site did not answer. Check the connection." };
   return { data: { url: url.replace(/\/+$/, ""), key }, error: null };
 }
 

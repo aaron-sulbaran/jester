@@ -7,7 +7,7 @@ import { EVAL_DIR, loadDataRounds } from "./store.ts";
 import { insertRounds, settings } from "./supabase.ts";
 
 const SENT_FILE = join(EVAL_DIR, "data", "uploaded.json");
-const s = settings();
+const s = await settings();
 if (s.error !== null) { console.error(s.error); process.exit(1); }
 const sent = new Set<string>(existsSync(SENT_FILE) ? (JSON.parse(readFileSync(SENT_FILE, "utf8")) as string[]) : []);
 const todo = loadDataRounds({ withSelftest: true }).rounds.filter((r) => !sent.has(r.id));
