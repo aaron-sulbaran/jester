@@ -1109,7 +1109,9 @@ html[data-motion="full"] .royal-brow { animation: royal-brow 4.8s ease-in-out in
    every section break is one step (32 px on a laptop, 24 px on a short screen or a phone), the library's cards sit
    a full step below its head with the tape clear, and rows inside a block use 16. Play stays on the first screen. */
 @media (min-width: 761px) {
-  #screen-start { row-gap: 32px; column-gap: 28px; padding-top: 22px; }
+  /* "safe": when the page is taller than the window (narrow laptops, 761 to 899 px wide), it starts at the top
+     instead of centring off the top edge, so the wordmark never sits above the screen. */
+  #screen-start { row-gap: 32px; column-gap: 28px; padding-top: 22px; align-content: safe center; }
   #screen-start .masthead { gap: 8px; }
   #startMode { row-gap: 16px; column-gap: 56px; }
   .start-q { column-gap: 16px; row-gap: 8px; }
