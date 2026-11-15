@@ -28,14 +28,15 @@ const readJson = (file: string): unknown => {
 const byId = (a: RoundRecord, b: RoundRecord) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /** Every round in eval/data/rounds. Files that are not round records are skipped and named. */
-export function loadDataRounds(): { rounds: RoundRecord[]; skipped: string[] } {
+export function loadDataRounds({ withSelftest = false } = {}): { rounds: RoundRecord[]; skipped: string[] } {
   if (!existsSync(DATA_DIR)) return { rounds: [], skipped: [] };
   const rounds: RoundRecord[] = [];
   const skipped: string[] = [];
   for (const name of readdirSync(DATA_DIR).filter((n) => n.endsWith(".json")).sort()) {
     try {
       const r = readJson(join(DATA_DIR, name));
-      if (looksLikeRecord(r)) rounds.push(r); else skipped.push(name);
+      // "selftest" rounds are synthetic ones made to check the plumbing (one sits in the shared table); never judged.
+      if (looksLikeRecord(r)) { if (withSelftest || r.mode !== "selftest") rounds.push(r); } else skipped.push(name);
     } catch {
       skipped.push(name);
     }

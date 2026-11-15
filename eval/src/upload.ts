@@ -10,7 +10,7 @@ const SENT_FILE = join(EVAL_DIR, "data", "uploaded.json");
 const s = settings();
 if (s.error !== null) { console.error(s.error); process.exit(1); }
 const sent = new Set<string>(existsSync(SENT_FILE) ? (JSON.parse(readFileSync(SENT_FILE, "utf8")) as string[]) : []);
-const todo = loadDataRounds().rounds.filter((r) => !sent.has(r.id));
+const todo = loadDataRounds({ withSelftest: true }).rounds.filter((r) => !sent.has(r.id));
 const done = await insertRounds(s.data, todo);
 if (done.error !== null) { console.error(done.error); process.exit(1); }
 for (const r of todo) sent.add(r.id);

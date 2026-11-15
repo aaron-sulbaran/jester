@@ -34,7 +34,19 @@ const headers = (s: Settings) => ({ apikey: s.key, Authorization: `Bearer ${s.ke
 async function problem(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
   if (response.status === 404 || /PGRST205|42P01|does not exist/.test(text)) return "The rounds table is not in Supabase yet.";
+  if (/^\s*</.test(text)) return `Supabase's edge answered ${response.status} with a web page instead of data (usually the network). Try again.`;
   return `Supabase answered ${response.status}${text ? ": " + text.slice(0, 200) : ""}`;
+}
+
+/** Once seen: a duplicate upload got an HTML page from the edge, and the same request a minute later got 201. So try twice more. */
+async function fetchPatiently(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(url, init);
+    const flaky = response.status === 429 || response.status >= 500 || (response.headers.get("content-type") ?? "").includes("text/html");
+    if (!flaky || attempt === 2) return response;
+    await response.arrayBuffer().catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
 }
 
 /** Every round in the shared table, oldest first. */
@@ -44,7 +56,7 @@ export async function fetchRounds(s: Settings): Promise<Result<RoundRecord[]>> {
   for (let offset = 0; ; offset += page) {
     let response: Response;
     try {
-      response = await fetch(`${s.url}/rest/v1/rounds?select=record&order=created_at.asc&limit=${page}&offset=${offset}`, { headers: headers(s) });
+      response = await fetchPatiently(`${s.url}/rest/v1/rounds?select=record&order=created_at.asc&limit=${page}&offset=${offset}`, { headers: headers(s) });
     } catch {
       return { data: null, error: "Supabase did not answer. Check the connection." };
     }
@@ -62,7 +74,7 @@ export async function insertRounds(s: Settings, rounds: readonly RoundRecord[]):
     const row = { id: r.id, created_at: r.createdAt, scorer_version: r.scorerVersion, mode: r.mode, tag: r.tag, clip_key: r.clip.key, score: r.result.score, record: r };
     let response: Response;
     try {
-      response = await fetch(`${s.url}/rest/v1/rounds?on_conflict=id`, {
+      response = await fetchPatiently(`${s.url}/rest/v1/rounds?on_conflict=id`, {
         method: "POST",
         headers: { ...headers(s), Prefer: "resolution=ignore-duplicates,return=minimal" },
         body: JSON.stringify(row),
