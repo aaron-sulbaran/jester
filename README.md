@@ -58,7 +58,7 @@ make setup
 make dev
 ```
 
-Then open http://localhost:5173. No settings file is needed: the dev server takes the two public Supabase settings from the live site by itself, and without a network the game still runs in one browser. Every setting is named in [`app/.env.example`](app/.env.example). Add `?nocam=1` to play with simulated players and no camera [check].
+Then open http://localhost:5173. No settings file is needed: the dev server takes the two public Supabase settings from the live site by itself, and without a network the game still runs in one browser. Every setting is named in [`app/.env.example`](app/.env.example). Add `?nocam=1` to play with simulated players and no camera.
 
 `make test` runs the type checks and all 264 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
 
