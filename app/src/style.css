@@ -1142,10 +1142,11 @@ html[data-motion="full"] .royal-brow { animation: royal-brow 4.8s ease-in-out in
   #libraryHead { gap: 12px 16px; margin-bottom: 4px; }
   #bank { margin-top: -8px; }
 }
-/* In the phone layout the three corner tags (How to play, Sound, Settings) show only their pictures, clustered at the
-   right: with their words they wrapped below 390 px and covered the hat on the J from 390 to about 680 px. The words
-   stay for screen readers, like .vh, and each tag has a title for a mouse hover. */
-@media (max-width: 760px) {
+/* Up to 1180 px the three corner tags (How to play, Sound, Settings) show only their pictures, clustered at the right:
+   with their words they wrapped below 390 px, covered the hat on the J from 390 to about 680 px on a phone, and
+   covered the hat and the letters "ester" from 761 to 1180 px on a laptop. The words stay for screen readers, like
+   .vh, and each tag has a title for a mouse hover. */
+@media (max-width: 1180px) {
   .side-nav .side-say { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .side-nav .btn-quiet:has(> .ico) { min-width: 44px; padding-right: .85em; }
 }
