@@ -277,6 +277,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
    alphabet stickers with a QR print beside it, everyone's jester, the host's choices or the guest's ready ticket,
    and a chat page torn from the Jester's notebook. Everything new is on #room ids or room- classes. */
 .room-box { display: grid; justify-items: center; gap: 20px; width: 100%; }
+#roomBack { min-height: 44px; }
 #roomJoin { display: grid; justify-items: center; gap: 22px; width: min(100%, 460px); }
 .room-name { width: 100%; text-align: left; }
 #roomName { min-height: 52px; font-size: 28px; }
@@ -395,7 +396,11 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   /* The one moment: the code's stickers slap down one after another when the room opens. */
-  #roomLobby:not([hidden]) .room-code .letters span, #roomInvite:not([hidden]) .room-code .letters span { animation: slap .42s var(--ease) both; animation-delay: calc(var(--n) * .08s + .1s); }
+  /* Each sticker follows a little sooner than the last (room.ts sets --d). */
+  #roomLobby:not([hidden]) .room-code .letters span, #roomInvite:not([hidden]) .room-code .letters span { animation: slap .42s var(--ease) both; animation-delay: var(--d, 0s); }
+  /* The QR prints in when its library arrives, instead of popping onto a blank photo. */
+  .room-qr-code svg { animation: room-qr-in .3s var(--ease) both; }
+  @keyframes room-qr-in { from { opacity: 0; } }
   .room-seat { animation: room-seat-in .45s var(--ease) both; }
   @keyframes room-seat-in { from { opacity: 0; transform: translateY(16px) scale(.92); } }
   .room-stamp { transition: opacity .1s linear, scale .2s cubic-bezier(.3, 1.4, .5, 1); }
@@ -428,9 +433,11 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
   #roomModes { gap: 10px; }
   #roomModes .mode { padding: 8px 10px 10px; }
   #roomModes .mode b { font-size: 21px; }
-  #roomModes .mode span { font-size: 12px; }
+  #roomModes .mode span { font-size: 13px; }
   #roomHostRow, #roomGuestRow { justify-items: stretch; }
   .room-chat-lines { height: calc(var(--lh) * 4); }
+  /* The ticket spans the phone, so the stamp lands on its stub inside the edge. */
+  .room-stamp { right: 6px; }
   .room-chat-page { padding: 20px 14px 14px 48px; background-image: linear-gradient(90deg, transparent 34px, #EE9C9C 34px 36px, transparent 36px), repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh)); background-position: 0 0, 0 20px; }
 }
 

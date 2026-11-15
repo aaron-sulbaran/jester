@@ -30,6 +30,8 @@ const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const STICKER_INKS = ["var(--stamp)", "var(--p2)", "var(--p1)", "var(--ticket)"];
 const TILT = [-5, 4, -3, 5];
 const BOB = [5, -4, 3, -3];
+/** When each sticker slaps down, in seconds: each one follows a little sooner than the last. */
+const SLAP_AT = [0, 0.1, 0.18, 0.24];
 function codeStickers(el: HTMLElement, code: string) {
   const wrap = document.createElement("span");
   wrap.className = "letters";
@@ -40,6 +42,7 @@ function codeStickers(el: HTMLElement, code: string) {
     s.style.setProperty("--r", `${TILT[i % TILT.length]}deg`);
     s.style.setProperty("--y", `${BOB[i % BOB.length]}px`);
     s.style.setProperty("--n", String(i));
+    s.style.setProperty("--d", `${SLAP_AT[i] ?? 0.24}s`);
     wrap.appendChild(s);
   });
   // Spaced out for screen readers, so the code is read letter by letter.
@@ -226,7 +229,7 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     $("roomGuestNote").textContent = `${hostName} picks the clip and deals the parts.`;
     const readyBtn = $("roomReady");
     readyBtn.setAttribute("aria-pressed", String(!!room.ready));
-    $("roomReadySays").textContent = room.ready ? "Tap again if you need a minute." : "Tap when you're set to play.";
+    $("roomReadySays").textContent = room.ready ? "Need a minute? Press it again." : `${hostName} sees when you're ready.`;
     updateDeal();
   }
 

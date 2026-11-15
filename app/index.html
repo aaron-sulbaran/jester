@@ -280,7 +280,7 @@
             <div id="roomGuestRow" hidden>
               <div class="note-wrap"><p class="note" id="roomGuestNote">The host picks the clip and deals the parts.</p></div>
               <button type="button" class="btn btn-main" id="roomReady" aria-pressed="false"><span class="ticket"><span class="ticket-text">I'm ready</span></span><span class="room-stamp" aria-hidden="true">Ready</span></button>
-              <p class="aside" id="roomReadySays">Tap again if you need a minute.</p>
+              <p class="aside" id="roomReadySays">The host sees when you're ready.</p>
             </div>
             <p class="aside room-privacy">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
           </div>
@@ -294,7 +294,7 @@
                 <ol class="room-chat-log" id="roomChatLog" aria-live="polite"></ol>
               </div>
               <form class="room-chat-form" id="roomChatForm">
-                <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-label="Your message" placeholder="Write a message" />
+                <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
                 <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
               </form>
             </div>
