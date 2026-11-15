@@ -158,12 +158,14 @@
           <ul id="roomRoster" class="how"></ul>
           <p class="aside">Your face picture and a short cut-out clip of you are sent to the others in this room for the recap and the crowning. They are not stored anywhere.</p>
           <div id="roomHostRow" hidden>
-            <label class="field"><span>Clip</span>
-              <select id="roomScene">
-                <option value="dribble">Pickup game: someone, and something they keep bouncing</option>
-                <option value="demo">Dance break: someone dancing, and something flying around</option>
-              </select>
-            </label>
+            <div class="field"><span>Pick what you will play (the host chooses for everyone)</span>
+              <div class="modes-pick" id="roomModes" role="radiogroup" aria-label="Pick what you will play">
+                <button type="button" class="mode" role="radio" data-scene="duo" aria-checked="true"><b>Dance duo</b><span>Two dancers, no ball. Everyone dances.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="demo" aria-checked="false"><b>Dance break</b><span>A dancer, and a ball flying around.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="dribble" aria-checked="false"><b>Pickup game</b><span>Someone dribbling, and the ball they keep bouncing.</span></button>
+                <button type="button" class="mode" role="radio" data-scene="surprise" aria-checked="false"><b>Surprise me</b><span>The game picks one at random.</span></button>
+              </div>
+            </div>
             <button type="button" class="btn btn-main" id="roomDeal" disabled><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
             <p class="aside" id="roomNeedTwo">Waiting for at least one more player to join.</p>
           </div>
