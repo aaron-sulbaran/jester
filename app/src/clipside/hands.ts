@@ -19,13 +19,15 @@ const SIDES = [
   { key: "right" as const, elbow: 14, wrist: 16 },
 ];
 
+/** Crop sizes to try, as multiples of the first guess. */
+const GROWS = [1, 1.7];
 const round4 = (v: number) => Math.round(v * 1e4) / 1e4;
 
 /** The crop square, in frame pixels, to look for the hand in: centred a little past the wrist, along the forearm. */
-export function handCrop(elbow: readonly [number, number], wrist: readonly [number, number], W: number, H: number): { x: number; y: number; side: number } {
+export function handCrop(elbow: readonly [number, number], wrist: readonly [number, number], W: number, H: number, grow = 1): { x: number; y: number; side: number } {
   const ex = elbow[0] * W, ey = elbow[1] * H, wx = wrist[0] * W, wy = wrist[1] * H;
   const length = Math.hypot(wx - ex, wy - ey) || 1;
-  const side = Math.min(Math.min(W, H) * 0.6, Math.max(96, length * 1.1));
+  const side = Math.min(Math.min(W, H) * 0.8, Math.max(96, length * 1.1) * grow);
   const cx = wx + ((wx - ex) / length) * side * 0.3, cy = wy + ((wy - ey) / length) * side * 0.3;
   return { x: cx - side / 2, y: cy - side / 2, side };
 }
@@ -79,12 +81,16 @@ export async function addHands(guides: Guide[], file: File, video: HTMLVideoElem
         for (const side of SIDES) {
           const w = landmarks[side.wrist], e = landmarks[side.elbow];
           if (!w || !e || w[2] < MIN_VISIBILITY || e[2] < MIN_VISIBILITY) continue;
-          const box = handCrop([e[0], e[1]], [w[0], w[1]], frame.width, frame.height);
-          ctx.clearRect(0, 0, CROP, CROP);
-          ctx.drawImage(frame, box.x, box.y, box.side, box.side, 0, 0, CROP, CROP);
-          const result = detector.detect(crop);
-          const points = result?.landmarks?.[0] as { x: number; y: number }[] | undefined;
-          if (points) entry[side.key] = handFromCrop(points, box, [w[0], w[1]], frame.width, frame.height);
+          // A tight look first; a hand it misses (fingers spread, close to the camera) gets a wider one.
+          for (const grow of GROWS) {
+            const box = handCrop([e[0], e[1]], [w[0], w[1]], frame.width, frame.height, grow);
+            ctx.clearRect(0, 0, CROP, CROP);
+            ctx.drawImage(frame, box.x, box.y, box.side, box.side, 0, 0, CROP, CROP);
+            const result = detector.detect(crop);
+            const points = result?.landmarks?.[0] as { x: number; y: number }[] | undefined;
+            const hand = points ? handFromCrop(points, box, [w[0], w[1]], frame.width, frame.height) : null;
+            if (hand) { entry[side.key] = hand; break; }
+          }
         }
         found.get(g)![i] = entry.left || entry.right ? entry : null;
       }
