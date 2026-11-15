@@ -20,7 +20,18 @@ export interface Cutout {
   /** Clip time when this frame was captured. */
   clipMs: number;
   image: HTMLCanvasElement;
+  /** Where the player's torso sits in the image (cutAnchor), so the reveal can stand them on the subject's torso. */
+  anchor?: CutAnchor | null;
 }
+
+/**
+ * The player's torso in a cutout: its centre as fractions of the (mirrored) image, and its length (shoulder
+ * centre to hip centre) as a fraction of the image side. Null without both shoulders and hips.
+ */
+export interface CutAnchor { x: number; y: number; torso: number }
+
+/** Shoulder and hip centres, from landmarks seen well enough. */
+export interface Torso { shoulder: { x: number; y: number }; hip: { x: number; y: number } }
 
 const SIDE = 256; // pixels of the stored square crop (was 160: a tall reveal upscaled it about 7x and looked blurred)
 
@@ -142,6 +153,17 @@ export function partRegion(lms: readonly LandmarkObject[], part: BodyPart, aspec
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, side };
 }
 
+/** The torso of `lms` placed in the crop `cutFrame` makes for the same frame and part. */
+export function cutAnchor(lms: readonly LandmarkObject[], part: BodyPart, aspect: number): CutAnchor | null {
+  if (part !== "body") return null;
+  const r = partRegion(lms, part, aspect);
+  const sh = mid([pt(lms[11], aspect), pt(lms[12], aspect)]), hp = mid([pt(lms[23], aspect), pt(lms[24], aspect)]);
+  if (!r || !sh || !hp || !pt(lms[11], aspect) || !pt(lms[12], aspect) || !pt(lms[23], aspect) || !pt(lms[24], aspect)) return null;
+  const c = { x: (sh.x + hp.x) / 2, y: (sh.y + hp.y) / 2 };
+  // The image is mirrored, so x is measured from the region's right edge.
+  return { x: (r.cx + r.side / 2 - c.x) / r.side, y: (c.y - (r.cy - r.side / 2)) / r.side, torso: dist(sh, hp) / r.side };
+}
+
 /** The binary mask sampled between cells, so its staircase edge becomes a soft ramp. */
 function sampleMask(mask: PersonMask, nx: number, ny: number): number {
   const fx = nx * mask.width - 0.5, fy = ny * mask.height - 0.5;
@@ -229,6 +251,11 @@ export interface RevealLayer {
   boxAt: (ms: number) => Box | null;
   /** A person's cutout is the whole body sized to the box; a thing's is sized up so a small ball still shows a hand. */
   kind: "person" | "thing";
+  /**
+   * For a person: the subject's shoulder and hip centres at replay time ms (normalized like the clip). With it,
+   * each cutout is stood on the subject's torso and sized torso to torso, so arm moves no longer zoom it.
+   */
+  torsoAt?: (ms: number) => Torso | null;
   /** Sideways offset in cutout widths, so players sharing a role stand side by side (default 0). */
   spread?: number;
   /** Name tag drawn above the cutout, e.g. "Alex 87". */
@@ -261,15 +288,30 @@ function nearest(cutouts: readonly Cutout[], ms: number): Cutout | null {
   return Math.abs(best.clipMs - ms) <= 600 ? best : null;
 }
 
+/** Where a cutout goes: on the subject's torso, sized torso to torso; null to fall back to the box. */
+function torsoPlacement(layer: RevealLayer, c: Cutout, W: number, H: number, ms: number) {
+  const t = layer.torsoAt?.(ms), a = c.anchor;
+  if (!t || !a || !(a.torso > 0.02)) return null;
+  const tx = (t.shoulder.x + t.hip.x) / 2 * W, ty = (t.shoulder.y + t.hip.y) / 2 * H;
+  const torsoPx = Math.hypot((t.shoulder.x - t.hip.x) * W, (t.shoulder.y - t.hip.y) * H);
+  if (!(torsoPx > 4)) return null;
+  // This frame's own torso share sizes this frame's image, so the body inside stays the subject's size.
+  const side = torsoPx / a.torso;
+  return { x: tx - a.x * side, y: ty - a.y * side, side, cx: tx };
+}
+
 /** Draw every layer's cutout for replay time `ms`. */
 export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
   for (const layer of layers) {
     const b = layer.boxAt(ms);
     const c = nearest(layer.cutouts, ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs));
     if (!b || !c) continue;
-    const side = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
-    const cx = b.cx * W + (layer.spread ?? 0) * side;
-    const x = cx - side / 2, y = b.cy * H - side / 2;
+    const boxSide = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
+    const placed = layer.kind === "person" ? torsoPlacement(layer, c, W, H, ms) : null;
+    const side = placed?.side ?? boxSide;
+    const shift = (layer.spread ?? 0) * side;
+    const cx = (placed?.cx ?? b.cx * W) + shift;
+    const x = (placed ? placed.x : b.cx * W - side / 2) + shift, y = placed ? placed.y : b.cy * H - side / 2;
     ctx.save();
     ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = layer.glow ?? 12;
     ctx.drawImage(c.image, x, y, side, side);
