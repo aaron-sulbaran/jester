@@ -96,7 +96,7 @@ export function initBlindScreens(deps: ScreenDeps) {
       show("turnReveal", false);
       $("turnText").textContent = (role.problem ? role.problem + " " : "") + role.text;
       const select = $<HTMLSelectElement>("turnPart");
-      select.innerHTML = role.parts.map((p) => `<option value="${p.key}">${p.label}</option>`).join("");
+      select.replaceChildren(...role.parts.map((p) => { const o = document.createElement("option"); o.value = p.key; o.textContent = p.label; return o; }));
       show("turnPartRow", true);
       show("turnStart", true); show("turnPreview", true);
       // Watching once is unscored; Start stays available the whole time.
