@@ -102,7 +102,11 @@ const BOB = [4, -4, 2, -3, 3, -2];
 
 /** Writes `text` into `el` as alphabet stickers: each letter its own colour (or all `color`), one white backing. */
 function letters(el: HTMLElement, text: string, color?: string) {
-  el.setAttribute("aria-label", text);
+  // Screen readers get the whole word from hidden text; an aria-label on a heading is not read everywhere,
+  // and the letter stickers on their own were read one letter at a time.
+  const said = document.createElement("span");
+  said.className = "vh";
+  said.textContent = text;
   const wrap = document.createElement("span");
   wrap.className = "letters";
   wrap.setAttribute("aria-hidden", "true");
@@ -115,7 +119,8 @@ function letters(el: HTMLElement, text: string, color?: string) {
     span.style.setProperty("--n", String(i));
     wrap.appendChild(span);
   });
-  el.replaceChildren(wrap);
+  el.removeAttribute("aria-label");
+  el.replaceChildren(said, wrap);
 }
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
@@ -150,6 +155,10 @@ export function initGame(deps: GameDeps) {
 
   const bankBox = $("bank");
   document.body.dataset.mode = mode;
+  // Team tools (the testing upload, the practice area, the empty bank note) show only on a local dev server
+  // or with ?dev=1, never to visitors on the live site. ?dev=0 shows the visitor's page on a dev server.
+  const devParam = new URLSearchParams(location.search).get("dev");
+  document.body.classList.toggle("dev", devParam !== null ? devParam !== "0" : ["localhost", "127.0.0.1"].includes(location.hostname));
 
   const keyOf = (p: Pick) => (p.kind === "surprise" ? "surprise" : p.kind === "bank" ? `bank:${p.clip.id}` : `starter:${p.starter.id}`);
 
@@ -183,8 +192,9 @@ export function initGame(deps: GameDeps) {
       ? [...(mode === "blind" && bank.length > 1 ? [{ kind: "surprise" } as Pick] : []), ...bank.map((clip): Pick => ({ kind: "bank", clip }))]
       : STARTERS.map((starter): Pick => ({ kind: "starter", starter }));
     bankBox.replaceChildren(...picks.map(card));
+    // A note for the team only: visitors just see the starter clips.
     const note = $("bankNote");
-    note.hidden = bank.length > 0;
+    note.hidden = bank.length > 0 || !document.body.classList.contains("dev");
     note.textContent = "The bank is empty. Add clips with the bank tool. Until then, here are the starter clips.";
     // Keep the pick if it is still on screen, else the first card.
     const keep = pick && picks.find((p) => keyOf(p) === keyOf(pick!));
@@ -198,14 +208,21 @@ export function initGame(deps: GameDeps) {
     $<HTMLButtonElement>("play").disabled = !p;
   }
 
-  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode")) {
+  // The two modes are one switch; the picked mode's line shows once, under it.
+  const sayMode = () => {
+    const picked = document.querySelector<HTMLButtonElement>(`.mode[data-mode="${mode}"] span`);
+    $("modeSays").textContent = picked?.textContent ?? "";
+  };
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) {
     b.addEventListener("click", () => {
       mode = b.dataset.mode as Mode;
       document.body.dataset.mode = mode;
-      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode")) o.setAttribute("aria-checked", String(o === b));
+      for (const o of document.querySelectorAll<HTMLButtonElement>(".mode[data-mode]")) o.setAttribute("aria-checked", String(o === b));
+      sayMode();
       renderBank();
     });
   }
+  sayMode();
 
   void listBank().then((r) => {
     bank = r.data ?? [];
@@ -444,7 +461,8 @@ export function initGame(deps: GameDeps) {
   const leaveDialog = $<HTMLDialogElement>("leaveDialog");
   $("home").addEventListener("click", () => {
     const screen = document.body.dataset.screen as ScreenName;
-    if (running && MID_GAME.includes(screen)) leaveDialog.showModal();
+    // The crowning runs after the game itself has finished, so it is checked by name.
+    if ((running && MID_GAME.includes(screen)) || screen === "crown") leaveDialog.showModal();
     else goHome();
   });
   $("leaveStay").addEventListener("click", () => leaveDialog.close());
