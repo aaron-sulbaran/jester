@@ -208,4 +208,44 @@ async function addClipNow(folder: FileSystemDirectoryHandle, video: HTMLVideoEle
   }
 }
 
+/**
+ * Reads a bank clip's moves again with the analysis as it is now (for example to add finger detail), from the
+ * video already in its folder. Keeps its id, name, credit, video and poster; the old guides stay beside the new
+ * ones as guides.before.json. Run only when a person asks, so nothing in the bank changes without them seeing it.
+ */
+export function rereadClip(folder: FileSystemDirectoryHandle, video: HTMLVideoElement, id: string, onProgress: (share: number) => void): Promise<Result<{ before: BankEntry; after: BankEntry; handFrames: number }>> {
+  return bankLock(async () => {
+    const index = await readIndex(folder);
+    if (index.error !== null) return index;
+    const before = index.data.clips.find((c) => c.id === id);
+    if (!before) return { data: null, error: "That clip is not in the bank any more." };
+    try {
+      const clipFolder = await folder.getDirectoryHandle(id);
+      const videoName = before.video.slice(id.length + 1);
+      const raw = await (await clipFolder.getFileHandle(videoName)).getFile();
+      const file = new File([raw], videoName, { type: raw.type || (videoName.endsWith(".webm") ? "video/webm" : "video/mp4") });
+      const found = await analyseClip(file, video, onProgress);
+      if (found.error !== null) return { data: null, error: `It did not read: ${found.error} Its old moves are kept.` };
+      const guides = found.data.guides;
+      const old = await (await (await clipFolder.getFileHandle("guides.json")).getFile()).text();
+      await writeFile(clipFolder, "guides.before.json", old);
+      await writeFile(clipFolder, "guides.json", guidesJson(guides));
+      const g = guides[0]!;
+      const after: BankEntry = {
+        ...before,
+        durationMs: Math.round(g.range.endMs - g.range.startMs),
+        people: guides.filter((x) => x.subject.kind === "person").length,
+        things: guides.filter((x) => x.subject.kind === "thing").length,
+      };
+      const latest = await readIndex(folder);
+      if (latest.error !== null) return latest;
+      await writeIndex(folder, withClip(latest.data, after));
+      const handFrames = guides.reduce((n, x) => n + (x.hands?.filter((h) => h !== null).length ?? 0), 0);
+      return { data: { before, after, handFrames }, error: null };
+    } catch (err) {
+      return { data: null, error: `Reading it again failed: ${(err as Error).message} Its old moves are kept.` };
+    }
+  });
+}
+
 export const describe = (e: BankEntry) => `${e.people} ${e.people === 1 ? "person" : "people"}, ${e.things} ${e.things === 1 ? "thing" : "things"}, ${(e.durationMs / 1000).toFixed(1)} s`;
