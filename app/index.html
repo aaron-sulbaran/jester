@@ -24,6 +24,16 @@
         <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
         <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
       </filter>
+      <!-- The wordmark's white edge grown round instead of square: the outline blurred, then cut off sharply, so the
+           crown's points and the letters get one smooth rim. -->
+      <filter id="die-cut-round" x="-10%" y="-25%" width="125%" height="160%" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="4.6" result="soft" />
+        <feComponentTransfer in="soft" result="grown"><feFuncA type="linear" slope="80" intercept="-2.8" /></feComponentTransfer>
+        <feOffset in="grown" dx="5" dy="6" result="dropped" />
+        <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+        <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+        <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
       <filter id="sticker" x="-12%" y="-12%" width="130%" height="130%" color-interpolation-filters="sRGB">
         <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="grown" />
         <feOffset in="grown" dx="4" dy="5" result="dropped" />
