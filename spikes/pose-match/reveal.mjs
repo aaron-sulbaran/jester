@@ -5,7 +5,7 @@ import { mirrorPose } from "./score.mjs";
 
 export const PLAYER_COLORS = ["#f5c542", "#4cc9f0", "#f72585", "#80ed99", "#c77dff"];
 export const MAX_GAP_MS = 200; // a recording with a longer hole than this shows no figure there
-const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
+import { DETAIL_BONES as BONES } from "./skeleton.mjs";
 
 // The recorded frame nearest to clip time t, or null if the nearest is further than MAX_GAP_MS.
 export function sampleTimeline(frames, t, maxGapMs = MAX_GAP_MS) {

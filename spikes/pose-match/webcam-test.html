@@ -23,7 +23,7 @@ import { Calibrator } from "./calibration.mjs";
 const calib = new Calibrator();
 const $ = (id) => document.getElementById(id);
 const cam = $("cam"), cv = $("out"), ctx = cv.getContext("2d"), hud = $("hud");
-const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+import { DETAIL_BONES as BONES, JOINTS, FINGER_BONES } from "./skeleton.mjs";
 let lastCal = null, tracker = null, latest = null, frames = 0, missing = 0;
 const off = document.createElement("canvas");
 
@@ -46,6 +46,14 @@ function draw(f) {
     ctx.strokeStyle = "#ff5c8a"; ctx.lineWidth = 4; ctx.beginPath();
     for (const [a, b] of BONES) { if (p[a].visibility < .5 || p[b].visibility < .5) continue; ctx.moveTo(p[a].x * w, p[a].y * h); ctx.lineTo(p[b].x * w, p[b].y * h); }
     ctx.stroke();
+    ctx.fillStyle = "#ff5c8a";
+    for (const j of JOINTS) { if (p[j].visibility < .5) continue; ctx.beginPath(); ctx.arc(p[j].x * w, p[j].y * h, 5, 0, Math.PI * 2); ctx.fill(); }
+  }
+  for (const hand of f.hands || []) {
+    ctx.strokeStyle = "#4cc9f0"; ctx.fillStyle = "#4cc9f0"; ctx.lineWidth = 2; ctx.beginPath();
+    for (const [a, b] of FINGER_BONES) { const u = hand.landmarks[a], v = hand.landmarks[b]; ctx.moveTo(u.x * w, u.y * h); ctx.lineTo(v.x * w, v.y * h); }
+    ctx.stroke();
+    for (const u of hand.landmarks) { ctx.beginPath(); ctx.arc(u.x * w, u.y * h, 3, 0, Math.PI * 2); ctx.fill(); }
   }
 }
 
@@ -71,7 +79,7 @@ $("go").onclick = async () => {
     const p = latest && latest.landmarks;
     const hidden = p ? [11,12,23,24,25,26,27,28].filter((i) => p[i].visibility < .5).length : 8;
     hud.textContent = "fps " + tracker.stats.fps.toFixed(1) + " | " + tracker.stats.model + " " + tracker.stats.delegate +
-      " | body " + (p ? "found" : "NOT FOUND") + " | hidden key joints " + hidden + " | mask " + (latest && latest.mask ? latest.mask.width + "x" + latest.mask.height : "none") +
+      " | body " + (p ? "found" : "NOT FOUND") + " | hidden key joints " + hidden + " | hands " + (tracker.stats.hands ? ((latest && latest.hands ? latest.hands.length : 0) + " seen") : "off") + " | mask " + (latest && latest.mask ? latest.mask.width + "x" + latest.mask.height : "none") +
       " | outline pts " + (latest && latest.outline ? latest.outline.length : 0);
   }, 500);
 };

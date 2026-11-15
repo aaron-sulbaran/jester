@@ -145,11 +145,11 @@ export async function prepareClip(
   const refuse = (error: string, decoder: PrepareFacts["decoder"] = null): PrepareResult =>
     ({ data: null, error, facts: { decoder, frames: frames.length } });
 
-  const detector = await createPeopleDetector(model, search);
-  if (detector.error !== null) return refuse(detector.error);
+  // Both detectors load at the same time (each is a model download plus a GPU setup).
+  const [detector, made] = await Promise.all([createPeopleDetector(model, search), options.things ? createThingDetector() : Promise.resolve(null)]);
+  if (detector.error !== null) { made?.data?.close(); return refuse(detector.error); }
   let thingDetector: ThingDetector | null = null;
-  if (options.things) {
-    const made = await createThingDetector();
+  if (made) {
     if (made.error !== null) {
       detector.data.close();
       return refuse(made.error);
