@@ -314,7 +314,7 @@ const median = (xs: number[]) => { const v = [...xs].sort((a, b) => a - b); retu
  * player's typical torso, so a small player is scaled up once and a big one down once, never again), and the
  * player's torso centre steadied over neighbouring frames. Worked out once per layer and canvas size.
  */
-interface Steady { k: number; centre: Map<Cutout, P> }
+interface Steady { k: number; centre: Map<Cutout, P>; raw: Map<Cutout, P>; torsoPx: number }
 const steadyCache = new WeakMap<readonly Cutout[], { key: string; steady: Steady | null }>();
 
 function steadyOf(layer: RevealLayer, W: number, H: number): Steady | null {
@@ -342,15 +342,16 @@ function steadyOf(layer: RevealLayer, W: number, H: number): Steady | null {
         return a.torso ? { x: a.torso.x, y: a.torso.y } : { x: a.region.cx + off.x, y: a.region.cy + off.y };
       });
       // Average the centre over about a fifth of a second either side, which takes out the landmark jitter.
-      const centre = new Map<Cutout, P>();
+      const centre = new Map<Cutout, P>(), rawOf = new Map<Cutout, P>();
       layer.cutouts.forEach((c, i) => {
         if (!raw[i]) return;
+        rawOf.set(c, raw[i]!);
         let sx = 0, sy = 0, n = 0;
         for (let j = i; j >= 0 && c.clipMs - layer.cutouts[j]!.clipMs <= 200; j--) if (raw[j]) { sx += raw[j]!.x; sy += raw[j]!.y; n++; }
         for (let j = i + 1; j < layer.cutouts.length && layer.cutouts[j]!.clipMs - c.clipMs <= 200; j++) if (raw[j]) { sx += raw[j]!.x; sy += raw[j]!.y; n++; }
         centre.set(c, { x: sx / n, y: sy / n });
       });
-      steady = { k, centre };
+      steady = { k, centre, raw: rawOf, torsoPx: median(subject) };
     }
   }
   steadyCache.set(layer.cutouts, { key, steady });
@@ -370,18 +371,44 @@ function torsoPlacement(layer: RevealLayer, c: Cutout, W: number, H: number, ms:
   return { x: tx - u * side, y: ty - v * side, side, cx: tx };
 }
 
+/**
+ * Cutouts come about 15 times a second, so between two of them the body would stand still and then jump. This is
+ * how far to move the shown cutout at capture time `t` so the player's torso glides from where it is in one
+ * cutout to where it is in the next (the picture still changes at the midpoint; only its place glides).
+ */
+function glide(layer: RevealLayer, shown: Cutout, t: number, st: Steady): P {
+  const cs = layer.cutouts;
+  let lo = 0, hi = cs.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cs[m]!.clipMs <= t) lo = m; else hi = m; }
+  const a = cs[lo]!, b = cs[hi]!;
+  if (a === b || t < a.clipMs || t > b.clipMs || b.clipMs - a.clipMs > 250) return { x: 0, y: 0 };
+  // Where each cutout's torso lands relative to the dancer's (the image is mirrored, so x flips).
+  const body = (c: Cutout): P | null => {
+    const r = st.raw.get(c), m = st.centre.get(c);
+    return r && m ? { x: -(r.x - m.x) * st.k, y: (r.y - m.y) * st.k } : null;
+  };
+  const pa = body(a), pb = body(b);
+  if (!pa || !pb) return { x: 0, y: 0 };
+  const u = (t - a.clipMs) / (b.clipMs - a.clipMs), d = sub(pb, pa);
+  const k = shown === a ? u : shown === b ? u - 1 : 0;
+  return { x: d.x * k, y: d.y * k };
+}
+
 /** Draw every layer's cutout for replay time `ms`. */
 export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
   for (const layer of layers) {
     const b = layer.boxAt(ms);
-    const c = nearest(layer.cutouts, ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs));
+    const at = ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs);
+    const c = nearest(layer.cutouts, at);
     if (!b || !c) continue;
     const boxSide = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
     const placed = layer.kind === "person" ? torsoPlacement(layer, c, W, H, ms, b) : null;
+    const st = placed ? steadyOf(layer, W, H) : null;
+    const g = st ? glide(layer, c, at, st) : { x: 0, y: 0 };
     const side = placed?.side ?? boxSide;
     const shift = (layer.spread ?? 0) * side;
     const cx = (placed?.cx ?? b.cx * W) + shift;
-    const x = (placed ? placed.x : b.cx * W - side / 2) + shift, y = placed ? placed.y : b.cy * H - side / 2;
+    const x = (placed ? placed.x + g.x : b.cx * W - side / 2) + shift, y = placed ? placed.y + g.y : b.cy * H - side / 2;
     ctx.save();
     ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = layer.glow ?? 12;
     ctx.drawImage(c.image, x, y, side, side);
@@ -390,7 +417,9 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
       ctx.save();
       ctx.font = `600 ${Math.round(H / 24)}px ${layer.tagFont ?? "system-ui, sans-serif"}`;
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-      const ty = Math.max(H / 20, y + side * 0.06);
+      // Over the dancer's head, from their steady torso, so the tag does not hop when the cutout's crop changes.
+      const torso = placed && st ? layer.torsoAt?.(ms) : null;
+      const ty = Math.max(H / 20, torso && st ? torso.shoulder.y * H - st.torsoPx * 0.9 : y + side * 0.06);
       ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, cx, ty);
       ctx.fillStyle = layer.color ?? "#f5c542"; ctx.fillText(layer.tag, cx, ty);
       ctx.restore();
