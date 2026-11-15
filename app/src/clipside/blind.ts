@@ -26,7 +26,11 @@ export type Look = "outline" | "stick" | "puppet";
  * `stage` draws that stage behind the subject instead of the plain `background`; `puppet` is how the
  * puppet look is built (see `Construction` in ./puppet.ts).
  */
-export interface BlindStyle { background: string; color: string; stage?: StageLook; puppet?: Construction }
+export interface BlindStyle {
+  background: string; color: string; stage?: StageLook; puppet?: Construction;
+  /** The faint look-ahead copy: the 3D jester without its white edge and shadow. */
+  faint?: boolean;
+}
 
 const DEFAULT_STYLE: BlindStyle = { background: "#16161d", color: "#f5c542" };
 
@@ -49,7 +53,7 @@ export interface PuppetClip {
 }
 
 /** The puppet's state at one moment: its turn, and the whole guide's facts. */
-export interface GuidePose { turn: Turn; clip: PuppetClip }
+export interface GuidePose { turn: Turn; clip: PuppetClip; /** The frame position it was taken at (3.4 is between frames 3 and 4). */ position?: number }
 
 const median = (xs: number[]): number | null => {
   if (!xs.length) return null;
@@ -160,11 +164,11 @@ export function guideSliceAt(guide: Guide, position: number): Guide {
 export function guidePoseAt(guide: Guide, position: number): GuidePose {
   const clip = puppetClip(guide);
   const last = clip.turns.length - 1;
-  if (last < 0) return { turn: NO_TURN, clip };
+  if (last < 0) return { turn: NO_TURN, clip, position };
   const p = Math.min(last, Math.max(0, position));
   const i = Math.floor(p), j = Math.min(last, i + 1), u = p - i;
   const a = clip.turns[i]!, b = clip.turns[j]!;
-  return { turn: { yaw: a.yaw + (b.yaw - a.yaw) * u, face: a.face + (b.face - a.face) * u }, clip };
+  return { turn: { yaw: a.yaw + (b.yaw - a.yaw) * u, face: a.face + (b.face - a.face) * u }, clip, position };
 }
 
 /** The guide's frame at media time `mediaMs`, clamped to its range. */
@@ -232,13 +236,94 @@ export function traceOutline(ctx: CanvasRenderingContext2D, outline: Outline, ma
 
 const swings = new WeakMap<HTMLCanvasElement, Swing>();
 
+// ---- Keeping the guide light ----
+
+/**
+ * The most the 3D jester may take to draw, on average over a turn's first second (milliseconds per draw). The game
+ * paints the guide 30 times a second and draws the jester twice a paint (the figure and the faint look-ahead copy),
+ * so this keeps the guide well under half of each 33 ms frame, leaving the rest to the webcam tracker on the same
+ * thread. A laptop GPU draws it in about 1 ms.
+ */
+export const GUIDE_BUDGET_MS = 6;
+/**
+ * The page's frame rate below which a puppet guide gives way, measured over a turn's first second. Draw time alone
+ * misses the real cost on a machine without a GPU (software rendering): there the browser spends its time putting
+ * the big canvas pictures on screen, outside the drawing code, and both the 3D jester (about 13 fps) and the flat
+ * sticker (about 16 fps) drag the page down while the stick figure keeps 60.
+ */
+export const GUIDE_MIN_FPS = 20;
+/** How long the start of a turn is measured. */
+const MEASURE_MS = 1000;
+
+/** What the guide draws this turn: the 3D jester, the flat sticker, or the stick figure on the plain background. */
+type GuideMode = "3d" | "flat" | "stick";
+const guard = { mode: "3d" as GuideMode, from: 0, total: 0, count: 0, said: false, decided: false, first: true, turn: 0 };
+
+function giveWay(to: GuideMode, why: string) {
+  guard.mode = to;
+  if (!guard.said) { console.info(`Guide: ${why}; the ${to === "stick" ? "stick figure" : "flat sticker"} plays ${to === "flat" ? "this turn" : "the rest of this turn"}.`); guard.said = true; }
+}
+
+/**
+ * Call when a turn starts. A 3D jester is used only if it is ready now (the turn never waits for it; else the flat
+ * sticker). For any puppet guide the page's frame rate over the first second is measured against GUIDE_MIN_FPS, and
+ * for the 3D jester its draw time against GUIDE_BUDGET_MS; either one failing hands the rest of the turn to the stick
+ * figure. Said once in the console.
+ */
+export function startGuideTurn(puppet: Construction | null) {
+  const turn = ++guard.turn;
+  Object.assign(guard, { from: 0, total: 0, count: 0, said: false, decided: false, mode: "3d" });
+  if (!puppet) return;
+  if (puppet === "d") {
+    want3d();
+    if (!puppet3d?.available()) giveWay("flat", "the 3D jester is not ready (or this browser has no WebGL)");
+  }
+  if (typeof requestAnimationFrame === "undefined") return;
+  let frames = 0;
+  const begin = performance.now();
+  const count = (now: number) => {
+    if (guard.turn !== turn) return;
+    frames++;
+    if (now - begin < MEASURE_MS) { requestAnimationFrame(count); return; }
+    const fps = (frames * 1000) / (now - begin);
+    if (fps < GUIDE_MIN_FPS && guard.mode !== "stick") giveWay("stick", `the page ran at ${fps.toFixed(0)} fps (needs ${GUIDE_MIN_FPS})`);
+  };
+  requestAnimationFrame(count);
+}
+
+/** True when the guard has handed this turn to the stick figure. */
+export function guideGaveWay(): boolean {
+  return guard.mode === "stick";
+}
+
+/**
+ * Adds one 3D draw's time. The very first 3D draw on the page (three.js compiling its shaders) is left out of the
+ * average. The decision comes at the end of the first second, or sooner after 30 draws, from at least 3 draws.
+ */
+function measure3d(ms: number) {
+  if (guard.first) { guard.first = false; return; }
+  if (guard.decided) return;
+  const now = performance.now();
+  if (!guard.from) guard.from = now;
+  guard.total += ms; guard.count++;
+  if (guard.count < 3 || (now - guard.from < MEASURE_MS && guard.count < 30)) return;
+  guard.decided = true;
+  const avg = guard.total / guard.count;
+  if (avg > GUIDE_BUDGET_MS) giveWay("stick", `the 3D jester took ${avg.toFixed(1)} ms a draw (budget ${GUIDE_BUDGET_MS} ms)`);
+}
+
+/** The last 3D picture drawn on each canvas, reused while the pose has not moved by half a sample. */
+const drawnFigures = new WeakMap<HTMLCanvasElement, { key: string; image: HTMLCanvasElement }>();
+const clipIds = new WeakMap<PuppetClip, number>();
+let nextClipId = 1;
+
 /**
  * The background alone: the stage when `style.stage`, else the plain colour. `pose` (from the whole guide)
  * places the floor and spotlight under the subject; without it the guide itself is used.
  */
 export function drawBlindBackground(canvas: HTMLCanvasElement, guide: Guide, view: View, style: BlindStyle = DEFAULT_STYLE, pose?: GuidePose) {
   const ctx = canvas.getContext("2d")!;
-  if (!style.stage) {
+  if (!style.stage || guard.mode === "stick") {
     ctx.fillStyle = style.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     return;
@@ -300,19 +385,40 @@ export function drawBlindSubject(
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   if (!landmarks) return;
 
-  if (look === "puppet") {
+  if (look === "puppet" && guard.mode !== "stick") {
     const at = pose ?? guidePoseAt(guide, index);
     const torso = at.clip.torso !== null ? at.clip.torso * view.scale : sizePx * 0.3;
     const depth = guide.depths?.[index] ?? null;
-    if (style.puppet === "d") {
+    if (style.puppet === "d" && guard.mode === "3d") {
       want3d();
       if (puppet3d?.available()) {
+        const started = performance.now();
+        // The pose changes about 15 times a second; the picture is redrawn only when it has moved by half a sample.
+        let id = clipIds.get(at.clip);
+        if (!id) { id = nextClipId++; clipIds.set(at.clip, id); }
+        const key = at.position === undefined ? "" : [id, Math.round(at.position * 2), canvas.width, canvas.height, style.color, style.faint ? 1 : 0, view.scale.toFixed(4), view.offsetX.toFixed(1), view.offsetY.toFixed(1)].join("|");
+        let kept = drawnFigures.get(canvas);
+        if (key && kept && kept.key === key) {
+          ctx.drawImage(kept.image, 0, 0);
+          measure3d(performance.now() - started);
+          return;
+        }
+        if (!kept) { kept = { key: "", image: document.createElement("canvas") }; drawnFigures.set(canvas, kept); }
+        const image = kept.image;
+        if (image.width !== canvas.width || image.height !== canvas.height) { image.width = canvas.width; image.height = canvas.height; }
+        const ic = image.getContext("2d")!;
+        ic.clearRect(0, 0, image.width, image.height);
         const { width, height } = guide.source;
         const lifted = liftPose(landmarks, depth, at.turn, at.clip.lengths, width, height);
         // Source pixels to canvas pixels; depth scales the same way.
         lifted.joints = lifted.joints.map((p) => (p ? [p[0] * view.scale + view.offsetX, p[1] * view.scale + view.offsetY, p[2] * view.scale] : null));
-        floorShadow(ctx, landmarks, map, torso);
-        if (puppet3d.drawPuppet3d(ctx, { lifted, turn: at.turn, torso, suit: suitFor(style.color) })) return;
+        if (!style.faint) floorShadow(ic, landmarks, map, torso);
+        if (puppet3d.drawPuppet3d(ic, { lifted, turn: at.turn, torso, suit: suitFor(style.color) }, !!style.faint)) {
+          kept.key = key;
+          ctx.drawImage(image, 0, 0);
+          measure3d(performance.now() - started);
+          return;
+        }
       }
     }
     let swing = swings.get(canvas);

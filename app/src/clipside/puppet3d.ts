@@ -392,7 +392,7 @@ export interface Puppet3dFrame {
 }
 
 /** Draws the 3D puppet onto `ctx` (over whatever is there): its hard shadow, white die-cut edge, then the figure. */
-export function drawPuppet3d(ctx: CanvasRenderingContext2D, frame: Puppet3dFrame): boolean {
+export function drawPuppet3d(ctx: CanvasRenderingContext2D, frame: Puppet3dFrame, faint = false): boolean {
   const s = setup();
   if (!s) return false;
   const { width: w, height: h } = ctx.canvas;
@@ -410,30 +410,41 @@ export function drawPuppet3d(ctx: CanvasRenderingContext2D, frame: Puppet3dFrame
   figure.pose(world, frame.lifted.facing, frame.turn.face, T, ink, frame.suit);
   renderer.render(figure.scene, camera);
   const gl = renderer.domElement;
+  // The faint look-ahead copy needs no white edge or shadow: just the figure.
+  if (faint) { ctx.drawImage(gl, 0, 0); return true; }
 
-  // The sticker: the figure grown by the rim in white, with one hard shadow, as the #die-cut filter does.
+  // The sticker: the figure grown by the rim in white, with one hard shadow, as the #die-cut filter does. All of
+  // it only over the figure's box (its joints, plus the hat, the white edge and the shadow), not the whole canvas.
+  const rim = Math.max(3, T * 0.07, 3 * perCssPx);
+  const drop = [Math.max(3, T * 0.045), Math.max(4, T * 0.055)] as const;
+  const seen = frame.lifted.joints.filter((p): p is Vec3 => !!p);
+  if (!seen.length) return true;
+  const pad = T * 1.15 + rim + Math.max(drop[0], drop[1]);
+  const x0 = Math.max(0, Math.floor(Math.min(...seen.map((p) => p[0])) - pad)), y0 = Math.max(0, Math.floor(Math.min(...seen.map((p) => p[1])) - pad));
+  const x1 = Math.min(w, Math.ceil(Math.max(...seen.map((p) => p[0])) + pad)), y1 = Math.min(h, Math.ceil(Math.max(...seen.map((p) => p[1])) + pad));
+  const bw = x1 - x0, bh = y1 - y0;
+  if (bw <= 0 || bh <= 0) return true;
   let layer = layers.get(ctx.canvas);
   if (!layer) { layer = document.createElement("canvas"); layers.set(ctx.canvas, layer); }
   if (layer.width !== w || layer.height !== h) { layer.width = w; layer.height = h; }
   const l = layer.getContext("2d")!;
-  const rim = Math.max(3, T * 0.07, 3 * perCssPx);
   l.globalCompositeOperation = "source-over";
-  l.clearRect(0, 0, w, h);
+  l.clearRect(x0, y0, bw, bh);
   for (let k = 0; k < 16; k++) {
     const a = (k / 16) * Math.PI * 2;
-    l.drawImage(gl, Math.cos(a) * rim, Math.sin(a) * rim);
+    l.drawImage(gl, x0, y0, bw, bh, x0 + Math.cos(a) * rim, y0 + Math.sin(a) * rim, bw, bh);
   }
   l.globalCompositeOperation = "source-in";
   l.fillStyle = INK;
-  l.fillRect(0, 0, w, h);
+  l.fillRect(x0, y0, bw, bh);
   ctx.save();
   ctx.globalAlpha = SHADE_ALPHA;
-  ctx.drawImage(layer, Math.max(3, T * 0.045), Math.max(4, T * 0.055));
+  ctx.drawImage(layer, x0, y0, bw, bh, x0 + drop[0], y0 + drop[1], bw, bh);
   ctx.restore();
   l.fillStyle = PHOTO;
-  l.fillRect(0, 0, w, h);
+  l.fillRect(x0, y0, bw, bh);
   l.globalCompositeOperation = "source-over";
-  ctx.drawImage(layer, 0, 0);
-  ctx.drawImage(gl, 0, 0);
+  ctx.drawImage(layer, x0, y0, bw, bh, x0, y0, bw, bh);
+  ctx.drawImage(gl, x0, y0, bw, bh, x0, y0, bw, bh);
   return true;
 }

@@ -19,7 +19,7 @@ import { boxFromLandmarks, hideUnsureJoints, type Guide, type GuideHands, type H
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, startGuideTurn, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
 import { addHands } from "./clipside/hands.ts";
 import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
@@ -748,11 +748,12 @@ function shuffle<T>(xs: T[]): T[] {
 }
 
 /**
- * How people are drawn in blind mode: the 3D jester (d), picked by Aaron (app/src/clipside/puppet3d.ts). Also
- * on hand: a, the flat sticker, and b, the flat cut paper (app/src/clipside/puppet.ts); null is the old stick
- * figure on the plain background. ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
+ * How people are drawn in blind mode. Null is the stick figure on the plain background (the default until Aaron
+ * has played a Blind round with a real camera on the 3D jester and seen a normal score); "d" is the 3D jester
+ * Aaron picked (app/src/clipside/puppet3d.ts); a and b are the flat sticker and flat cut paper (puppet.ts).
+ * ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
  */
-const DEFAULT_GUIDE: Construction | null = "d";
+const DEFAULT_GUIDE: Construction | null = null;
 
 const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
   const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
@@ -864,7 +865,7 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
     drawBlindBackground(canvas, s.guide, view.stageView, view.style, now);
     if (leadMs > 0) {
       scratch.width = canvas.width; scratch.height = canvas.height;
-      drawBlindSubject(scratch, roleAt(s, ms + leadMs), 0, s.look, view.view, view.style, poseAt(s.guide, ms + leadMs));
+      drawBlindSubject(scratch, roleAt(s, ms + leadMs), 0, s.look, view.view, { ...view.style, faint: true }, poseAt(s.guide, ms + leadMs));
       const ctx = canvas.getContext("2d")!;
       ctx.save(); ctx.globalAlpha = 0.3; ctx.drawImage(scratch, 0, 0); ctx.restore();
     }
@@ -1102,6 +1103,8 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   const g = s.guide;
   const stage = ui.playStage();
   const view = roleView(s, stage.guideCanvas, scene);
+  // A puppet guide only while the page keeps up (frame rate, and the 3D jester's draw time); else the stick figure.
+  startGuideTurn(s.look === "puppet" ? view.style.puppet ?? null : null);
   const scratch = document.createElement("canvas");
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
@@ -1443,6 +1446,8 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
     lagMs: s.result?.lagMs ?? 0,
   }));
   revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
+  // For checking in the console: each turn's score and how many of the player's frames it was scored on.
+  (globalThis as { __jesterTurns?: unknown }).__jesterTurns = rows.map((r) => ({ name: r.name, score: r.score, frames: r.timeline?.frames.length ?? 0 }));
   ui.results(rows);
   if (options.reveal === false) return rows;
   if (ui.revealControl) ui.revealControl.speed = 1;

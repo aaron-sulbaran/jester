@@ -3,7 +3,7 @@
 // built here, with the tracker's depth or without it. Dev only.
 
 import { boxFromLandmarks, type Guide } from "../../clip/src/index.ts";
-import { blindView, drawBlindBackground, drawBlindSubject, guidePoseAt, guideSliceAt, steadyGuide, type BlindStyle } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideGaveWay, guidePoseAt, guideSliceAt, startGuideTurn, steadyGuide, type BlindStyle } from "./clipside/blind.ts";
 import { CONSTRUCTIONS, JESTER_COLOURS, type Construction, type StageLook } from "./clipside/puppet.ts";
 
 const W = 1280, H = 720, HZ = 15, DURATION_S = 12, ASPECT = W / H, SCALE = 0.45;
@@ -158,7 +158,7 @@ const views = new Map<string, ReturnType<typeof blindView>>();
 let clock = 0, last = performance.now();
 
 function tick(now: number) {
-  requestAnimationFrame(tick);
+  if (!benchGuide) requestAnimationFrame(tick);
   const dt = (now - last) / 1000;
   last = now;
   if (!pauseBox.checked) {
@@ -181,7 +181,56 @@ function tick(now: number) {
   }
 }
 timeSlider.addEventListener("input", () => { pauseBox.checked = true; });
+
+// ?bench=stick|a|d: draws one 640 x 720 guide as a turn does (the stage, the faint look-ahead copy, the figure)
+// for 5 s after a 1.5 s warm-up, timing each frame's drawing; results in window.__bench.
+const benchGuide = params.get("bench");
+if (benchGuide) {
+  const canvas = panels[0]!.canvas, scratch = document.createElement("canvas");
+  canvas.width = 640; canvas.height = 720;
+  const guide = guides.depth;
+  const view = blindView(guide, canvas, "fit", benchGuide === "stick" ? "stick" : "puppet");
+  const style: BlindStyle = benchGuide === "stick" ? { background: "#16161d", color: "#F47FA6" } : { background: "#16161d", color: "#F47FA6", stage: "plain", puppet: benchGuide === "a" ? "a" : "d" };
+  const leadS = 0.5;
+  const times: number[] = [], stamps: number[] = [];
+  // As a turn does: the guard measures the first second and may hand the rest to the stick figure.
+  startGuideTurn(benchGuide === "stick" ? null : benchGuide === "a" ? "a" : "d");
+  const t0 = performance.now();
+  const step = (now: number) => {
+    const t = ((now - t0) / 1000) % DURATION_S;
+    const pos = t * HZ, lead = (t + leadS) * HZ;
+    const a = performance.now();
+    if (benchGuide === "stick") {
+      scratch.width = canvas.width; scratch.height = canvas.height;
+      drawBlind(scratch, guideSliceAt(guide, lead), 0, "stick", view, style);
+      drawBlind(canvas, guideSliceAt(guide, pos), 0, "stick", view, style);
+      const ctx = canvas.getContext("2d")!;
+      ctx.save(); ctx.globalAlpha = 0.3; ctx.globalCompositeOperation = "lighter"; ctx.drawImage(scratch, 0, 0); ctx.restore();
+    } else {
+      drawBlindBackground(canvas, guide, view, style, guidePoseAt(guide, pos));
+      scratch.width = canvas.width; scratch.height = canvas.height;
+      drawBlindSubject(scratch, guideSliceAt(guide, lead), 0, "puppet", view, { ...style, faint: true }, guidePoseAt(guide, lead));
+      const ctx = canvas.getContext("2d")!;
+      ctx.save(); ctx.globalAlpha = 0.3; ctx.drawImage(scratch, 0, 0); ctx.restore();
+      drawBlindSubject(canvas, guideSliceAt(guide, pos), 0, "puppet", view, style, guidePoseAt(guide, pos));
+    }
+    const ms = performance.now() - a;
+    if (now - t0 > 1500) { times.push(ms); stamps.push(now); }
+    if (now - t0 < 6500) { requestAnimationFrame(step); return; }
+    const sorted = [...times].sort((x, y) => x - y);
+    const span = (stamps[stamps.length - 1]! - stamps[0]!) / 1000;
+    (window as unknown as { __bench: unknown }).__bench = {
+      guide: benchGuide, frames: times.length,
+      avgMs: +(times.reduce((x, y) => x + y, 0) / times.length).toFixed(2),
+      p95Ms: +sorted[Math.floor(sorted.length * 0.95)]!.toFixed(2), worstMs: +sorted[sorted.length - 1]!.toFixed(2),
+      fps: +((times.length - 1) / span).toFixed(1),
+      gaveWay: guideGaveWay(),
+    };
+    document.title = "bench done";
+  };
+  requestAnimationFrame(step);
+}
 // ?at=<seconds> holds the dancer at that moment, for stills.
 const at = Number(params.get("at"));
 if (params.has("at") && Number.isFinite(at)) { pauseBox.checked = true; timeSlider.value = String(Math.min(1, Math.max(0, at / DURATION_S))); }
-requestAnimationFrame(tick);
+if (!benchGuide) requestAnimationFrame(tick);
