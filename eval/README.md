@@ -39,11 +39,28 @@ Every nailed round, and every untagged round scoring 60 or more, also becomes si
 
 Derived cases of frozen cases join the baseline: one that held and stops holding fails `npm run eval`. Their ids are `<source id>~<transform>`.
 
+## Serving replay: how the guide is served
+
+`npm run serve` asks a different question from `npm run eval`. It keeps the engine as it is and changes how the game turns a bank guide into the reference a player is scored against. It then replays real players' recordings against each way of serving it.
+
+- **What it replays:** honest attempts on bank clips, scored on the pose (whole body). That means rounds tagged `nailed`. Until enough are tagged, it also takes untagged rounds from a real camera that lagged 0.4 s or more: headless and simulated players lag a fixed 0.13 to 0.17 s and score near 100.
+- **How it finds the reference:** each round is matched to its part in the bank's `guides.json` by the fingerprint of the reference it was scored on. Bank guides come from the live site, or from `--bank <folder>`.
+- **Its own check:** the `as-served` variant must rebuild that reference exactly.
+- **What it reports per clip:** the honest attempts' scores, a frozen copy of each attempt (it must stay at 10 or less, so a variant cannot win by being lenient), and the median credit on hands, forearms and feet.
+- **Where:** results go to `serve-report.md`, which git ignores. Variants live in `src/serving.ts`; add one there to try an idea.
+
+First run (24 honest attempts, Nov 15):
+- `as-served` rebuilt all 24 references exactly.
+- Smoothing hands, forearms and feet harder lowers their credit (right hand 0.79 to 0.74 to 0.68).
+- Smoothing them less changes almost nothing.
+- So the clip's smoothing is not what costs players their hands.
+
 ## Commands (in `eval/`)
 
 ```
 npm install
 npm run eval                          # re-score frozen cases and local rounds, write report.md
+npm run serve                         # replay honest attempts against ways of serving the bank guides, write serve-report.md
 npm run freeze -- --tagged            # copy every tagged local round into cases/ (committed)
 npm run freeze -- r-abc123-xyz789     # or name rounds
 npm run eval -- --save                # save the headline numbers to baseline.json
