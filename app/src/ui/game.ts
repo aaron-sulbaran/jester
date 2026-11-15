@@ -245,8 +245,8 @@ export function initGame(deps: GameDeps) {
     if (!readyClip) return;
     const between = document.body.dataset.screen === "start" || document.body.dataset.screen === "results";
     $("clipReadyText").textContent = between
-      ? `Your clip "${readyClip.title}" is in the bank. The Chamberlain let it in.`
-      : `Your clip "${readyClip.title}" is in the bank. It is on the start screen when this round ends.`;
+      ? `Good news! "${readyClip.title}" is in the bank. The Chamberlain let it in.`
+      : `Good news! "${readyClip.title}" is in the bank. It's on the start screen after this round.`;
     $("clipReadyPlay").hidden = !between;
   };
   new MutationObserver(syncReady).observe(document.body, { attributes: true, attributeFilter: ["data-screen"] });
