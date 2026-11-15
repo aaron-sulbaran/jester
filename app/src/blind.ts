@@ -610,6 +610,25 @@ export function demoScene(): Scene {
   }]);
 }
 
+/** Two dancers side by side and no ball: everyone dances, so nobody is stuck being the ball. */
+export function duoScene(): Scene {
+  const starterAspect = 4 / 3;
+  const forward = makeSequenceTimeline(DEMO_SEQUENCE, { idleDegrees: 2, aspect: starterAspect });
+  const backward = makeSequenceTimeline([...DEMO_SEQUENCE].reverse(), { idleDegrees: 2, aspect: starterAspect });
+  const durationMs = Math.floor(Math.min(forward[forward.length - 1].t, backward[backward.length - 1].t) * 1000);
+  const dancer = (samples: typeof forward, centre: number) => (tMs: number) => {
+    const s = sampleAt(samples, tMs / 1000);
+    // 80% size, moved to `centre` of the wide frame; a uniform scale and shift keeps every limb angle.
+    return s?.landmarks
+      ? (s.landmarks as LandmarkObject[]).map((l) => [((l.x * starterAspect - starterAspect / 2) * 0.8 + centre * DEMO_ASPECT) / DEMO_ASPECT, 0.12 + 0.8 * l.y, l.visibility ?? 1] as const)
+      : null;
+  };
+  return syntheticScene("Dance duo", durationMs, [
+    { label: "the dancer on the left", poseAt: dancer(forward, 0.3) },
+    { label: "the dancer on the right", poseAt: dancer(backward, 0.7) },
+  ], []);
+}
+
 const smooth = (a: number, b: number, t: number) => { const u = Math.min(1, Math.max(0, (t - a) / (b - a))); return u * u * (3 - 2 * u); };
 
 /**
@@ -1184,7 +1203,7 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
     seat.face = r.face ?? null;
-    if (r.cutouts && r.cutouts.length > 0) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = r.cutouts; return seat; } // their own pictures
     // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;
