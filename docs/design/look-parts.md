@@ -25,10 +25,11 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 
 - **A photo print:** `.print` (white border, hard shadow).
 - **A clip card:** `.clip` with `.clip-pic`, `.clip-name`, `.clip-credit`, `.clip-hint`, `.clip-star`, `.clip-q`.
-- **The bank:** `.bank` is one row that scrolls sideways, each `.clip` snapping into place, so the Play ticket stays on screen however many clips there are. On phones a `.clip` is 68vw wide so the next card peeks in at the edge.
+- **The library (start screen):** `#bank` is a grid of small taped `.clip` photos that scrolls up and down. On a laptop `fitRows()` in `ui/game.ts` cuts it to whole rows and sets `#screen-start[data-library="fitted"]`; a phone keeps one sideways row. `#surpriseCard` is Surprise me, its own card, first and picked by default. `.library-head` holds the search (`label.field.library-find` with `#clipSearch`) and the Players chips (`.library-players .chip[data-players]`: 0 is Any, 4 is 4 or more). `#libraryNone` is the "no clip" line.
+- **The start screen's rows:** `.masthead` (wordmark and note), `#startMode` (the mode switch with `#modeSays` beside it), the library, then `#startFoot` with `#startActions` (the Play ticket and `#playOnline`) and the send card.
 - **Your clip is in:** `#clipReady`, a note taped bottom left on laptops and at the top under the corner tags on phones; hidden during a turn.
-- **Send in a clip:** `.send-invite` is the paper strip with a quiet tag under the start screen's ticket; it opens `#screen-submit`. On that screen `.rule-card.can` and `.rule-card.cannot` are the two taped cards with a list, and `.send-form` is the form card.
-- **The wordmark:** `#crown-doodle` is one shared drawing of the crown; `.wordmark-crown` places it on the J, with its angle, place and size as CSS variables.
+- **Send in a clip:** `.send-card` (`#submitOpen`) is a paper card in the Play row with `.send-card-name` and `.send-card-text`; it opens `#screen-submit`. On that screen `.rule-card.can` and `.rule-card.cannot` are the two taped cards with a list, and `.send-form` is the form card. The old `.send-invite` strip is gone.
+- **The wordmark:** `#jester-hat` is one shared drawing of the jester's two-point hat; `.wordmark-hat` places it on the J, tuned by `--hat-x`, `--hat-y`, `--hat-w` and `--hat-r`. The letters' white edge is the `#die-cut-round` filter. The same hat is the stamp on every yellow ticket's stub and the favicon. The crown (`#crown-doodle`, `.wordmark-crown`) is gone.
 - **An illustrated step:** `.step` with `.step-pic`, as on How to play.
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
 - **The stage:** `.box`, the shoebox around any canvas or video. Copy the block from `screen-turn` or `screen-crown`.
@@ -41,7 +42,7 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 
 - `label.field > span + input`, with an optional `small`.
 - `label.consent > input[type=checkbox] + span`.
-- `.who`: a player name tag.
+- `.who`: a player name tag. On the cast screen its dot is `button.who-dot` (44 px), which moves the player to the next jester colour nobody else is wearing.
 
 ## Motion and characters
 
