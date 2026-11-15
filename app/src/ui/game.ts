@@ -105,6 +105,11 @@ export function initGame(deps: GameDeps) {
   const guideCanvas = $<HTMLCanvasElement>("guideCanvas");
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
   const revealCanvas = $<HTMLCanvasElement>("revealStage");
+  // Fast forward and skip for the reveal: blind.ts reads `speed` every tick while the reveal records.
+  const revealControl = { speed: 1 };
+  const setPace = (speed: number) => { revealControl.speed = speed; $("revealFastLabel").textContent = `${speed}x`; };
+  $("revealFast").addEventListener("click", () => { const steps = [1, 2, 4]; setPace(steps[(steps.indexOf(revealControl.speed) + 1) % steps.length] ?? 1); });
+  $("revealSkip").addEventListener("click", () => setPace(16));
   const turn = $("screen-turn");
 
   // ---- Start ----
@@ -407,12 +412,14 @@ export function initGame(deps: GameDeps) {
     },
 
     revealCanvas: () => revealCanvas,
+    revealControl,
 
     progress(share) {
       $<HTMLProgressElement>("revealBar").value = share;
     },
 
     results(r) {
+      setPace(1);
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
