@@ -1115,6 +1115,9 @@ export interface RemoteResult {
   lagMs: number;
   /** Their pose recording in clip media ms (ResultRow.timeline); null if none. */
   timeline: { aspect: number; frames: { t: number; landmarks: unknown[] }[] } | null;
+  /** This device's own player only: their camera cutouts and face from the turn just played (ResultRow.layer, .face). Never sent. */
+  cutouts?: readonly Cutout[];
+  face?: HTMLCanvasElement | null;
 }
 
 /**
@@ -1131,10 +1134,12 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
     const guide = scene.guides[r.guideIndex]!;
     const seat: Seat = {
       name: r.name, color: r.color, guide, original: steady.guides[r.guideIndex]!,
-      look: isThing(guide) ? "outline" : "stick", part: r.part, cutouts: [], face: null,
+      look: isThing(guide) ? "outline" : "stick", part: r.part, cutouts: [], face: r.face ?? null,
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
-    // Stick-figure cutouts from the recording: media ms back to play ms, about 15 a second like a local turn.
+    // This device's own player keeps their camera cutouts, as in a game on one laptop: they never left the device.
+    if (r.cutouts?.length) { seat.cutouts = [...r.cutouts]; return seat; }
+    // Everyone else: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second like a local turn.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;
     for (const f of r.timeline?.frames ?? []) {
