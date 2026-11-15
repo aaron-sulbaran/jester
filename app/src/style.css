@@ -344,6 +344,34 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
 .cast-slot.won { transform: scale(1.12) translateY(-4%); z-index: 2; }
 .cast-slot.lost { opacity: .85; }
 
+/* ---------- Home, the leave check, Start over ---------- */
+/* Home: a paper tab taped to the top left of every screen once you leave the start. */
+.game-nav { position: fixed; z-index: 20; top: 14px; left: 14px; }
+.tab-btn { min-height: 44px; padding: 8px 18px 8px 16px; border: 0; cursor: pointer; background: var(--photo); box-shadow: 3px 4px 0 var(--shade); font: 400 17px var(--type); rotate: -2deg; transition: transform .15s var(--ease); }
+.tab-btn::before { content: ""; display: inline-block; width: 0; height: 0; margin-right: 8px; border: 7px solid transparent; border-right: 9px solid var(--ink); border-left: 0; vertical-align: -1px; }
+.tab-btn:hover { transform: translateY(-2px) rotate(-1deg); }
+.leave { border: 0; padding: 0; background: none; overflow: visible; }
+.leave::backdrop { background: rgba(30, 27, 24, .45); }
+.leave[open] { display: grid; gap: 18px; justify-items: center; }
+/* Start over: shown only in the first seconds of a turn, big and on the stage, with a bar running out. */
+#screen-turn .stage-wrap { position: relative; }
+.restart { position: absolute; z-index: 8; left: 50%; top: 16%; translate: -50% 0; display: grid; gap: 6px; justify-items: center; }
+.restart .btn-quiet { min-height: 60px; font-size: 22px; padding: 12px 26px 12px 46px; box-shadow: 6px 7px 0 var(--shade); rotate: -1.5deg; }
+.restart-bar { width: 240px; height: 8px; background: rgba(255, 254, 250, .6); box-shadow: 2px 3px 0 var(--shade); overflow: hidden; }
+.restart-bar i { display: block; height: 100%; background: var(--stamp); transform-origin: left; }
+.restart.running .restart-bar i { animation: drain var(--window, 5s) linear forwards; }
+@keyframes drain { to { transform: scaleX(0); } }
+
+/* ---------- How to play ---------- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px; width: min(100%, 1160px); counter-reset: step; }
+.step { position: relative; display: grid; gap: 8px; align-content: start; padding: 14px 14px 18px; background: var(--photo); box-shadow: var(--lift); text-align: left; rotate: -1.2deg; counter-increment: step; }
+.step:nth-child(even) { rotate: 1.2deg; }
+.step::before { content: counter(step); position: absolute; top: -18px; left: -14px; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--ticket); font: 400 26px var(--sticker); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; color: var(--ticket); filter: url(#sticker); }
+.step-pic { display: grid; place-items: center; aspect-ratio: 16 / 10; background: #2E4593; color: var(--ticket); }
+.step-pic svg { width: 62%; height: 80%; }
+.step b { font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
+.step > span:last-child { font-size: 15px; line-height: 1.4; }
+
 /* ---------- Motion: one moment per screen, and quick reactions to touch ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .screen:not([hidden]) > * { animation: land .45s var(--ease) both; }
@@ -390,6 +418,9 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
   .place { grid-template-columns: 84px 1fr auto; }
   .place-score { font-size: 40px; }
   .crown-head { min-height: 90px; }
+  .steps { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .step-pic { aspect-ratio: 16 / 7; }
+  .game-nav { top: 8px; left: 8px; }
   .crown-wrap .stage { aspect-ratio: 4 / 5; }
   .cast-row { flex-wrap: wrap; align-content: flex-end; }
   .cast-slot { flex: 1 1 40%; max-width: 48%; }
