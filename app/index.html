@@ -37,9 +37,10 @@
 
   <section id="blind" class="panel hidden">
     <div id="blindSetup">
-      <p>Everyone gets a secret role from the clip: a person, or a thing like a ball. You see only your role's outline or stick figure, never the clip. At the end, everyone is put back together in one video.</p>
+      <p>Everyone gets a secret role from the clip: a person, or a thing like a ball. Nobody is told what they are. You see only a moving outline or stick figure, never the clip, and copy it. At the end, everyone is put back together in one video.</p>
       <div class="row">
-        <button id="blindDemo">Use the demo scene (a dancer and a ball)</button>
+        <button id="blindDribble">Dribble: one player dribbles, one is the ball</button>
+        <button id="blindDemo">Dancer and a ball</button>
         <label class="file">Or pick a video <input id="blindFile" type="file" accept="video/*" /></label>
       </div>
       <div class="row">
@@ -52,7 +53,7 @@
     <div id="blindTurn" class="hidden">
       <h2 id="turnTitle"></h2>
       <p id="turnText"></p>
-      <div class="row hidden" id="turnPartRow"><label>Be it with your <select id="turnPart"></select></label></div>
+      <div class="row hidden" id="turnPartRow"><label>Copy it with your <select id="turnPart"></select></label></div>
       <button id="turnReveal">Show my role</button>
       <button id="turnStart" class="hidden">Start my turn</button>
       <button id="turnNext" class="hidden">Pass the laptop</button>

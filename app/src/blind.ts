@@ -3,8 +3,8 @@
 // 1. A clip goes in: the demo scene (a dancer and a ball, works offline) or a video, read by the clip side
 //    (`prepareVideo` and `subjectGuides`, one guide per subject, all over the same stretch of the clip).
 // 2. Each player gets a secret role (a person or a thing) and a look: only the outline or only the stick
-//    figure, never the clip. Things are always shown as their outline, and the player picks which body part
-//    plays it.
+//    figure, never the clip. The player is never told what the role is: before the turn they see only its
+//    first frame, and for a thing they pick which body part copies it. The role is named only at the reveal.
 // 3. Players take turns on the same laptop. Each turn is scored by the engine: the pose channel for a person,
 //    the trajectory channel for a thing. Scores stay hidden until the end.
 // 4. The reveal: one video of the clip with every player's cutout standing where their subject was, with
@@ -15,7 +15,7 @@
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, type BodyPart, type LandmarkObject } from "../../engine/src/index.ts";
 import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index.ts";
-import { DEMO_SEQUENCE, makeSequenceTimeline, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
+import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
 import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
@@ -59,14 +59,15 @@ export interface BlindDeps {
 /** A player as the screens show them. */
 export interface PlayerInfo { name: string; color: string }
 
-/** What a player is told about their secret role. */
+/**
+ * What a player is told before their turn. It deliberately leaves out what the role is (that is the point of
+ * blind mode); the role is named only in `results`.
+ */
 export interface RoleInfo {
-  label: string;
-  kind: "person" | "thing";
   look: Look;
-  /** One sentence, e.g. "You are the ball. You will see only its outline, never the clip. Move with it." */
+  /** One or two sentences on how to play, never what the role is. */
   text: string;
-  /** For a thing: the body parts the player can pick to play it (first is the whole body). Null for a person. */
+  /** For a thing: the body parts the player can copy it with (first is the whole body). Null for a person. */
   parts: { key: BodyPart; label: string }[] | null;
   /** Set when the last try failed (camera did not start), to show above the role. */
   problem?: string;
@@ -92,7 +93,10 @@ export interface ResultRow {
 export interface BlindUi {
   /** Pass the laptop to `player`; `previous` just finished (their score stays secret). Resolves when `player` is ready to see their role. */
   handover(player: PlayerInfo, previous: PlayerInfo | null): Promise<void>;
-  /** Show the secret role. Resolves with the body part picked (always "body" for a person) when the player starts. */
+  /**
+   * Show how to play (never what the role is) while `playStage().guideCanvas` holds the role's first frame.
+   * Resolves with the body part picked (always "body" for a person) when the player starts.
+   */
   showPart(player: PlayerInfo, role: RoleInfo): Promise<BodyPart>;
   /** Where a turn is drawn: the role (outline or stick figure only) and the player's mirror view. */
   playStage(): { guideCanvas: HTMLCanvasElement; playerCanvas: HTMLCanvasElement; cam: HTMLVideoElement };
@@ -133,39 +137,99 @@ function boxAt(g: Guide, ms: number): Box | null {
   return g.boxTrack.frames[guideFrameAt(g, g.range.startMs + ms)]?.box ?? null;
 }
 
-const DEMO_W = 1280, DEMO_H = 720, DEMO_HZ = 15;
-const DEMO_BALL = (t: number): Box => ({ cx: 0.72, cy: 0.8 - 0.42 * Math.abs(Math.sin((Math.PI * t) / 1.2)), w: 0.07, h: 0.07 * (DEMO_W / DEMO_H) });
+const DEMO_W = 1280, DEMO_H = 720, DEMO_HZ = 15, DEMO_ASPECT = DEMO_W / DEMO_H;
+type Tuple = readonly [number, number, number];
+const toTuples = (lms: readonly LandmarkObject[]): Tuple[] => lms.map((l) => [l.x, l.y, l.visibility ?? 1] as const);
+
+/** A drawn scene from functions of time: each person a pose, each thing a box. One guide per subject. */
+function syntheticScene(
+  name: string, durationMs: number,
+  people: { label: string; poseAt: (tMs: number) => Tuple[] | null }[],
+  things: { label: string; boxAt: (tMs: number) => Box | null }[],
+): Scene {
+  const source = { width: DEMO_W, height: DEMO_H, durationMs, sampleHz: DEMO_HZ };
+  const times: number[] = [];
+  for (let tMs = 0; tMs <= durationMs; tMs += 1000 / DEMO_HZ) times.push(tMs);
+  const base = { schema: "guide/1" as const, fingerprint: `demo:${name}`, source, range: { startMs: 0, endMs: durationMs }, keyMoments: [], pace: "medium" as const, warnings: [], check: null };
+  const size = { width: DEMO_W, height: DEMO_H };
+  const guides: Guide[] = [
+    ...people.map(({ label, poseAt }): Guide => {
+      const frames = times.map((tMs) => ({ tMs, landmarks: poseAt(tMs) }));
+      return {
+        ...base, subject: { kind: "person", label }, channel: "pose",
+        timeline: { schema: "pose-timeline/1", source: { ...size, mirrored: false }, frames },
+        boxTrack: { schema: "box-track/1", source: size, frames: frames.map((f) => ({ tMs: f.tMs, box: f.landmarks ? boxFromLandmarks(f.landmarks) : null })) },
+        outlines: frames.map(() => null),
+      };
+    }),
+    ...things.map(({ label, boxAt: at }): Guide => {
+      const frames = times.map((tMs) => ({ tMs, box: at(tMs) }));
+      return {
+        ...base, subject: { kind: "thing", label }, channel: "trajectory", timeline: null,
+        boxTrack: { schema: "box-track/1", source: size, frames }, outlines: frames.map(() => null),
+      };
+    }),
+  ];
+  return { name, width: DEMO_W, height: DEMO_H, startMs: 0, durationMs, guides: guides.map(withThingOutlines), video: null };
+}
 
 /** The demo: the starter dancer on the left of a wide frame and a bouncing ball on the right. */
 export function demoScene(): Scene {
-  const aspect = DEMO_W / DEMO_H, starterAspect = 4 / 3;
+  const starterAspect = 4 / 3;
   const samples = makeSequenceTimeline(DEMO_SEQUENCE, { idleDegrees: 2, aspect: starterAspect });
   const durationMs = Math.floor(samples[samples.length - 1].t * 1000);
-  const source = { width: DEMO_W, height: DEMO_H, durationMs, sampleHz: DEMO_HZ };
-  const poseFrames = [], personBoxes = [], ballBoxes = [];
-  for (let tMs = 0; tMs <= durationMs; tMs += 1000 / DEMO_HZ) {
-    const s = sampleAt(samples, tMs / 1000);
-    // Shrink to 80% and move to the left third. A uniform scale and shift keeps every limb angle.
-    const lms = s?.landmarks
-      ? (s.landmarks as LandmarkObject[]).map((l) => [((l.x * starterAspect - starterAspect / 2) * 0.8 + 0.3 * aspect) / aspect, 0.12 + 0.8 * l.y, l.visibility ?? 1] as const)
-      : null;
-    poseFrames.push({ tMs, landmarks: lms });
-    personBoxes.push({ tMs, box: lms ? boxFromLandmarks(lms) : null });
-    ballBoxes.push({ tMs, box: DEMO_BALL(tMs / 1000) });
-  }
-  const base = { schema: "guide/1" as const, fingerprint: "demo", source, range: { startMs: 0, endMs: durationMs }, keyMoments: [], pace: "medium" as const, warnings: [], check: null };
-  const dancer: Guide = {
-    ...base, subject: { kind: "person", label: "the dancer" }, channel: "pose",
-    timeline: { schema: "pose-timeline/1", source: { width: DEMO_W, height: DEMO_H, mirrored: false }, frames: poseFrames },
-    boxTrack: { schema: "box-track/1", source: { width: DEMO_W, height: DEMO_H }, frames: personBoxes },
-    outlines: poseFrames.map(() => null),
+  return syntheticScene("Demo scene", durationMs, [{
+    label: "the dancer",
+    poseAt: (tMs) => {
+      const s = sampleAt(samples, tMs / 1000);
+      // Shrink to 80% and move to the left third. A uniform scale and shift keeps every limb angle.
+      return s?.landmarks
+        ? (s.landmarks as LandmarkObject[]).map((l) => [((l.x * starterAspect - starterAspect / 2) * 0.8 + 0.3 * DEMO_ASPECT) / DEMO_ASPECT, 0.12 + 0.8 * l.y, l.visibility ?? 1] as const)
+        : null;
+    },
+  }], [{
+    label: "the ball",
+    boxAt: (tMs) => ({ cx: 0.72, cy: 0.8 - 0.42 * Math.abs(Math.sin((Math.PI * tMs) / 1200)), w: 0.07, h: 0.07 * DEMO_ASPECT }),
+  }]);
+}
+
+const smooth = (a: number, b: number, t: number) => { const u = Math.min(1, Math.max(0, (t - a) / (b - a))); return u * u * (3 - 2 * u); };
+
+/**
+ * An interactive scene: a player dribbling a ball. The ball leaves the hand, hits the floor and comes back
+ * to it, so the two roles only line up in the reveal if both players kept the beat.
+ * 0 to 6 s slow dribble; 6 to 11 s fast and low (knees bent); 11 to 14 s walking right while dribbling;
+ * 14 to 17 s walking back; 17 to 20 s slow again.
+ */
+export function dribbleScene(): Scene {
+  const durationMs = 20000, groundY = 0.9, ballH = 0.085;
+  // The dribble's phase, integrated over time so the beat can speed up without jumping.
+  const periodAt = (t: number) => 0.9 - 0.4 * (smooth(5.5, 6.5, t) - smooth(10.5, 11.5, t));
+  const phase: number[] = [];
+  let ph = 0;
+  for (let i = 0; i * (1000 / DEMO_HZ) <= durationMs + 1; i++) { phase.push(ph); ph += 1 / DEMO_HZ / periodAt(i / DEMO_HZ); }
+  const phaseAt = (tMs: number) => phase[Math.min(phase.length - 1, Math.round(tMs / (1000 / DEMO_HZ)))]!;
+  const frameAt = (tMs: number) => {
+    const t = tMs / 1000, u = phaseAt(tMs) % 1;
+    const low = smooth(5.5, 6.5, t) - smooth(10.5, 11.5, t);
+    const centerX = 0.42 + 0.16 * (smooth(11, 14, t) - smooth(14, 17, t));
+    // Right hand (image left) pushes down at u = 0 and rises while the ball is away; left arm out for balance.
+    const spec = {
+      rightUpperArm: -20 - 10 * low, rightForearm: -35 + 25 * Math.cos(2 * Math.PI * u),
+      leftUpperArm: 35, leftForearm: 50,
+      leftThigh: 5 + 35 * low, leftShin: -20 * low, rightThigh: -5 - 35 * low, rightShin: 20 * low, lean: 0,
+    };
+    const opts = { centerX, groundY, scale: 0.85, aspect: DEMO_ASPECT };
+    const pose = makeStickPose(spec, opts) as LandmarkObject[];
+    // Where the hand meets the ball: the wrist at the bottom of the push.
+    const contact = (makeStickPose({ ...spec, rightForearm: -10 }, opts) as LandmarkObject[])[16]!;
+    const top = contact.y + ballH / 2 + 0.01, floor = groundY - ballH / 2;
+    const box: Box = { cx: contact.x, cy: top + (floor - top) * Math.sin(Math.PI * u), w: ballH / DEMO_ASPECT, h: ballH };
+    return { pose, box };
   };
-  const ball: Guide = {
-    ...base, subject: { kind: "thing", label: "the ball" }, channel: "trajectory", timeline: null,
-    boxTrack: { schema: "box-track/1", source: { width: DEMO_W, height: DEMO_H }, frames: ballBoxes },
-    outlines: ballBoxes.map(() => null),
-  };
-  return { name: "Demo scene", width: DEMO_W, height: DEMO_H, startMs: 0, durationMs, guides: [dancer, ball].map(withThingOutlines), video: null };
+  return syntheticScene("Dribble", durationMs,
+    [{ label: "the dribbler", poseAt: (tMs) => toTuples(frameAt(tMs).pose) }],
+    [{ label: "the basketball", boxAt: (tMs) => frameAt(tMs).box }]);
 }
 
 /** A video read by the clip side. Returns the sentence why not when it has no one to copy. */
@@ -202,12 +266,11 @@ export function deal(names: string[], guides: Guide[]): Seat[] {
   });
 }
 
-/** What a player is told about their role. */
+/** What a player is told. It never names the role or describes it: the first frame is all they get. */
 function roleText(s: Seat): string {
-  const what = s.look === "outline" ? "its outline" : "its stick figure";
   return isThing(s.guide)
-    ? `You are ${s.guide.subject.label}. You will see only ${what}, never the clip. Move with it.`
-    : `You are ${s.guide.subject.label}. You will see only ${what}, never the clip. Copy it like a mirror.`;
+    ? "This is the first frame of what you will copy. You will see only this, moving, never the clip. Pick what you will copy it with, then start."
+    : "This is the first frame of what you will copy. You will see only this, moving, never the clip. Copy it like a mirror.";
 }
 
 // ---- A turn ----
@@ -223,14 +286,27 @@ function simulatedFor(s: Seat, scene: Scene, deps: BlindDeps): Player {
   return simulatedPlayer({ samples, width: scene.width, height: scene.height }, deps.noise);
 }
 
+/** How a role is drawn for its player: a person centred and sized to fill the view, a thing in its place so its travel shows. */
+function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
+  fitCanvas(canvas, scene.width / scene.height);
+  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color } };
+}
+
+/** The role's first frame, the only thing the player sees of it before the turn. */
+function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
+  const { guideCanvas } = ui.playStage();
+  const { view, style } = roleView(s, guideCanvas, scene);
+  const g = s.guide;
+  // The first frame where the subject is visible.
+  const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
+  drawBlind(guideCanvas, g, first, s.look, view, style);
+}
+
 async function playTurn(s: Seat, scene: Scene, deps: BlindDeps, ui: BlindUi): Promise<void> {
   const player = deps.simMode() ? simulatedFor(s, scene, deps) : await deps.getCamera();
   const g = s.guide;
   const stage = ui.playStage();
-  fitCanvas(stage.guideCanvas, scene.width / scene.height);
-  // A person is centred and sized to fill the view; a thing keeps its place so its travel shows.
-  const view = blindView(g, stage.guideCanvas, isThing(g) ? "exact" : "fit");
-  const style = { background: "#16161d", color: s.color };
+  const { view, style } = roleView(s, stage.guideCanvas, scene);
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
   const paint = () => {
@@ -326,7 +402,7 @@ async function recordGroupReveal(seats: Seat[], scene: Scene, canvas: HTMLCanvas
 
 function roleOf(s: Seat): RoleInfo {
   return {
-    label: s.guide.subject.label, kind: s.guide.subject.kind, look: s.look, text: roleText(s),
+    look: s.look, text: roleText(s),
     parts: isThing(s.guide) ? Object.entries(BODY_PARTS).map(([key, p]) => ({ key: key as BodyPart, label: p.label.toLowerCase() })) : null,
   };
 }
@@ -340,6 +416,7 @@ export async function runBlindGame(scene: Scene, names: string[], ui: BlindUi, d
     await ui.handover(s, i > 0 ? seats[i - 1]! : null);
     let problem: string | undefined;
     for (;;) {
+      drawFirstFrame(s, scene, ui);
       s.part = await ui.showPart(s, { ...roleOf(s), problem });
       if (!isThing(s.guide)) s.part = "body";
       try { await playTurn(s, scene, deps, ui); break; }

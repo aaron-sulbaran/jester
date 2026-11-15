@@ -1,7 +1,7 @@
 // Every tunable number of the engine lives here. Change a value, bump SCORER_VERSION,
 // so a stored score can always be traced to the rules that produced it.
 
-export const SCORER_VERSION = "jester-engine/0.7.0";
+export const SCORER_VERSION = "jester-engine/0.8.0";
 
 /** The fixed time grid every timeline is resampled to. Frame k is at k * 1000 / GRID_HZ ms. */
 export const GRID_HZ = 30;
@@ -150,6 +150,10 @@ export const TRAJECTORY = {
   activityTargetMin: 0.25,
   /** 0.7.0: when hips are hidden (at a desk), torso length is estimated as shoulder width times this. */
   torsoPerShoulderWidth: 1.4,
+  /** 0.8.0: for a body part, events are found on its path scaled toward the object's range. Only an axis that moves at least this many torso lengths is scaled. */
+  partEventMinRange: 0.1,
+  /** 0.8.0: the most that path is scaled up. */
+  partEventMaxScale: 3,
   /** 0.6.0: the reference unit is the box height, but never under this share of the frame height (a small ball). */
   minReferenceUnit: 0.25,
   /** Event matching window (ms) after the global lag. */
