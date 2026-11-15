@@ -8,6 +8,7 @@ import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScen
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
+import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
 /** A CSS custom property from the skin, or the fallback. */
@@ -32,7 +33,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Resolves on the next click of `el`. */
 const clicked = (el: HTMLElement) => new Promise<void>((r) => el.addEventListener("click", () => r(), { once: true }));
 
-const SCREENS = ["start", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "results", "oops"] as const;
+const SCREENS = ["start", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 
 /** Shows one screen and hides the rest. The body carries the name too, so the look can theme per screen. */
@@ -61,9 +62,6 @@ const STARTERS: StarterClip[] = [
   { id: "dribble", title: "Pickup game", hint: "Someone, and something they keep bouncing", make: dribbleScene },
   { id: "dance", title: "Dance break", hint: "Someone dancing, and something flying around", make: demoScene },
 ];
-
-/** A jester cap drawn over each player's photo on the results, in their colour. */
-const CAP_SVG = `<svg class="badge-cap" viewBox="0 0 200 150" aria-hidden="true"><path d="M60 112 C46 84 34 62 14 44 C42 50 72 72 94 106 Z"/><path d="M140 112 C154 84 166 62 186 44 C158 50 128 72 106 106 Z"/><path d="M78 108 C82 74 90 42 100 16 C110 42 118 74 122 108 Z"/><path class="band" d="M48 110 Q100 94 152 110 L152 132 Q100 118 48 132 Z"/><circle class="bell" cx="14" cy="44" r="11"/><circle class="bell" cx="100" cy="16" r="11"/><circle class="bell" cx="186" cy="44" r="11"/></svg>`;
 
 /** Colours for alphabet sticker lettering: stamp red, blue, pink, yellow. */
 const STICKER_COLORS = ["#D93A2B", "#4F7BF0", "#F47FA6", "#FFC93C"];
@@ -409,7 +407,7 @@ export function initGame(deps: GameDeps) {
 
     async beat() {
       show("drumroll");
-      await wait(1800);
+      await wait(1500);
     },
 
     revealCanvas: () => revealCanvas,
@@ -422,19 +420,111 @@ export function initGame(deps: GameDeps) {
     results(r) {
       setPace(1);
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+      // Load every player's jester while the reveal plays, so the crowning starts without a pop.
+      preloadJesters(r.map((row) => variantOf(row)));
       linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
     },
 
-    revealReady(url) {
+    async revealReady(url) {
       videoUrl = url;
+      await crown();
       showResults();
     },
   };
 
+  /** Each player wears the jester colourway that matches their colour (player 1 is p1, and so on). */
+  function variantOf(row: ResultRow) {
+    const i = playerColors().indexOf(row.color);
+    return variantFor(i < 0 ? rows.indexOf(row) : i);
+  }
+
+  // ---- The crowning ----
+
+  /**
+   * Every player's jester stands on the stage wearing their face. A drum roll, a spotlight sweeps across them
+   * and lands on the winner, who does the win dance while the rest slump. Resolves on "See the scores".
+   */
+  async function crown() {
+    show("crown");
+    // Stand them in seat order, not score order, so the spotlight has somewhere to travel.
+    const seated = [...rows].sort((a, b) => playerColors().indexOf(a.color) - playerColors().indexOf(b.color));
+    const castRow = $("crownCast");
+    const jesters = seated.map((row) => {
+      const j = new FaceJester(row.face, variantOf(row), 320);
+      const slot = document.createElement("figure");
+      slot.className = "cast-slot";
+      slot.style.setProperty("--who", row.color);
+      const name = document.createElement("figcaption");
+      name.className = "tape";
+      name.textContent = row.name;
+      slot.append(j.canvas, name);
+      return { row, j, slot };
+    });
+    castRow.replaceChildren(...jesters.map((x) => x.slot));
+    const winners = rows.filter((r) => r.winner);
+    const headline = winners.length === 0 ? "Everyone played!" : winners.length === 1 ? `${winners[0]!.name} wins!` : `${winners.map((w) => w.name).join(" and ")} tie!`;
+    const spot = $("crownSpot");
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let cancel = false;
+
+    const run = async () => {
+      cancel = false;
+      $("crownWinner").hidden = true;
+      $("crownAsk").hidden = false;
+      $("crownDrum").hidden = false;
+      $("screen-crown").dataset.phase = "roll";
+      for (const x of jesters) { x.slot.classList.remove("won", "lost"); x.j.play("idle"); }
+      const centre = (slot: HTMLElement) => {
+        const a = slot.getBoundingClientRect(), b = $("crownStage").getBoundingClientRect();
+        return ((a.left + a.width / 2 - b.left) / b.width) * 100;
+      };
+      const target = jesters.find((x) => x.row.winner) ?? jesters[0];
+      if (!target) return;
+      if (!reduce) {
+        // The spotlight sweeps across everyone twice, slowing down, then settles on the winner.
+        const stops = [...jesters, ...jesters].map((x) => centre(x.slot));
+        stops.push(centre(target.slot));
+        const legMs = (k: number) => 260 + k * 70;
+        for (let k = 0; k < stops.length && !cancel; k++) {
+          spot.style.transition = `left ${legMs(k)}ms cubic-bezier(.45, 0, .55, 1)`;
+          spot.style.left = `${stops[k]}%`;
+          await wait(legMs(k));
+        }
+        await wait(350);
+      }
+      if (cancel) return;
+      spot.style.transition = "none";
+      spot.style.left = `${centre(target.slot)}%`;
+      $("screen-crown").dataset.phase = "won";
+      $("crownDrum").hidden = true;
+      $("crownAsk").hidden = true;
+      letters($("crownWinner"), headline);
+      $("crownWinner").hidden = false;
+      for (const x of jesters) {
+        const won = x.row.winner;
+        x.slot.classList.add(won ? "won" : "lost");
+        x.j.play(won ? "win" : "lose");
+      }
+    };
+
+    const again = () => { cancel = true; void run(); };
+    $("crownAgain").addEventListener("click", again);
+    void run();
+    await clicked($("crownGo"));
+    cancel = true;
+    $("crownAgain").removeEventListener("click", again);
+    for (const x of jesters) x.j.stop();
+  }
+
   // ---- Results ----
 
+  /** The podium's animated jesters, stopped when the results screen is left. */
+  let podiumJesters: FaceJester[] = [];
+  const stopPodium = () => { for (const j of podiumJesters) j.stop(); podiumJesters = []; };
+
   function showResults() {
+    stopPodium();
     const winners = rows.filter((r) => r.winner);
     const headline = winners.length === 0 ? "Everyone played!"
       : winners.length === 1 ? `${winners[0]!.name} wins!`
@@ -449,11 +539,14 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"><span class="badge-photo"></span>${CAP_SVG}</span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
-      const photo = li.querySelector(".badge-photo")!;
-      if (r.face) { const img = new Image(); img.src = r.face.toDataURL("image/jpeg", 0.85); img.alt = `${r.name}'s face`; photo.appendChild(img); }
-      else photo.classList.add("no-face");
+      // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
+      const j = new FaceJester(r.face, variantOf(r), 200);
+      j.canvas.setAttribute("aria-label", `${r.name} as a jester`);
+      li.querySelector(".badge")!.appendChild(j.canvas);
+      j.play(r.winner ? "win" : "lose");
+      podiumJesters.push(j);
       li.querySelector("b")!.textContent = r.name;
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
       li.querySelector(".place-score")!.textContent = r.score == null ? "no score" : String(r.score);
@@ -495,8 +588,8 @@ export function initGame(deps: GameDeps) {
     note.textContent = "Saved to your downloads. Send it from there.";
   });
 
-  $("again").addEventListener("click", () => { if (scene) openCast(); else show("start"); });
-  $("newClip").addEventListener("click", () => show("start"));
+  $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(); else show("start"); });
+  $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
 
   show("start");

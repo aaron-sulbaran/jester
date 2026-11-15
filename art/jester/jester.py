@@ -14,6 +14,7 @@ P = argparse.ArgumentParser()
 P.add_argument('--out', default='app/public/look/jester')
 P.add_argument('--test', action='store_true', help='Render one still for art direction')
 P.add_argument('--badge', action='store_true', help='Render the cap and collar with the face left open, for player face badges')
+P.add_argument('--faces', action='store_true', help='Render every animation with a see-through face hole per player colourway, plus where the face sits in each frame')
 ARGS = P.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 OUT = Path(ARGS.out).resolve()
 OUT.mkdir(parents=True, exist_ok=True)
@@ -423,6 +424,75 @@ def render(path,size):
     scene.render.filepath=str(path)
     bpy.ops.render.render(write_still=True)
 
+
+if ARGS.faces:
+    # Player jesters: the face is a holdout (transparent, but it still hides what is behind it) with its ink
+    # outline, so the browser can draw a player's photo into the hole. face-track.json says where the hole is
+    # in every frame (centre, radius, sideways squash from turning, tilt), in pixels of the 384 px frame.
+    from bpy_extras.object_utils import world_to_camera_view
+    hole = bpy.data.materials.new('Face hole')
+    hole.use_nodes = True
+    hn = hole.node_tree.nodes
+    hn.clear()
+    hold = hn.new('ShaderNodeHoldout')
+    hout = hn.new('ShaderNodeOutputMaterial')
+    hole.node_tree.links.new(hold.outputs[0], hout.inputs['Surface'])
+    for ob in scene.objects:
+        if ob.name.startswith('Face'):
+            ob.material_slots[0].link = 'OBJECT'
+            ob.material_slots[0].material = hole
+            face_ob = ob
+        elif ob.name.startswith(('Oval eye', 'Catchlight', 'Red cheek diamond', 'Ear', 'Button nose', 'Mischievous smile')):
+            ob.hide_render = True
+    PLAYERS = {'p1': ('F47FA6', '6B2FB3'), 'p2': ('4F7BF0', 'FFC93C'), 'p3': ('FFC93C', 'D4243A'), 'p4': ('3FBF8F', '4F7BF0')}
+    SIZE = 384
+    def to_px(point):
+        v = world_to_camera_view(scene, camera, point)
+        return Vector((v.x * SIZE, (1 - v.y) * SIZE))
+    track = {}
+    TEMP = OUT / '_faces'
+    TEMP.mkdir(exist_ok=True)
+    first = True
+    for variant, colors in PLAYERS.items():
+        palette(colors)
+        for anim, count in ANIMS.items():
+            for ob in rig: ob.animation_data_clear()
+            for frame in range(count + (1 if anim in ('idle', 'dance') else 0)):
+                pose(anim, frame)
+            rows = []
+            for frame in range(count):
+                scene.frame_set(frame)
+                bpy.context.view_layer.update()
+                m = head.matrix_world
+                c = to_px(m @ Vector((0, 0, .07)))
+                up = to_px(m @ Vector((0, 0, .07 + .77)))
+                side = to_px(m @ Vector((.77, 0, .07)))
+                r = (up - c).length
+                rot = math.atan2(up.x - c.x, -(up.y - c.y))
+                rows.append([round(c.x, 1), round(c.y, 1), round(r, 1), round(min(1.0, (side - c).length / max(r, 1e-6)), 3), round(rot, 3)])
+                render(TEMP / f'face-{variant}-{anim}-{frame:02}.png', SIZE)
+            if first or anim not in track:
+                track[anim] = {'frames': count, 'loop': anim in ('idle', 'dance'), 'face': rows}
+        first = False
+        print('FACES_VARIANT', variant, round(time.monotonic() - START, 2), flush=True)
+    manifest = {'fps': FPS, 'frameSize': SIZE, 'variants': {k: ['#' + a for a in v] for k, v in PLAYERS.items()}, 'anims': track}
+    (OUT / 'face-track.json').write_text(json.dumps(manifest))
+    subprocess.run(['/usr/bin/env', 'python3', '-c', r"""
+from PIL import Image
+from pathlib import Path
+import json, sys, shutil
+out = Path(sys.argv[1]); data = json.loads((out / 'face-track.json').read_text())
+for variant in data['variants']:
+    for anim, meta in data['anims'].items():
+        strip = Image.new('RGBA', (384 * meta['frames'], 384))
+        for f in range(meta['frames']):
+            with Image.open(out / '_faces' / f'face-{variant}-{anim}-{f:02}.png') as im:
+                strip.paste(im, (384 * f, 0))
+        strip.save(out / f'face-{variant}-{anim}.webp', format='WEBP', quality=80, method=4, alpha_quality=100)
+shutil.rmtree(out / '_faces')
+""", str(OUT)], check=True)
+    print('FACES_SECONDS', round(time.monotonic() - START, 2))
+    sys.exit(0)
 
 if ARGS.badge:
     # Arcade style face badge: the jester's cap and collar seen straight on, with the face, ears and body hidden,

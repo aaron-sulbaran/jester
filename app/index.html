@@ -180,8 +180,8 @@
 
     <!-- The beat before the reveal. -->
     <section class="screen" id="screen-drumroll" hidden>
-      <div class="drum" aria-hidden="true"><i></i><b></b><b></b></div>
-      <div class="masking"><p class="tape">Drum roll, please.</p></div>
+      <div class="masking"><p class="tape">That's everyone!</p></div>
+      <div class="note-wrap"><p class="note">Gather round. Here comes what you all actually did.</p></div>
     </section>
 
     <!-- The reveal plays live on the shoebox stage while it records. -->
@@ -206,11 +206,35 @@
       </div>
     </section>
 
+    <!-- The crowning: every player's jester wears their face; drum roll, a spotlight sweeps, the winner dances. -->
+    <section class="screen" id="screen-crown" hidden>
+      <div class="crown-head">
+        <div class="drum" id="crownDrum" aria-hidden="true"><i></i><b></b><b></b></div>
+        <div class="masking" id="crownAsk"><p class="tape">Drum roll, please...</p></div>
+        <h2 class="wins" id="crownWinner" hidden></h2>
+      </div>
+      <div class="stage-wrap crown-wrap">
+        <div class="box">
+          <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
+          <div class="inside">
+            <div class="walls" aria-hidden="true"></div>
+            <div class="stage crown-stage" id="crownStage"><div class="cast-row" id="crownCast"></div><div class="spot" id="crownSpot" aria-hidden="true"></div></div>
+            <div class="valance" aria-hidden="true"><i></i></div>
+            <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
+            <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="btn btn-quiet" id="crownAgain">Watch the crowning again</button>
+        <button type="button" class="btn btn-main" id="crownGo"><span class="ticket"><span class="ticket-text">See the scores</span></span></button>
+      </div>
+    </section>
+
     <!-- Results end on sending it to someone. -->
     <section class="screen" id="screen-results" hidden>
       <div class="results-head">
         <h2 class="wins" id="resultsHeadline"></h2>
-        <div class="puppet small" aria-hidden="true"><span class="stick"></span><span class="jester jester-win"></span></div>
       </div>
       <div class="results-grid">
         <div class="print film"><video id="resultsVideo" playsinline muted loop controls hidden></video><span class="washi w-dots" aria-hidden="true"></span></div>
