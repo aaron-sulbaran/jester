@@ -27,6 +27,12 @@ export type Pace = "slow" | "medium" | "fast";
 
 export interface Candidate { trackId: number; number: number; label: string; score: number; boxAtConfirm: Box | null }
 
+/** One hand's 21 Hand Landmarker points (0 wrist, 1-4 thumb, 5-8 index, 9-12 middle, 13-16 ring, 17-20 pinky), normalized like landmarks. */
+export type HandPoints = [number, number][];
+
+/** The hands of the subject at one timeline frame; null where a hand was not found. `left` is the pose model's left wrist (landmark 15). */
+export interface GuideHands { left: HandPoints | null; right: HandPoints | null }
+
 export interface Guide {
   schema: "guide/1";
   fingerprint: string;
@@ -40,6 +46,8 @@ export interface Guide {
   /** The subject's outline at each timeline frame (same times as `boxTrack.frames`); null where absent. */
   outlines: (Outline | null)[];
   keyMoments: { tMs: number }[];
+  /** Finger detail per timeline frame (same indices as `timeline.frames`). Absent on clips analysed without the hands pass. */
+  hands?: (GuideHands | null)[];
   pace: Pace;
   warnings: string[];
   /** The AI form arrives in Version 2. */

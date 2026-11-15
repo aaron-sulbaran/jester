@@ -34,9 +34,9 @@ interface AgentModule {
   DEFAULT_MODEL: string;
   promptVersion(): string;
   reviewSubmission(input: ReviewInput, settings: {
-    apiKey: string; model: string;
-    run?: { callbacks?: object[]; tags?: string[]; metadata?: Record<string, unknown>; runName?: string; runId?: string; traceTo?: string };
+    apiKey: string; model: string; callbacks?: object[]; tags?: string[]; metadata?: Record<string, unknown>; runName?: string; runId?: string;
   }): Promise<Decision>;
+  tracerFor(trace: { apiKey: string; project: string }): Promise<object>;
   flushTraces(): Promise<void>;
   traceUrl(runId: string): Promise<string | null>;
 }
@@ -183,7 +183,7 @@ async function main(): Promise<number> {
   const previous = lastRun(runsDir);
   const perReview = previous?.results.length ? (costUsd(previous.model, previous.results.reduce<Usage>((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 })) ?? 0) / previous.results.length : null;
   console.log(`${cases.length} cases: ${cases.length - desk.length} synthetic, ${desk.length} from the desk (${desk.filter((c) => c.truth).length} with a person's outcome or a hand label).`);
-  console.log(`Each case is one Chamberlain review on ${model} (prompt ${prompt}): the Chamberlain and its playability checker, several model calls.${perReview ? ` Last run: about $${perReview.toFixed(3)} a review, so about $${(perReview * cases.length).toFixed(2)} for this one.` : ""}`);
+  console.log(`Each case is one Chamberlain review on ${model} (prompt ${prompt}), with the model calls and cost counted per review.${perReview ? ` Last run: about $${perReview.toFixed(3)} a review, so about $${(perReview * cases.length).toFixed(2)} for this one.` : ""}`);
   if (desk.length && !casesDir) console.log("No env file found, so no desk cases.");
 
   if (args["dry-run"]) {
@@ -199,11 +199,10 @@ async function main(): Promise<number> {
     console.error(envFile ? `No ANTHROPIC_API_KEY in ${basename(envFile)}.` : "No review env file: set JESTER_REVIEW_ENV to jester-deploy/.env.review.");
     return 2;
   }
-  // Tracing is opt-in per run (traceTo), never global: a LANGSMITH_TRACING in the shell must not send desk frames.
-  for (const k of ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING"]) delete process.env[k];
-  // Two explicit settings, as for the desk: the key alone never turns tracing on.
+  // Tracing is per run, through a tracer with its own client (tracerFor), never global: reviewSubmission removes
+  // any inherited tracing switch, and refuses a tracer on a case not marked synthetic. Two explicit settings, as
+  // for the desk: the key alone never turns tracing on.
   const tracing = Boolean(env.LANGSMITH_API_KEY) && env.JESTER_REVIEW_TRACE === "1";
-  if (tracing) for (const [k, v] of Object.entries(env)) if (k.startsWith("LANGSMITH_") && k !== "LANGSMITH_TRACING") process.env[k] = v;
   const secrets = [apiKey, env.LANGSMITH_API_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter((k): k is string => Boolean(k));
   const scrub = (text: string) => secrets.reduce((t, k) => t.split(k).join("[key]"), text);
 
@@ -229,12 +228,10 @@ async function main(): Promise<number> {
     let decision: Decision | null = null;
     let error: string | null = null;
     try {
+      const tracer = trace ? [await agent.tracerFor({ apiKey: env.LANGSMITH_API_KEY!, project: env.LANGSMITH_PROJECT || PROJECT })] : [];
       decision = await agent.reviewSubmission(c.input, {
-        apiKey, model,
-        run: {
-          callbacks: [meter], tags: ["chamberlain-eval", c.source], metadata: { case: c.id, source: c.source, prompt },
-          runName: `chamberlain-eval ${c.id}`, runId, ...(trace ? { traceTo: env.LANGSMITH_PROJECT || PROJECT } : {}),
-        },
+        apiKey, model, callbacks: [meter, ...tracer],
+        tags: ["chamberlain-eval", c.source], metadata: { case: c.id, source: c.source, prompt }, runName: `chamberlain-eval ${c.id}`, runId,
       });
     } catch (err) {
       error = scrub((err as Error).message);

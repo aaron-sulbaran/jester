@@ -58,7 +58,7 @@ const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((re
   signal?.addEventListener("abort", stop, { once: true });
 });
 
-const SCREENS = ["howto", "start", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "start", "submit", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 /** Screens where a game is under way: leaving from these asks first. */
 const MID_GAME: readonly ScreenName[] = ["handover", "turn", "drumroll", "reveal"];
@@ -282,7 +282,19 @@ export function initGame(deps: GameDeps) {
     openCast();
   });
 
-  // ---- Submit your own: present but quiet ----
+  // ---- Send in a clip: an invite under the Play ticket opens its own screen ----
+
+  $("submitOpen").addEventListener("click", () => {
+    // After a clip went in, the next visit starts with an empty form again.
+    if (!$("submitThanks").hidden) {
+      $<HTMLFormElement>("submitForm").reset();
+      $("submitForm").hidden = false;
+      $("submitThanks").hidden = true;
+      $("submitProblem").hidden = true;
+    }
+    show("submit");
+  });
+  $("submitBack").addEventListener("click", () => show("start"));
 
   $("submitForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -291,9 +303,8 @@ export function initGame(deps: GameDeps) {
     const say = (text: string) => { problem.textContent = text; problem.hidden = false; };
     problem.hidden = true;
     if (!file) return say("Pick a clip to send.");
-    if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
     const title = $<HTMLInputElement>("submitTitle").value.trim();
-    if (!title) return say("Name the move or dance in your clip.");
+    if (!title) return say("Give your clip a name.");
     const send = $<HTMLButtonElement>("submitSend");
     const bar = $<HTMLProgressElement>("submitBar");
     send.disabled = true; bar.hidden = false; bar.value = 0;
@@ -305,6 +316,15 @@ export function initGame(deps: GameDeps) {
     void rememberSubmission(file, title);
     $("submitForm").hidden = true;
     $("submitThanks").hidden = false;
+  });
+
+  // Send another: the form comes back empty, and the clip just sent is still watched (submissionWatch.ts).
+  $("submitAgain").addEventListener("click", () => {
+    $<HTMLFormElement>("submitForm").reset();
+    $("submitProblem").hidden = true;
+    $("submitThanks").hidden = true;
+    $("submitForm").hidden = false;
+    $<HTMLInputElement>("submitFile").focus();
   });
 
   $("upload").addEventListener("change", async (e) => {

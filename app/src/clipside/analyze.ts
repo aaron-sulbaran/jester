@@ -2,13 +2,14 @@
 // the person picked. The pure work lives in ../../../clip; this file feeds it from the browser.
 
 import {
-  buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkTracks, linkThings, pickConfirmFrame,
-  rankCandidates, rankThings, rejoinTracks, repairIdentities, shotRanges, thingGuides, withConfirmBoxes, withoutPeople,
+  buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkThings, pickConfirmFrame,
+  rankCandidates, rankThings, shotRanges, thingGuides, trackPeople, withConfirmBoxes, withoutPeople,
 } from "../../../clip/src/index.ts";
 import type {
   Candidate, ClipSource, FrameDetections, Guide, ThingCandidate, ThingFrame, ThingTrack, Track,
 } from "../../../clip/src/index.ts";
 import { createPeopleDetector, type PersonSearch, type PoseModel } from "./detect.ts";
+import { nameByPosition } from "../../../clip/src/index.ts";
 import { createThingDetector, type ThingDetector } from "./things.ts";
 import { sha256Hex } from "./fingerprint.ts";
 import { readFrames, type FrameCanvas, type VideoInfo } from "./frames.ts";
@@ -23,8 +24,6 @@ const MAX_MS = 30000;
 const MAX_SIDE = 512;
 const SIGNATURE_WIDTH = 32;
 const LONG_CLIP = "This clip is longer than 30 seconds, so only the first 30 are used.";
-/** A person lost for up to this long (behind someone, at the back) is joined back into one track. */
-const REJOIN_SECONDS = 3;
 /** The object detector looks at every this many analysed frames. */
 const THING_EVERY = 6;
 /**
@@ -84,11 +83,7 @@ function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] 
  * and picks the frame to choose from. Pure and quick, so saved analyses run it again too.
  */
 function findPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
-  const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
-  const aspect = source.width / source.height;
-  const joined = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect });
-  // Puts back skeletons that crossing dancers swapped, and drops frames that show someone else's pose.
-  const { tracks } = repairIdentities(joined, { aspect });
+  const { tracks } = trackPeople(frames, cuts, { sampleHz: SAMPLE_HZ, aspect: source.width / source.height });
   const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
   const confirmFrame = pickConfirmFrame(ranked, tracks);
   const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
@@ -243,7 +238,8 @@ const OTHER_SHOT = "This person is in a different shot of the clip.";
  * stretch of the clip, so every guide comes from the top person's shot (the top thing's when there
  * are no people) and shares its `range`; with no cuts that is everyone. Subjects in other shots,
  * and subjects a guide cannot be made for, go to `skipped` with the sentence why. A thing guide has
- * `subject.kind` "thing", `timeline` null and `channel` "trajectory".
+ * `subject.kind` "thing", `timeline` null and `channel` "trajectory". People are named by where they
+ * stand among the people offered ("the dancer on the left", see `nameByPosition`); things keep their labels.
  */
 export function subjectGuides(prepared: Prepared): { guides: Guide[]; skipped: { number: number; label?: string; reason: string }[] } {
   const guides: Guide[] = [];
@@ -259,13 +255,16 @@ export function subjectGuides(prepared: Prepared): { guides: Guide[]; skipped: {
     if (result.error !== null) skipped.push({ number: candidate.number, reason: result.error });
     else guides.push(result.data);
   }
+  // Named among the people offered only: a short piece of someone that was skipped must not push a real
+  // person into "the middle". Saved analyses run this again, so they get the names too.
+  const people = nameByPosition(guides);
   const things = prepared.things;
-  if (!things) return { guides, skipped };
+  if (!things) return { guides: people, skipped };
   const topThing = things.candidates[0];
   const shot = mainShot ?? (topThing ? things.tracks.find((t) => t.id === topThing.trackId)?.shot : undefined);
   const found = thingGuides({
     fingerprint: prepared.fingerprint, source: prepared.source, frames: prepared.frames, cuts: prepared.cuts,
     tracks: things.tracks, candidates: things.candidates, warnings: prepared.warnings, shot: shot ?? 0,
   });
-  return { guides: [...guides, ...found.guides], skipped: [...skipped, ...found.skipped] };
+  return { guides: [...people, ...found.guides], skipped: [...skipped, ...found.skipped] };
 }

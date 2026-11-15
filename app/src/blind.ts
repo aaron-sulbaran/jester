@@ -15,11 +15,12 @@
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
-import { boxFromLandmarks, hideUnsureJoints, type Guide, type Outline } from "../../clip/src/index.ts";
+import { boxFromLandmarks, hideUnsureJoints, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
 import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { addHands } from "./clipside/hands.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
@@ -27,9 +28,10 @@ import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/po
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutAnchor, cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock, type Torso } from "./cutout.ts";
 import { playWithSound, setAloud } from "./sound.ts";
-import { castRowShare } from "./recapRules.ts";
+import { castRowShare, dropShrunkCrops } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
+import { steadyMarks } from "./markerSteady.ts";
 
 export interface Scene {
   name: string;
@@ -137,7 +139,8 @@ export interface GameOptions {
   reveal?: boolean;
   /**
    * Normal mode (default false, Blind): during each turn the clip's own video plays on the role's side, in time
-   * with the turn's clock, with the role drawn over it so the player knows who to copy. A drawn scene with no
+   * with the turn's clock, with the role marked on it (a thin outline in the player's colour and their name above,
+   * no stick figure over the person) so the player knows who they copy and are scored on. A drawn scene with no
    * video plays as in Blind. Scoring is the same either way.
    */
   showClip?: boolean;
@@ -541,6 +544,25 @@ function fullFigure(g: Guide): Guide {
   };
 }
 
+/**
+ * The role as drawn, held on its own person through contact: where its box or skeleton jumps further than a
+ * person moves in 1/15 s and comes back soon (another fighter or dancer taking the track for a moment), the
+ * marker glides across instead (markerSteady.ts), and outlines that do not fit the box are swapped for the last
+ * good one. Drawing only: turns are scored against the guide as it is. Things are left alone (a ball may move that fast).
+ */
+function steadyMarker(g: Guide): Guide {
+  if (isThing(g)) return g;
+  const frames = g.boxTrack.frames;
+  const lms = g.timeline && g.timeline.frames.length === frames.length ? g.timeline.frames.map((f) => f.landmarks) : undefined;
+  const m = steadyMarks({ boxes: frames.map((f) => f.box), outlines: g.outlines, landmarks: lms }, g.source.sampleHz, g.source.width / g.source.height);
+  return {
+    ...g,
+    boxTrack: { ...g.boxTrack, frames: frames.map((f, i) => ({ ...f, box: m.boxes[i] ?? null })) },
+    outlines: m.outlines,
+    timeline: g.timeline && m.landmarks ? { ...g.timeline, frames: g.timeline.frames.map((f, i) => ({ ...f, landmarks: (m.landmarks![i] as typeof f.landmarks) ?? null })) } : g.timeline,
+  };
+}
+
 /** The same guide played slower: every time stretched by 1 / speed. `range.startMs` stays the clip's media start. */
 function slowGuide(g: Guide, speed: number): Guide {
   if (speed === 1) return g;
@@ -558,6 +580,14 @@ function slowGuide(g: Guide, speed: number): Guide {
 /** The scene as played: slowed to `speed`. */
 export function slowScene(scene: Scene, speed: number): Scene {
   return speed === 1 ? scene : { ...scene, durationMs: scene.durationMs / speed, guides: scene.guides.map((g) => slowGuide(g, speed)) };
+}
+
+/** Both hands blended between two samples; a hand found in only one of them is used as it is. */
+function blendHands(a: GuideHands | null, b: GuideHands | null, u: number): GuideHands | null {
+  const one = (p: HandPoints | null, q: HandPoints | null): HandPoints | null =>
+    p && q ? p.map(([x, y], k) => [x + (q[k]![0] - x) * u, y + (q[k]![1] - y) * u] as [number, number]) : u < 0.5 ? p ?? q : q ?? p;
+  const left = one(a?.left ?? null, b?.left ?? null), right = one(a?.right ?? null, b?.right ?? null);
+  return left || right ? { left, right } : null;
 }
 
 /**
@@ -581,6 +611,8 @@ function guideAt(g: Guide, ms: number): Guide {
     boxTrack: { ...g.boxTrack, frames: [{ tMs: ms, box }] },
     outlines: [outline],
     timeline: g.timeline && { ...g.timeline, frames: [{ tMs: ms, landmarks }] },
+    // Fingers blend between the two samples like the body, so they move smoothly even when the clip is slowed.
+    ...(g.hands ? { hands: [blendHands(g.hands[i] ?? null, g.hands[j] ?? null, u)] } : {}),
   };
 }
 
@@ -700,10 +732,12 @@ export function dribbleScene(): Scene {
 
 /** A video read by the clip side. Returns the sentence why not when it has no one to copy. */
 export async function videoScene(file: File, video: HTMLVideoElement, onProgress: (share: number) => void): Promise<Scene | string> {
-  const prepared = await prepareVideo(file, video, onProgress);
+  const prepared = await prepareVideo(file, video, (share) => onProgress(share * 0.8));
   if (prepared.error !== null) return prepared.error;
-  const { guides, skipped } = subjectGuides(prepared.data);
-  if (guides.length === 0) return skipped[0]?.reason ?? "No one to copy in this clip.";
+  const found = subjectGuides(prepared.data);
+  if (found.guides.length === 0) return found.skipped[0]?.reason ?? "No one to copy in this clip.";
+  // Finger detail for the hands the player has to copy; a failure here leaves the guides as they were.
+  const guides = await addHands(found.guides, file, video, (share) => onProgress(0.8 + share * 0.2));
   const g = guides[0]!;
   return {
     name: file.name, width: g.source.width, height: g.source.height,
@@ -771,16 +805,57 @@ function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
   return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color }, video: null };
 }
 
-/** Normal mode: the clip's current frame on `canvas`, where the role's view puts the clip, a little dimmed so the role reads on top. */
-function paintClip(canvas: HTMLCanvasElement, video: HTMLVideoElement, view: ReturnType<typeof roleView>, g: Guide) {
+/**
+ * Normal mode: the clip's current frame on `canvas`, where the role's view puts the clip, and the person (or thing)
+ * being copied and scored marked on it without hiding them: everything else a little dimmed, a thin line in the
+ * player's colour around them (their outline, or a rounded box where there is none) and the player's name above.
+ * `at` is the role at this moment (guideAt, index 0): the same guide and clock the turn is scored on.
+ */
+function paintClip(canvas: HTMLCanvasElement, video: HTMLVideoElement, view: ReturnType<typeof roleView>, at: Guide, color: string, tag: string) {
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#16161d";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (video.readyState < 2) return;
   const { scale, offsetX, offsetY } = view.view;
+  const sw = at.source.width * scale, sh = at.source.height * scale;
+  ctx.drawImage(video, offsetX, offsetY, sw, sh);
+  const map = (x: number, y: number): [number, number] => [x * sw + offsetX, y * sh + offsetY];
+  const box = at.boxTrack.frames[0]?.box ?? null;
+  const outline = at.outlines[0] ?? null;
+  // The target's shape: its outline, or its box with a little room, rounded.
+  let shape: Path2D | null = null;
+  if (outline && outline.length >= 3) {
+    shape = new Path2D();
+    outline.forEach(([x, y], i) => { const [px, py] = map(x, y); if (i) shape!.lineTo(px, py); else shape!.moveTo(px, py); });
+    shape.closePath();
+  } else if (box) {
+    const [x0, y0] = map(box.cx - box.w * 0.56, box.cy - box.h * 0.54), [x1, y1] = map(box.cx + box.w * 0.56, box.cy + box.h * 0.54);
+    shape = new Path2D();
+    shape.roundRect(x0, y0, x1 - x0, y1 - y0, Math.min(x1 - x0, y1 - y0) * 0.12);
+  }
+  // The same dim as before, now on everything but the target.
+  const dim = new Path2D();
+  dim.rect(0, 0, canvas.width, canvas.height);
+  if (shape) dim.addPath(shape);
   ctx.save();
-  ctx.globalAlpha = 0.8;
-  ctx.drawImage(video, offsetX, offsetY, g.source.width * scale, g.source.height * scale);
+  ctx.globalAlpha = 0.2; ctx.fillStyle = "#16161d"; ctx.fill(dim, "evenodd");
+  ctx.restore();
+  if (!shape) return;
+  const sizePx = box ? box.h * sh : canvas.height * 0.5;
+  ctx.save();
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = Math.max(3, sizePx * 0.016); ctx.stroke(shape);
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, sizePx * 0.01); ctx.stroke(shape);
+  // The name tag over their head, placed from the steadied box so it glides with them (the reveal's tag style).
+  if (box) {
+    const fontPx = Math.max(12, Math.round(canvas.height / 24));
+    ctx.font = `600 ${fontPx}px ${theme.font}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    const [tx, top] = map(box.cx, box.cy - box.h / 2);
+    const ty = Math.max(fontPx + 4, top - sizePx * 0.1);
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(tag, tx, ty);
+    ctx.fillStyle = color; ctx.fillText(tag, tx, ty);
+  }
   ctx.restore();
 }
 
@@ -793,8 +868,8 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   // The first frame where the subject is visible.
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
   const draw = () => {
-    if (video) paintClip(guideCanvas, video, shown, g);
-    drawBlind(guideCanvas, g, first, s.look, view, style);
+    if (video) paintClip(guideCanvas, video, shown, guideAt(g, g.boxTrack.frames[first]?.tMs ?? 0), s.color, s.name);
+    else drawBlind(guideCanvas, g, first, s.look, view, style);
   };
   draw();
   // Normal mode: show the clip at that moment under the role (only while nothing else is playing it).
@@ -809,11 +884,12 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
  * coming (it hides behind the role when nothing changes).
  */
 function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof roleView>, ms: number, leadMs: number, scratch: HTMLCanvasElement) {
+  // Normal mode: the clip with the role marked on it, no figure over the person.
+  if (view.video) { paintClip(canvas, view.video, view, guideAt(s.guide, ms), s.color, s.name); return; }
   if (leadMs > 0) {
     scratch.width = canvas.width; scratch.height = canvas.height;
-    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.video ? { ...view.style, background: "#000" } : view.style);
+    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style);
   }
-  if (view.video) paintClip(canvas, view.video, view, s.guide);
   drawBlind(canvas, guideAt(s.guide, ms), 0, s.look, view.view, view.style);
   if (leadMs > 0) {
     const ctx = canvas.getContext("2d")!;
@@ -1325,7 +1401,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   // Tracking from a real video jitters and loses people; steady every person role once (scored as is) and
   // draw a copy with every limb shown, so the figure never cuts out.
   clip = { ...clip, guides: clip.guides.map(steadyRole) };
-  const scene = slowScene({ ...clip, guides: clip.guides.map(fullFigure) }, speed);
+  const scene = slowScene({ ...clip, guides: clip.guides.map((g) => steadyMarker(fullFigure(g))) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
   for (const s of seats) { s.original = clip.guides[scene.guides.indexOf(s.guide)]!; s.withClip = !!options.showClip; }
@@ -1402,7 +1478,8 @@ export interface RemoteResult {
 export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui: BlindUi, options: GameOptions = {}): Promise<ResultRow[]> {
   const speed = options.speed ?? 1;
   const steady = { ...clip, guides: clip.guides.map(steadyRole) };
-  const scene = slowScene({ ...steady, guides: steady.guides.map(fullFigure) }, speed);
+  // Steadied like a local game's roles, so each remote player's figure stays on its own person in the reveal too.
+  const scene = slowScene({ ...steady, guides: steady.guides.map((g) => steadyMarker(fullFigure(g))) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats: Seat[] = results.map((r) => {
     const guide = scene.guides[r.guideIndex]!;
@@ -1412,7 +1489,8 @@ export async function revealRemoteGame(clip: Scene, results: RemoteResult[], ui:
       result: { score: r.score, tier: r.tier, lagMs: r.lagMs }, recording: null,
     };
     seat.face = r.face ?? null;
-    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = r.cutouts; return seat; } // their own pictures
+    // Their own pictures, without frames where the tracker lost the head (dropShrunkCrops), the same on every device.
+    if (r.cutouts && r.cutouts.length >= 3) { seat.cutouts = dropShrunkCrops(r.cutouts); return seat; }
     // No pictures sent: stick-figure cutouts from the recording, media ms back to play ms, about 15 a second.
     const aspect = r.timeline?.aspect || 4 / 3;
     let last = -Infinity;

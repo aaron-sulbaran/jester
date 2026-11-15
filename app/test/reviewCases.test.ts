@@ -14,7 +14,10 @@ const input: ReviewInput = {
   facts: { error: null, durationMs: 8000, subjects: [{ label: "Person 1", kind: "person", seenShare: 0.95, pace: "steady" }], skipped: [], warnings: [] },
   frames: ["data:image/jpeg;base64,AAAA", "data:image/jpeg;base64,BBBB"],
 };
-const decision: Decision = { verdict: "approve", reason: "Fine.", nameCheck: "fits", nameNote: "", framesCheck: "A person.", findings: [], steps: ["Plan"] };
+const decision: Decision = {
+  verdict: "approve", reason: "Fine.", nameCheck: "fits", nameKind: "describes_clip", nameNote: "", framesCheck: "A person.",
+  contentCheck: "clean", steering: false, playability: "plays well", precedent: "", findings: [], steps: ["Plan"],
+};
 const fresh = () => join(mkdtempSync(join(tmpdir(), "chamberlain-cases-")), "chamberlain-cases");
 const read = (dir: string, id: string) => JSON.parse(readFileSync(join(dir, `${id}.json`), "utf8")) as ChamberlainCase;
 

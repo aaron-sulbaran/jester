@@ -5,10 +5,19 @@
 // row's status. With the Anthropic key it runs the Chamberlain (review-agent.ts). Decisions and their
 // reasons go in jester-review-log.json beside that env file, since the table has no column for them. Each
 // judged clip is also saved as an eval case in chamberlain-cases/ beside it (review-cases.ts): the exact judge
-// input with its frames, the decision, and later the final outcome. That folder is outside every repo.
+// input with its frames and precedents, the decision, and later the final outcome. That folder is outside
+// every repo, and nothing is saved when it is inside one. When
+// Aaron decides a clip the Chamberlain asked about, a short precedent goes in jester-precedents.json beside
+// it (review-precedents.ts), and the Chamberlain reads the recent ones before each review. With
+// LANGSMITH_API_KEY and JESTER_REVIEW_TRACE=1 in the env file, each review is traced to LangSmith
+// (LANGSMITH_PROJECT, by default jester-chamberlain), but every desk review is a real submission, so a review
+// then refuses to run (review-agent.ts tracingRefusal) until the env file also has
+// JESTER_REVIEW_TRACE_REAL=notice-names-langsmith, set only once the Submit your own notice names LangSmith.
+// A LangChain tracing switch inherited from the shell is removed before each review (stopInheritedTracing),
+// so it neither traces nor blocks the desk.
 //
-// What leaves the laptop: the four frames, the analysis facts, and the submitter's title and credit go to
-// Anthropic for each review. Nothing else does. Videos come down from Supabase and stay here.
+// What leaves the laptop: the four frames, the analysis facts, the submitter's title and credit, and the
+// recent precedents go to Anthropic for each review (and to LangSmith when tracing is on). Nothing else does. Videos come down from Supabase and stay here.
 //
 // Routes under /__review, answered only to this dev server's own pages (Host must be localhost or
 // 127.0.0.1, against DNS rebinding; and Sec-Fetch-Site same-origin or the x-jester-review header):
@@ -33,8 +42,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import { readBankIndex } from "./src/bankIndex.ts";
-import { DEFAULT_MODEL, promptVersion, reviewSubmission, type Decision, type ReviewInput } from "./review-agent.ts";
+import { DEFAULT_MODEL, NOTICE_NAMES_LANGSMITH, promptVersion, reviewSubmission, tracerFor, type Decision, type ReviewInput } from "./review-agent.ts";
 import { casesDirFor, saveJudged, saveOutcome } from "./review-cases.ts";
+import { parsePrecedents, precedentFrom, PRECEDENTS_KEPT, type Precedent } from "./review-precedents.ts";
 
 const PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov)$/;
 const ROW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -55,6 +65,13 @@ interface LogEntry {
   steps?: string[];
   findings?: Finding[];
   framesCheck?: string;
+  /** On a flag: what the Chamberlain decided and judged, so a person's later decision can become a precedent. */
+  agentVerdict?: string;
+  nameCheck?: string;
+  nameKind?: string;
+  contentCheck?: string;
+  steering?: boolean;
+  playability?: string;
   at: string;
 }
 
@@ -121,6 +138,27 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     writeFileSync(logPath, JSON.stringify(log.slice(-500), null, 2) + "\n");
   };
   let log: LogEntry[] = [];
+  const precedentsPath = options.envFile ? join(dirname(options.envFile), "jester-precedents.json") : undefined;
+  const readPrecedents = (): Precedent[] => {
+    if (!precedentsPath || !existsSync(precedentsPath)) return [];
+    try { return parsePrecedents(readFileSync(precedentsPath, "utf8")); } catch { return []; }
+  };
+  /**
+   * A person decided a clip: if the Chamberlain had asked about it, keep what they did as a precedent. Runs
+   * after the decision is saved, logged and published, and never throws: a precedent that cannot be written
+   * is lost, never the decision.
+   */
+  const addPrecedent = (id: string, status: "approved" | "rejected", title: string | null) => {
+    if (!precedentsPath) return;
+    try {
+      const flagged = [...log].reverse().find((e) => e.id === id && e.verdict === "ask_a_person" && e.by === "agent");
+      if (!flagged) return;
+      const made = precedentFrom(flagged, { status, title }, new Date().toISOString());
+      if (made) writeFileSync(precedentsPath, JSON.stringify([...readPrecedents(), made].slice(-PRECEDENTS_KEPT), null, 2) + "\n");
+    } catch (err) {
+      console.warn(`The Chamberlain's precedent for ${id} was not saved: ${(err as Error).message}`);
+    }
+  };
   // ---- Publishing the bank ----
   const publishScript = bankDir ? join(dirname(bankDir), "deploy-bank.sh") : undefined;
   const PUBLISH_DELAY_MS = 5000;
@@ -162,6 +200,14 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
     const anthropicKey = env.ANTHROPIC_API_KEY;
     const model = env.JESTER_REVIEW_MODEL || DEFAULT_MODEL;
+    const langsmithKey = env.LANGSMITH_API_KEY;
+    // Tracing desk reviews sends real submissions' frames, titles and credits to LangSmith, which the Submit
+    // your own notice does not name yet. So it takes two deliberate settings, and goes only to this run's
+    // own tracer, never the whole process.
+    const trace = langsmithKey && env.JESTER_REVIEW_TRACE === "1" ? { apiKey: langsmithKey, project: env.LANGSMITH_PROJECT || "jester-chamberlain" } : null;
+    // The second setting: every desk review is a real submission, so with tracing on, reviewSubmission refuses
+    // to run until this says the Submit your own notice names LangSmith.
+    const noticeNamesLangSmith = env.JESTER_REVIEW_TRACE_REAL === NOTICE_NAMES_LANGSMITH;
     const queueMissing = [
       ...(options.envFile ? [] : ["JESTER_REVIEW_ENV (the dev server was started without it)"]),
       ...(url ? [] : ["SUPABASE_URL"]),
@@ -169,8 +215,8 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     ];
     const judgeMissing = anthropicKey ? [] : ["ANTHROPIC_API_KEY"];
     /** No key value may ever leave in a message, whatever the libraries put in their errors. */
-    const scrub = (text: string) => [serviceKey, anthropicKey].reduce((t, k) => (k ? t.split(k).join("[key]") : t), text);
-    return { url, serviceKey, anthropicKey, model, queueMissing, judgeMissing, scrub };
+    const scrub = (text: string) => [serviceKey, anthropicKey, langsmithKey].reduce((t, k) => (k ? t.split(k).join("[key]") : t), text);
+    return { url, serviceKey, anthropicKey, model, trace, noticeNamesLangSmith, queueMissing, judgeMissing, scrub };
   };
 
   /** The bank's own index, so a row is marked approved only once its clip is really in the bank. */
@@ -277,12 +323,16 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
               });
               if (saved.error !== null) console.warn(`[review] ${saved.error}`);
             };
+            // Exactly what the Chamberlain reads, precedents included, so a saved case replays as it was judged.
+            // A desk review is always a real submission, whatever the request says.
+            const judged: ReviewInput = { ...input, synthetic: false, precedents: readPrecedents() };
             try {
-              const decision = await reviewSubmission(input, { apiKey: s.anthropicKey, model: s.model });
-              keep(input, decision);
+              const callbacks = s.trace ? [await tracerFor(s.trace)] : undefined;
+              const decision = await reviewSubmission(judged, { apiKey: s.anthropicKey, model: s.model, noticeNamesLangSmith: s.noticeNamesLangSmith, ...(callbacks ? { callbacks } : {}) });
+              keep(judged, decision);
               return ok(decision);
             } catch (err) {
-              keep(input, null, s.scrub((err as Error).message));
+              keep(judged, null, s.scrub((err as Error).message));
               return fail(502, `The Chamberlain could not run: ${(err as Error).message}`);
             }
           }
@@ -296,6 +346,15 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             ...(strings(body.steps) ? { steps: strings(body.steps)! } : {}),
             ...(findingsOf(body.findings) ? { findings: findingsOf(body.findings)! } : {}),
             ...(typeof body.framesCheck === "string" ? { framesCheck: body.framesCheck.slice(0, 600) } : {}),
+          };
+          const word = (x: unknown) => (typeof x === "string" && /^[a-z_ ]{1,20}$/.test(x) ? x : undefined);
+          const judged = {
+            ...(word(body.agentVerdict) ? { agentVerdict: word(body.agentVerdict)! } : {}),
+            ...(word(body.nameCheck) ? { nameCheck: word(body.nameCheck)! } : {}),
+            ...(word(body.nameKind) ? { nameKind: word(body.nameKind)! } : {}),
+            ...(word(body.contentCheck) ? { contentCheck: word(body.contentCheck)! } : {}),
+            ...(typeof body.steering === "boolean" ? { steering: body.steering } : {}),
+            ...(word(body.playability) ? { playability: word(body.playability)! } : {}),
           };
 
           if (route === "decide") {
@@ -312,14 +371,15 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             if (error) return fail(502, `Saving the decision failed: ${error.message}`);
             if (!changed || changed.length !== 1) return fail(409, "That submission was already decided, so nothing changed.");
             addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(bankId ? { bankId } : {}), ...extra });
+            if (status === "approved") schedulePublish();
+            if (by === "aaron") addPrecedent(id, status, title);
             const outcome = saveOutcome(casesDir, id, { status, by, title, reason, ...(bankId ? { bankId } : {}) });
             if (outcome.error !== null) console.warn(`[review] ${outcome.error}`);
-            if (status === "approved") schedulePublish();
             return ok({ id, status });
           }
 
           if (route === "flag") {
-            addLog({ id, video_path: videoPath, title, verdict: "ask_a_person", by: "agent", reason, ...extra });
+            addLog({ id, video_path: videoPath, title, verdict: "ask_a_person", by: "agent", reason, ...extra, ...judged });
             return ok({ id });
           }
 
