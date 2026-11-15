@@ -47,7 +47,7 @@ export interface PeopleDetector {
   close(): void;
 }
 
-interface MpLandmark { x: number; y: number; visibility?: number }
+interface MpLandmark { x: number; y: number; z?: number; visibility?: number }
 
 let visionPromise: Promise<{ mp: any; vision: any }> | null = null;
 
@@ -97,7 +97,9 @@ export async function createPeopleDetector(model: PoseModel = "full", search: Pe
             const box = boxFromLandmarks(landmarks);
             if (!box) return;
             const mask = masks[i];
-            people.push({ box, landmarks, outline: mask ? outlineFromMask(mask, box) : null });
+            // Depth rides beside the landmarks (the engine's landmark is x, y and visibility only).
+            const depth = raw.every((l) => typeof l.z === "number" && Number.isFinite(l.z)) ? raw.map((l) => round4(l.z!)) : undefined;
+            people.push({ box, landmarks, outline: mask ? outlineFromMask(mask, box) : null, ...(depth ? { depth } : {}) });
           });
         } finally {
           for (const mask of masks) mask.close();

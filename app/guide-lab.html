@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guide lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p.sub { margin: 0 0 12px; color: #555; max-width: 70ch; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 8px 0 14px; }
+    .controls label { display: inline-flex; gap: 6px; align-items: center; }
+    #options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 760px) { #options { grid-template-columns: 1fr; } }
+    .option h2 { font-size: 2rem; margin: 0; line-height: 1; }
+    .option p { margin: 4px 0 8px; min-height: 2.8em; color: #333; font-size: .92rem; }
+    .option .pick { display: flex; gap: 12px; margin-bottom: 8px; font-size: .9rem; }
+    canvas { display: block; width: 100%; height: auto; background: #16161d; }
+    #time { width: min(100%, 420px); }
+  </style>
+</head>
+<body>
+  <h1>Guide lab: pick a puppet</h1>
+  <p class="sub">The 3D jester beside the two flat ones, on the same dancer. The dancer bounces to a beat, turns all the way round, then sways. Each option's puppet and stage switch separately. In the game: <code>/?guide=d</code> (3D), <code>a</code> or <code>b</code>, and <code>&amp;stage=spot</code> for the spotlight. <code>?at=3</code> holds the dancer at 3 seconds; <code>?phone=1</code> shows the guide at a phone's size.</p>
+  <div class="controls">
+    <label>Jester colour
+      <select id="color"></select>
+    </label>
+    <label><input id="depth" type="checkbox" checked /> Tracker depth (off: the fallback from body width and the nose)</label>
+    <label><input id="pause" type="checkbox" /> Pause</label>
+    <label>Time <input id="time" type="range" min="0" max="1" step="0.001" value="0" /></label>
+  </div>
+  <div id="options"></div>
+  <script type="module" src="./src/guide-lab.ts"></script>
+</body>
+</html>
