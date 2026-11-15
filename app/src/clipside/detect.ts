@@ -6,7 +6,7 @@
 
 import type { Landmark } from "../../../engine/src/index.ts";
 import { boxFromLandmarks, largestBlobInBox, type Box, type Detection, type Outline } from "../../../clip/src/index.ts";
-import { binarizeMask, downsampleMask, extractOutline, MP_BUNDLE, MP_WASM, MODEL_URLS } from "../../../spikes/pose-match/webcam.mjs";
+import { binarizeMask, downsampleMask, extractOutline, cachedModelOptions, MP_BUNDLE, MP_WASM, MODEL_URLS } from "../../../spikes/pose-match/webcam.mjs";
 import type { FrameCanvas } from "./frames.ts";
 
 const MAX_PEOPLE = 4;
@@ -65,8 +65,8 @@ export async function createPeopleDetector(model: PoseModel = "full", search: Pe
   let landmarker: any;
   try {
     const { mp, vision } = await loadVision();
-    const make = (delegate: "GPU" | "CPU") => mp.PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_PATHS[model], delegate },
+    const make = async (delegate: "GPU" | "CPU") => mp.PoseLandmarker.createFromOptions(vision, {
+      baseOptions: { ...(await cachedModelOptions(MODEL_PATHS[model])), delegate },
       runningMode: search === "tracking" ? "VIDEO" : "IMAGE", numPoses: MAX_PEOPLE, outputSegmentationMasks: true,
     });
     try { landmarker = await make("GPU"); } catch { landmarker = await make("CPU"); }

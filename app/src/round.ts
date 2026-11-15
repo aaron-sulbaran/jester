@@ -9,6 +9,10 @@ import { createWebcamTracker as createTrackerJs } from "../../spikes/pose-match/
 import { simulatedPlayerPose } from "../../spikes/pose-match/synthetic.mjs";
 import type { Clip } from "./clip.ts";
 import { live } from "./liveHands.ts";
+import { preloadModels } from "./preload.ts";
+
+// Warm the browser cache with the tracking models a moment after the page opens, so the first round starts sooner.
+if (typeof window !== "undefined") window.setTimeout(preloadModels, 1500);
 import type { ObjectClip } from "./objectClips.ts";
 import type { PersonMask } from "./cutout.ts";
 
@@ -35,12 +39,12 @@ export interface Player {
 
 /** The real camera, through Lisa's tracker (smoothed pose). */
 export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-  cam.srcObject = stream;
-  await cam.play();
   let sink: ((f: WebcamFrame) => void) | null = null;
   let clock: () => number = () => -1;
   let capture: CaptureFn | null = null;
+  // The camera permission prompt and the tracker's models load at the same time, not one after the other.
+  const streamPromise = navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  streamPromise.catch(() => {}); // a refusal is reported below; this keeps it from also being reported as unhandled
   const tracker = await createWebcamTracker({
     video: cam,
     model: new URLSearchParams(location.search).get("model") ?? "full", // add ?model=heavy to the page address for the most accurate (slower) tracker
@@ -54,6 +58,8 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
       if (capture && f.landmarks && clipMs >= 0) capture({ landmarks: f.landmarks, mask: f.mask ?? null, source: cam, width: cam.videoWidth, height: cam.videoHeight, clipMs });
     },
   });
+  cam.srcObject = await streamPromise;
+  await cam.play();
   tracker.start();
   return {
     start(onFrame, clipClockMs) { sink = onFrame; clock = clipClockMs; },

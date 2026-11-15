@@ -166,6 +166,26 @@ export function buildFrame({ t, landmarks, aspect, maskValues, maskWidth, maskHe
   return { t, landmarks: landmarks || null, aspect, mirrored: false, mask, outline, hands };
 }
 
+// ---- Model files, kept in the browser's Cache Storage ----
+// The tracking models are about 25 MB and the servers let browsers keep them for only an hour. Cache Storage keeps them
+// until the browser clears it, so after the first time a round starts without downloading anything (venue Wi-Fi!).
+// Returns the options MediaPipe takes for a model: the bytes if cached, else the address as a fallback.
+export async function cachedModelOptions(url) {
+  try {
+    if (typeof caches === "undefined") return { modelAssetPath: url };
+    const cache = await caches.open("jester-models-v1");
+    let res = await cache.match(url);
+    if (!res) {
+      res = await fetch(url);
+      if (!res.ok) throw new Error("model download failed");
+      await cache.put(url, res.clone());
+    }
+    return { modelAssetBuffer: new Uint8Array(await res.arrayBuffer()) };
+  } catch {
+    return { modelAssetPath: url };
+  }
+}
+
 // ---- Browser tracker ----
 export const MP_BUNDLE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 export const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
@@ -182,19 +202,18 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
   const mp = await import(MP_BUNDLE);
   const vision = await mp.FilesetResolver.forVisionTasks(MP_WASM);
   const make = async (name, delegate) => mp.PoseLandmarker.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: MODEL_URLS[name], delegate },
+    baseOptions: { ...(await cachedModelOptions(MODEL_URLS[name])), delegate },
     runningMode: "VIDEO", numPoses: 1, outputSegmentationMasks: true,
   });
   let delegate = "GPU", modelName = model, landmarker;
-  try { landmarker = await make(modelName, "GPU"); } catch { delegate = "CPU"; landmarker = await make(modelName, "CPU"); }
-
   // Fingers: a second model (21 points per hand). Off with ?hands=0, and switched off by itself if the frame rate drops.
-  let handLandmarker = null;
-  if (new URLSearchParams(globalThis.location?.search ?? "").get("hands") !== "0") {
-    try {
-      handLandmarker = await mp.HandLandmarker.createFromOptions(vision, { baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate }, runningMode: "VIDEO", numHands: 2 });
-    } catch { handLandmarker = null; }
-  }
+  // It loads at the same time as the body model.
+  const wantHands = new URLSearchParams(globalThis.location?.search ?? "").get("hands") !== "0";
+  const makeHands = async (d) => mp.HandLandmarker.createFromOptions(vision, { baseOptions: { ...(await cachedModelOptions(HAND_MODEL_URL)), delegate: d }, runningMode: "VIDEO", numHands: 2 });
+  const handsPromise = wantHands ? makeHands("GPU").catch(() => null) : Promise.resolve(null);
+  try { landmarker = await make(modelName, "GPU"); } catch { delegate = "CPU"; landmarker = await make(modelName, "CPU"); }
+  let handLandmarker = await handsPromise;
+
   const smoother = new PoseSmoother(filter);
   const handSmoother = new HandSmoother(filter);
   const stats = { fps: 0, model: modelName, delegate, hands: !!handLandmarker };
