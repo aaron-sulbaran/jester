@@ -1,0 +1,5 @@
+node_modules/
+# The agent's scratch space: findings, reports and proposals it writes.
+workspace/
+# The repo ignores every .env* file; the example holds variable names only, so it is kept.
+!.env.example
