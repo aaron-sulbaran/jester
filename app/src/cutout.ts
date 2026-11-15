@@ -223,10 +223,14 @@ export interface RevealLayer {
   cutouts: readonly Cutout[];
   /** The player's measured lag: their move at clip time t happened at t + lagMs. */
   lagMs: number;
+  /** Cutouts were captured in a slowed play time: replay time ms is play time ms * timeScale (default 1). */
+  timeScale?: number;
   /** Where the subject is at replay time ms, normalized like the clip. */
   boxAt: (ms: number) => Box | null;
   /** A person's cutout is the whole body sized to the box; a thing's is sized up so a small ball still shows a hand. */
   kind: "person" | "thing";
+  /** Sideways offset in cutout widths, so players sharing a role stand side by side (default 0). */
+  spread?: number;
   /** Name tag drawn above the cutout, e.g. "Alex 87". */
   tag?: string;
   color?: string;
@@ -256,10 +260,11 @@ function nearest(cutouts: readonly Cutout[], ms: number): Cutout | null {
 export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, layers: readonly RevealLayer[], ms: number) {
   for (const layer of layers) {
     const b = layer.boxAt(ms);
-    const c = nearest(layer.cutouts, ms + Math.max(0, layer.lagMs));
+    const c = nearest(layer.cutouts, ms * (layer.timeScale ?? 1) + Math.max(0, layer.lagMs));
     if (!b || !c) continue;
     const side = layer.kind === "person" ? Math.max(b.w * W, b.h * H) * 1.15 : Math.max(b.w * W, b.h * H, H / 6) * 1.4;
-    const x = b.cx * W - side / 2, y = b.cy * H - side / 2;
+    const cx = b.cx * W + (layer.spread ?? 0) * side;
+    const x = cx - side / 2, y = b.cy * H - side / 2;
     ctx.save();
     ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = 12;
     ctx.drawImage(c.image, x, y, side, side);
@@ -269,45 +274,72 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
       ctx.font = `600 ${Math.round(H / 24)}px system-ui, sans-serif`;
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
       const ty = Math.max(H / 20, y + side * 0.06);
-      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, b.cx * W, ty);
-      ctx.fillStyle = layer.color ?? "#f5c542"; ctx.fillText(layer.tag, b.cx * W, ty);
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, cx, ty);
+      ctx.fillStyle = layer.color ?? "#f5c542"; ctx.fillText(layer.tag, cx, ty);
       ctx.restore();
     }
   }
 }
 
-/** Play the overlay once on the canvas while recording it. Resolves with a video URL (or null if recording is unsupported). */
-export async function recordReveal(o: RevealOptions): Promise<string | null> {
-  const { canvas, durationMs } = o;
+/** A clock for a segment, e.g. a video playing from some point; default is wall time from the segment's start. */
+export interface SegmentClock { start(): void | Promise<void>; now(): number; stop?(): void }
+
+/** One part of a recorded video: drawn for `durationMs`, at the time its clock gives. */
+export interface Segment {
+  durationMs: number;
+  draw: (ctx: CanvasRenderingContext2D, ms: number) => void;
+  clock?: SegmentClock;
+}
+
+/**
+ * Plays the segments one after another on the canvas while recording them into one video. The recorder
+ * pauses while a segment's clock gets ready (a video seeking), so no dead frames land in the file.
+ * Resolves with a video URL, or null if this browser cannot record (the segments still play).
+ */
+export async function recordSegments(canvas: HTMLCanvasElement, segments: readonly Segment[], onProgress?: (share: number) => void): Promise<string | null> {
   const ctx = canvas.getContext("2d")!;
-  const W = canvas.width, H = canvas.height;
-  const draw = (ms: number) => { o.drawBackground(ctx, ms); drawLayers(ctx, W, H, o.layers, ms); };
-  draw(0);
   const stream = typeof canvas.captureStream === "function" ? canvas.captureStream(30) : null;
   const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
   const recorder = stream && type ? new MediaRecorder(stream, { mimeType: type }) : null;
   const chunks: Blob[] = [];
-  const started = performance.now();
-  const wall = () => performance.now() - started;
-  const now = o.clock ? () => o.clock!.now() : wall;
-  if (o.clock) await o.clock.start();
-  return new Promise((resolve) => {
-    if (recorder) {
-      recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      recorder.onstop = () => resolve(chunks.length ? URL.createObjectURL(new Blob(chunks, { type })) : null);
-      recorder.start(250);
-    }
-    // A timer, not requestAnimationFrame, so the replay still records in a background tab.
-    const timer = window.setInterval(() => {
-      const ms = Math.max(0, now());
-      draw(Math.min(ms, durationMs));
-      o.onProgress?.(Math.min(1, ms / durationMs));
-      // A stalled video clock still ends the replay a little after it should have.
-      if (ms >= durationMs || wall() > durationMs + 5000) {
-        clearInterval(timer);
-        o.clock?.stop?.();
-        if (recorder) recorder.stop(); else resolve(null);
-      }
-    }, 1000 / 30);
+  const total = segments.reduce((sum, seg) => sum + seg.durationMs, 0) || 1;
+  const done = new Promise<string | null>((resolve) => {
+    if (!recorder) return;
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => resolve(chunks.length ? URL.createObjectURL(new Blob(chunks, { type })) : null);
   });
+  let before = 0;
+  for (const [k, seg] of segments.entries()) {
+    seg.draw(ctx, 0);
+    if (recorder?.state === "recording") recorder.pause();
+    if (seg.clock) await seg.clock.start();
+    if (recorder?.state === "paused") recorder.resume();
+    else if (recorder && k === 0) recorder.start(250);
+    const started = performance.now();
+    const wall = () => performance.now() - started;
+    const now = seg.clock ? () => seg.clock!.now() : wall;
+    await new Promise<void>((next) => {
+      // A timer, not requestAnimationFrame, so it still records in a background tab.
+      const timer = window.setInterval(() => {
+        const ms = Math.max(0, now());
+        seg.draw(ctx, Math.min(ms, seg.durationMs));
+        onProgress?.(Math.min(1, (before + ms) / total));
+        // A stalled video clock still ends the segment a little after it should have.
+        if (ms >= seg.durationMs || wall() > seg.durationMs + 5000) { clearInterval(timer); seg.clock?.stop?.(); next(); }
+      }, 1000 / 30);
+    });
+    before += seg.durationMs;
+  }
+  if (!recorder) return null;
+  recorder.stop();
+  return done;
+}
+
+/** Play the overlay once on the canvas while recording it. Resolves with a video URL (or null if recording is unsupported). */
+export function recordReveal(o: RevealOptions): Promise<string | null> {
+  const W = o.canvas.width, H = o.canvas.height;
+  return recordSegments(o.canvas, [{
+    durationMs: o.durationMs, clock: o.clock,
+    draw: (ctx, ms) => { o.drawBackground(ctx, ms); drawLayers(ctx, W, H, o.layers, ms); },
+  }], o.onProgress);
 }

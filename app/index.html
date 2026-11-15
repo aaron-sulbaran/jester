@@ -47,6 +47,9 @@
         <label>Players <select id="blindCount"><option>2</option><option selected>3</option><option>4</option></select></label>
         <span id="blindNames"></span>
       </div>
+      <div class="row">
+        <label>Speed <select id="blindSpeed"><option value="1">100% (the clip's own speed)</option><option value="0.75" selected>75%</option><option value="0.5">50% (first time)</option></select></label>
+      </div>
       <p id="blindStatus">Pick a clip.</p>
       <button id="blindDeal" disabled>Deal secret roles</button>
     </div>
@@ -54,6 +57,7 @@
       <h2 id="turnTitle"></h2>
       <p id="turnText"></p>
       <div class="row hidden" id="turnPartRow"><label>Copy it with your <select id="turnPart"></select></label></div>
+      <button id="turnPreview" class="hidden">Watch it once</button>
       <button id="turnReveal">Show my role</button>
       <button id="turnStart" class="hidden">Start my turn</button>
       <button id="turnNext" class="hidden">Pass the laptop</button>

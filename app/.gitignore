@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-play
 .vite
 
 # Local test clips for the clip lab. Never commit video files.
