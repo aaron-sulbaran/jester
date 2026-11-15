@@ -136,3 +136,50 @@ export function advance(state: Elimination, places: readonly DuelResult[]): Adva
     dropped: step.dropped, replay: step.replay, final: null,
   };
 }
+
+// ---- Where a player fell behind (cheap: from the engine's per frame credits) ----
+
+/**
+ * The engine's per grid frame credits (0..1 or null, frame k at k * gridMs media ms), averaged into
+ * buckets of `bucketMs` over the round's stretch, as whole numbers 0..100 (null where nothing scored).
+ * Small enough to send with a result: 20 s at 200 ms is 100 numbers.
+ */
+export function bucketCredits(frameCredits: readonly (number | null)[], startMs: number, endMs: number, gridMs: number, bucketMs = 200): (number | null)[] {
+  const out: (number | null)[] = [];
+  for (let from = startMs; from < endMs; from += bucketMs) {
+    let sum = 0, count = 0;
+    for (let k = Math.ceil(from / gridMs); k * gridMs < Math.min(endMs, from + bucketMs); k++) {
+      const c = frameCredits[k];
+      if (c !== null && c !== undefined) { sum += c; count++; }
+    }
+    out.push(count ? Math.round((sum / count) * 100) : null);
+  }
+  return out;
+}
+
+/**
+ * Where `trailer` fell furthest behind `leader`: the middle of the `windowMs` stretch with the largest
+ * average credit gap, in ms from the round's start. Null when the gap never reaches `minGap` points.
+ */
+export function fellBehind(leader: readonly (number | null)[], trailer: readonly (number | null)[], bucketMs = 200, windowMs = 1000, minGap = 10): number | null {
+  const span = Math.max(1, Math.round(windowMs / bucketMs));
+  let best: { at: number; gap: number } | null = null;
+  for (let k = 0; k + span <= Math.max(leader.length, trailer.length); k++) {
+    let sum = 0, count = 0;
+    for (let j = k; j < k + span; j++) {
+      const a = leader[j], b = trailer[j];
+      if (a === null || a === undefined || b === null || b === undefined) continue;
+      sum += a - b; count++;
+    }
+    if (count * 2 < span) continue;
+    const gap = sum / count;
+    if (!best || gap > best.gap) best = { at: k * bucketMs + (span * bucketMs) / 2, gap };
+  }
+  return best && best.gap >= minGap ? best.at : null;
+}
+
+/** "0:07" for 7000 ms. */
+export function clockText(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}

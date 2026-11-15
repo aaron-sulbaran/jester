@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { advance, bestOf, modeFor, nextRound, rankDuel, startElimination, type DuelResult } from "../src/match.ts";
+import { advance, bestOf, bucketCredits, clockText, fellBehind, modeFor, nextRound, rankDuel, startElimination, type DuelResult } from "../src/match.ts";
 
 const r = (id: string, score: number | null, lagMs: number | null = 0): DuelResult => ({ id, score, lagMs });
 const places = (rows: DuelResult[]) => rankDuel(rows).map((p) => `${p.id}:${p.place}`);
@@ -63,4 +63,17 @@ test("advance: elimination down to two, then a best of three final", () => {
   step = advance(m, [r("a", 95), r("c", 70)]);
   assert.equal(step.state.winner, "a");
   assert.deepEqual(step.state.out, ["b", "c"]);
+});
+
+test("bucketCredits: averages grid credits into 0..100 buckets over the stretch", () => {
+  const credits = [null, null, 1, 1, 0.5, 0.5, null, null];
+  assert.deepEqual(bucketCredits(credits, 100, 400, 50, 100), [100, 50, null]);
+});
+
+test("fellBehind: the middle of the stretch with the biggest gap, or null when close", () => {
+  const leader = [80, 80, 80, 80, 80, 80];
+  const trailer = [80, 80, 20, 20, 80, 80];
+  assert.equal(fellBehind(leader, trailer, 200, 400), 600);
+  assert.equal(fellBehind(leader, leader, 200, 400), null);
+  assert.equal(clockText(7400), "0:07");
 });
