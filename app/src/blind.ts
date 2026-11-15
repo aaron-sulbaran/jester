@@ -59,6 +59,8 @@ interface Seat {
   result: { score: number | null; tier: string | null; lagMs: number } | null;
   /** The performance in Lisa's recorder format (pose only), for her stick figure reveal. */
   recording: unknown;
+  /** Normal mode: the clip itself plays under the role during the turn (no effect on a drawn scene with no video). */
+  withClip?: boolean;
 }
 
 export interface BlindDeps {
@@ -133,6 +135,12 @@ export interface GameOptions {
    * one role, so the group reveal is drawn from everyone's results once they are all in.
    */
   reveal?: boolean;
+  /**
+   * Normal mode (default false, Blind): during each turn the clip's own video plays on the role's side, in time
+   * with the turn's clock, with the role drawn over it so the player knows who to copy. A drawn scene with no
+   * video plays as in Blind. Scoring is the same either way.
+   */
+  showClip?: boolean;
 }
 
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -750,21 +758,50 @@ function simulatedFor(s: Seat, scene: Scene, deps: BlindDeps): Player {
 
 /** How a role is drawn for its player: a person centred and sized to fill the view, a thing in its place so its travel shows. */
 function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
+  // Normal mode: the whole clip in its own shape, the role drawn in place on it.
+  const video = s.withClip ? scene.video : null;
+  if (video) {
+    fitCanvas(canvas, scene.width / scene.height);
+    return { view: blindView(s.guide, canvas, "exact"), style: { background: "transparent", color: s.color }, video };
+  }
   // A person fills whatever space the screen gives the role (half the stage while playing); a thing keeps
   // the clip's shape, so where it travels stays true.
   const shown = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 0;
   fitCanvas(canvas, !isThing(s.guide) && shown ? shown : scene.width / scene.height);
-  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color } };
+  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color }, video: null };
+}
+
+/** Normal mode: the clip's current frame on `canvas`, where the role's view puts the clip, a little dimmed so the role reads on top. */
+function paintClip(canvas: HTMLCanvasElement, video: HTMLVideoElement, view: ReturnType<typeof roleView>, g: Guide) {
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#16161d";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (video.readyState < 2) return;
+  const { scale, offsetX, offsetY } = view.view;
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.drawImage(video, offsetX, offsetY, g.source.width * scale, g.source.height * scale);
+  ctx.restore();
 }
 
 /** The role's first frame, the only thing the player sees of it before the turn. */
 function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   const { guideCanvas } = ui.playStage();
-  const { view, style } = roleView(s, guideCanvas, scene);
+  const shown = roleView(s, guideCanvas, scene);
+  const { view, style, video } = shown;
   const g = s.guide;
   // The first frame where the subject is visible.
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
-  drawBlind(guideCanvas, g, first, s.look, view, style);
+  const draw = () => {
+    if (video) paintClip(guideCanvas, video, shown, g);
+    drawBlind(guideCanvas, g, first, s.look, view, style);
+  };
+  draw();
+  // Normal mode: show the clip at that moment under the role (only while nothing else is playing it).
+  if (video && video.paused) {
+    video.currentTime = (scene.startMs + (s.original.boxTrack.frames[first]?.tMs ?? 0)) / 1000;
+    void seeked(video).then(() => { if (video.paused) draw(); });
+  }
 }
 
 /**
@@ -774,8 +811,9 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
 function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof roleView>, ms: number, leadMs: number, scratch: HTMLCanvasElement) {
   if (leadMs > 0) {
     scratch.width = canvas.width; scratch.height = canvas.height;
-    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style);
+    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.video ? { ...view.style, background: "#000" } : view.style);
   }
+  if (view.video) paintClip(canvas, view.video, view, s.guide);
   drawBlind(canvas, guideAt(s.guide, ms), 0, s.look, view.view, view.style);
   if (leadMs > 0) {
     const ctx = canvas.getContext("2d")!;
@@ -1007,7 +1045,8 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
   // The shape to copy follows how big you look: closer to the camera makes it bigger, further makes it smaller.
   const matcher = new SizeMatcher();
-  const sizeToPlayer = !followsBox(s) && !isThing(g);
+  // In Normal mode the role stays in its place on the clip.
+  const sizeToPlayer = !followsBox(s) && !isThing(g) && !view.video;
   const shownHeight = (c: HTMLCanvasElement) => {
     const r = c.getBoundingClientRect();
     return displayedHeight(r.width, r.height, c.width, c.height, getComputedStyle(c).objectFit === "cover" ? "cover" : "contain");
@@ -1289,7 +1328,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   const scene = slowScene({ ...clip, guides: clip.guides.map(fullFigure) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
-  for (const s of seats) s.original = clip.guides[scene.guides.indexOf(s.guide)]!;
+  for (const s of seats) { s.original = clip.guides[scene.guides.indexOf(s.guide)]!; s.withClip = !!options.showClip; }
   (window as any).__jesterBlind = { seats, scene, speed };
   for (let i = 0; i < seats.length; i++) {
     const s = seats[i]!;
