@@ -479,9 +479,10 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 /* Reveal: fast forward and skip. */
 .reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
 
-/* ---------- Game feel (ui/feel.ts): the "can't see you" notice, and the rank lines on the podium ---------- */
+/* ---------- Game feel (ui/feel.ts): the "can't see you" notice, and the rank and award lines on the podium ---------- */
 .lost { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; width: min(80%, 440px); display: grid; justify-items: center; pointer-events: none; }
 .lost .note { --lh: 30px; font-size: 22px; padding: 14px 16px 10px 48px; }
 .place-title { font: 700 24px/1 var(--hand); letter-spacing: -.045em; }
 .place-blurb { font-size: 14px; max-width: 30ch; text-align: left; }
+.place-award { font-size: 14px; }
 @media (prefers-reduced-motion: no-preference) { .lost:not([hidden]) { animation: land .35s var(--ease) both; } }

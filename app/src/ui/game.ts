@@ -12,7 +12,8 @@ import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
-import { rankFor } from "../feelText.ts";
+import { awardsFor, motionOf, rankFor } from "../feelText.ts";
+import { say } from "../host.ts";
 import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
@@ -615,6 +616,7 @@ export function initGame(deps: GameDeps) {
       activeRestart = null;
       hideRestart();
       show("drumroll");
+      say("beat");
       const roll = sfx.drumRoll();
       try { await waitOrSkip(1500, sig()); } finally { roll(); }
     },
@@ -689,6 +691,7 @@ export function initGame(deps: GameDeps) {
       const mine = ++runs;
       roll();
       roll = sfx.drumRoll();
+      say("roll");
       $("crownWinner").hidden = true;
       $("crownAsk").hidden = false;
       $("crownDrum").hidden = false;
@@ -713,7 +716,11 @@ export function initGame(deps: GameDeps) {
         await wait(350);
       }
       if (cancel) return;
-      if (mine === runs) { roll(); sfx.crown(); }
+      if (mine === runs) {
+        roll();
+        sfx.crown();
+        say(winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: winners.map((w) => w.name).join(" and ") });
+      }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
       $("screen-crown").dataset.phase = "won";
@@ -755,6 +762,8 @@ export function initGame(deps: GameDeps) {
     letters($("resultsHeadline"), headline);
     const list = $("podium");
     list.innerHTML = "";
+    // Everyone leaves with something: the crown, or an award from how they played.
+    const awards = awardsFor(rows.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })));
     rows.forEach((r, i) => {
       // Tied scores share a place.
       const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
@@ -762,7 +771,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="place-title"></span><span class="place-blurb"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="place-title"></span><span class="place-blurb"></span><span class="place-award"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
@@ -775,12 +784,16 @@ export function initGame(deps: GameDeps) {
       const rank = rankFor(r.score);
       li.querySelector(".place-title")!.textContent = rank.title;
       li.querySelector(".place-blurb")!.textContent = rank.blurb;
+      li.querySelector(".place-award")!.textContent = `Award: ${awards[i]}`;
       const score = li.querySelector<HTMLElement>(".place-score")!;
       if (r.score == null) score.textContent = "no score";
       else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
     });
     sfx.fanfare();
+    // The host speaks once the fanfare has played.
+    const top = winners[0];
+    if (top) window.setTimeout(() => { if (document.body.dataset.screen === "results") say("results", { winner: winners.map((w) => w.name).join(" and "), title: rankFor(top.score).title }); }, 1800);
     const video = $<HTMLVideoElement>("resultsVideo");
     const save = $<HTMLAnchorElement>("resultsSave");
     if (videoUrl) {
