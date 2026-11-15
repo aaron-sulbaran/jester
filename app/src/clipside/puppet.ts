@@ -13,21 +13,24 @@ import type { Depth, Turn } from "../../../clip/src/index.ts";
 
 type P = [number, number];
 
-// No new colours: the outline is the look's --ink; the rest are the jester's own materials and its stage
-// preview in art/jester/jester.py (suit, marigold, porcelain peach, cobalt shoes, rouge, ink features, and
-// the stage's #282033 backdrop, #68442f and #805239 planks with #41291f seams, #ffe3a3 light).
+// Colours are the look's tokens (`:root` in app/src/style.css, docs/design/look-parts.md): --ink, --gold,
+// --stamp, --ticket, the shoebox's --side-c, --ceil-c and --floor-c, and --shade for shadows, all hard
+// edged. The jester himself keeps his model's materials (art/jester/jester.py), as his sprites do: the
+// suit in each player's colourway, porcelain peach skin, cobalt shoes.
 const INK = "#1E1B18";
-const GOLD = "#F2B630";
+const GOLD = "#F4BE1A";
+const STAMP = "#D93A2B";
+const SIDE = "#774C2B", CEIL = "#5C3A20", FLOOR = "#93613A";
 const SKIN = "#F6D9BE";
 const SHOE = "#2F4BB8";
-const CHEEK = "#D4243A";
-const FEATURES = "#211B32";
-const BACKDROP = "#282033";
-const PLANK_A = "#68442F", PLANK_B = "#805239", SEAM = "#41291F";
-/** The spotlight's colour, as `rgba(...)` at a given strength. */
-const light = (a: number) => `rgba(255,227,163,${a})`;
-/** Darkness for shading and the vignette: the jester page's night colour (#15101f). */
-const dark = (a: number) => `rgba(21,16,31,${a})`;
+const CHEEK = STAMP;
+const FEATURES = INK;
+/** --shade: the look's hard shadow, ink at about a third. */
+const SHADE = "rgba(30,27,24,0.34)";
+/** --ink at a given strength. */
+const inkAt = (a: number) => `rgba(30,27,24,${a})`;
+/** --ticket (#FFC93C) at a given strength, for the spotlight. */
+const lightAt = (a: number) => `rgba(255,201,60,${a})`;
 const SEEN = 0.5;
 const TAU = Math.PI * 2;
 
@@ -212,14 +215,9 @@ function floorShadow(ctx: CanvasRenderingContext2D, lm: readonly Landmark[], map
   const y = Math.max(...feet.map((p) => p[1])) + T * 0.03;
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const rx = (Math.max(...xs) - Math.min(...xs)) / 2 + T * 0.45, ry = T * 0.11;
-  ctx.save();
-  ctx.translate(cx, y);
-  ctx.scale(rx / ry, 1);
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ry);
-  g.addColorStop(0, dark(0.55)); g.addColorStop(0.6, dark(0.3)); g.addColorStop(1, dark(0));
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(0, 0, ry, 0, TAU); ctx.fill();
-  ctx.restore();
+  // A hard --shade ellipse, like the look's offset shadows: no blur.
+  ctx.beginPath(); ctx.ellipse(cx, y, rx, ry, 0, 0, TAU);
+  ctx.fillStyle = SHADE; ctx.fill();
 }
 
 /** Two tapered segments (upper and lower) and whatever ends the limb (a hand or a foot), each only where seen. */
@@ -554,71 +552,49 @@ export function stageImage(width: number, height: number, spot: StageSpot): HTML
   return canvas;
 }
 
-/** A purple velvet backdrop in folds, a plank floor in perspective, and a warm spotlight from above. */
+/**
+ * The back of the shoebox theatre, in the look's flat colours with hard edges: a pleated backdrop in the
+ * shoebox's wall and ceiling browns, a plank floor in perspective, and a cut-paper spotlight in --ticket.
+ */
 function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, floorY: number, spotX: number) {
-  // Backdrop: vertical folds, each lit in the middle and dark at its edges.
-  ctx.fillStyle = BACKDROP;
+  // Backdrop: hard-edged pleats, a hem shadow where it meets the floor.
+  ctx.fillStyle = SIDE;
   ctx.fillRect(0, 0, w, floorY);
-  const foldW = Math.max(18, h * 0.085);
-  for (let x = -foldW * 0.3; x < w; x += foldW) {
-    const g = ctx.createLinearGradient(x, 0, x + foldW, 0);
-    g.addColorStop(0, mix(BACKDROP, INK, 0.45)); g.addColorStop(0.45, mix(BACKDROP, "#FFE3A3", 0.1)); g.addColorStop(0.6, BACKDROP); g.addColorStop(1, mix(BACKDROP, INK, 0.45));
-    ctx.fillStyle = g;
-    ctx.fillRect(x, 0, foldW + 1, floorY);
-  }
-  // Darker toward the top, and a shadow where the cloth meets the floor.
-  const top = ctx.createLinearGradient(0, 0, 0, floorY);
-  top.addColorStop(0, dark(0.6)); top.addColorStop(0.5, dark(0.1)); top.addColorStop(0.92, dark(0.15)); top.addColorStop(1, dark(0.55));
-  ctx.fillStyle = top;
-  ctx.fillRect(0, 0, w, floorY);
+  const pleat = Math.max(18, h * 0.085);
+  ctx.fillStyle = CEIL;
+  for (let x = -pleat * 0.3; x < w; x += pleat) ctx.fillRect(x + pleat * 0.62, 0, pleat * 0.38, floorY);
+  ctx.fillStyle = inkAt(0.22);
+  for (let x = -pleat * 0.3; x < w; x += pleat) ctx.fillRect(x + pleat * 0.58, 0, Math.max(1, pleat * 0.05), floorY);
+  ctx.fillStyle = SHADE;
+  ctx.fillRect(0, 0, w, Math.max(4, h * 0.05));
+  ctx.fillRect(0, floorY - Math.max(4, h * 0.03), w, Math.max(4, h * 0.03));
 
-  // Floor: planks running back to a vanishing point high above, darker toward the back.
+  // Floor: planks running back to a vanishing point high above, seams in the ceiling brown.
   const floorH = h - floorY;
-  ctx.fillStyle = PLANK_A;
+  ctx.fillStyle = FLOOR;
   ctx.fillRect(0, floorY, w, floorH);
   const vanishY = floorY - h * 1.4;
   const k = (floorY - vanishY) / (h - vanishY);
   const plank = Math.max(16, w * 0.07);
-  let i = 0;
-  for (let x = spotX - Math.ceil((spotX + w) / plank) * plank; x < w * 2; x += plank, i++) {
-    const xb0 = x, xb1 = x + plank;
-    const xt0 = spotX + (xb0 - spotX) * k, xt1 = spotX + (xb1 - spotX) * k;
+  ctx.strokeStyle = CEIL;
+  ctx.lineWidth = Math.max(1, w * 0.003);
+  for (let x = spotX - Math.ceil((spotX + w) / plank) * plank; x < w * 2; x += plank) {
     ctx.beginPath();
-    ctx.moveTo(xt0, floorY); ctx.lineTo(xt1, floorY); ctx.lineTo(xb1, h); ctx.lineTo(xb0, h); ctx.closePath();
-    ctx.fillStyle = i % 2 === 0 ? PLANK_A : PLANK_B;
-    ctx.fill();
-    ctx.strokeStyle = SEAM; ctx.lineWidth = Math.max(1, w * 0.002); ctx.stroke();
+    ctx.moveTo(spotX + (x - spotX) * k, floorY); ctx.lineTo(x, h);
+    ctx.stroke();
   }
-  const depth = ctx.createLinearGradient(0, floorY, 0, h);
-  depth.addColorStop(0, dark(0.62)); depth.addColorStop(0.35, dark(0.25)); depth.addColorStop(1, dark(0.08));
-  ctx.fillStyle = depth;
-  ctx.fillRect(0, floorY, w, floorH);
-  ctx.fillStyle = dark(0.55);
-  ctx.fillRect(0, floorY - 1, w, Math.max(2, h * 0.006));
+  // The back of the floor sits in the backdrop's shadow.
+  ctx.fillStyle = SHADE;
+  ctx.fillRect(0, floorY, w, Math.max(3, floorH * 0.18));
 
-  // Spotlight: a soft cone from above and a pool of light on the floor.
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  const poolY = floorY + floorH * 0.5;
-  const cone = ctx.createLinearGradient(0, 0, 0, poolY);
-  cone.addColorStop(0, light(0.22)); cone.addColorStop(1, light(0.06));
-  ctx.fillStyle = cone;
+  // Spotlight: a cut-paper beam and a pool on the floor, flat and see-through.
+  const poolY = floorY + floorH * 0.5, poolRx = w * 0.3, poolRy = Math.max(6, floorH * 0.3);
+  ctx.fillStyle = lightAt(0.14);
   ctx.beginPath();
   ctx.moveTo(spotX - w * 0.05, 0); ctx.lineTo(spotX + w * 0.05, 0);
-  ctx.lineTo(spotX + w * 0.3, poolY); ctx.lineTo(spotX - w * 0.3, poolY);
+  ctx.lineTo(spotX + poolRx, poolY); ctx.lineTo(spotX - poolRx, poolY);
   ctx.closePath();
   ctx.fill();
-  ctx.translate(spotX, poolY);
-  ctx.scale(1, Math.max(0.12, floorH / (w * 0.6)));
-  const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.32);
-  pool.addColorStop(0, light(0.38)); pool.addColorStop(0.7, light(0.12)); pool.addColorStop(1, light(0));
-  ctx.fillStyle = pool;
-  ctx.beginPath(); ctx.arc(0, 0, w * 0.32, 0, TAU); ctx.fill();
-  ctx.restore();
-
-  // A vignette pulls the eye to the middle.
-  const v = ctx.createRadialGradient(spotX, h * 0.55, Math.min(w, h) * 0.3, spotX, h * 0.55, Math.max(w, h) * 0.8);
-  v.addColorStop(0, dark(0)); v.addColorStop(1, dark(0.6));
-  ctx.fillStyle = v;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = lightAt(0.22);
+  ctx.beginPath(); ctx.ellipse(spotX, poolY, poolRx, poolRy, 0, 0, TAU); ctx.fill();
 }
