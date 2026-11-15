@@ -15,6 +15,7 @@ P.add_argument('--out', default='app/public/jester')
 P.add_argument('--test', action='store_true', help='Render one still for art direction')
 P.add_argument('--badge', action='store_true', help='Render the cap and collar with the face left open, for player face badges')
 P.add_argument('--run', action='store_true', help='Render a side profile run cycle (16 frames) for the loading bars')
+P.add_argument('--variants', default='', help='With --faces: comma-separated colourways to render (p1 to p7); default all')
 P.add_argument('--faces', action='store_true', help='Render every animation with a see-through face hole per player colourway, plus where the face sits in each frame')
 ARGS = P.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 OUT = Path(ARGS.out).resolve()
@@ -490,7 +491,12 @@ if ARGS.faces:
             face_ob = ob
         elif ob.name.startswith(('Oval eye', 'Catchlight', 'Red cheek diamond', 'Ear', 'Button nose', 'Mischievous smile')):
             ob.hide_render = True
-    PLAYERS = {'p1': ('F47FA6', '6B2FB3'), 'p2': ('4F7BF0', 'FFC93C'), 'p3': ('FFC93C', 'D4243A'), 'p4': ('3FBF8F', '4F7BF0')}
+    # Every jester colourway a player can pick (JESTER_COLOURS in app/src/clipside/puppet.ts): the four player
+    # colours with their partners, then red with gold, orange with blue and purple with gold.
+    ALL_PLAYERS = {'p1': ('F47FA6', '6B2FB3'), 'p2': ('4F7BF0', 'FFC93C'), 'p3': ('FFC93C', 'D4243A'), 'p4': ('3FBF8F', '4F7BF0'),
+                   'p5': ('D93A2B', 'F4BE1A'), 'p6': ('EC8234', '2848C8'), 'p7': ('6B2FB3', 'F4BE1A')}
+    PICK = [v for v in ARGS.variants.split(',') if v]
+    PLAYERS = {k: v for k, v in ALL_PLAYERS.items() if not PICK or k in PICK}
     SIZE = 384
     def to_px(point):
         v = world_to_camera_view(scene, camera, point)
@@ -537,6 +543,10 @@ for variant in data['variants']:
         strip.save(out / f'face-{variant}-{anim}.webp', format='WEBP', quality=80, method=4, alpha_quality=100)
 shutil.rmtree(out / '_faces')
 """, str(OUT)], check=True)
+    # The face track is the same for every colourway, so the manifest always names all of them, even after
+    # rendering only a few.
+    manifest['variants'] = {k: ['#' + a for a in v] for k, v in ALL_PLAYERS.items()}
+    (OUT / 'face-track.json').write_text(json.dumps(manifest))
     print('FACES_SECONDS', round(time.monotonic() - START, 2))
     sys.exit(0)
 
