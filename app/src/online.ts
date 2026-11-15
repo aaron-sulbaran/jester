@@ -13,6 +13,7 @@ import { cameraPlayer, playRound, simulatedPlayer, type Player } from "./round.t
 import { recordingPlayer } from "./recording.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { drawReveal, type RevealRole } from "./composite.ts";
+import { escapeHtml, safeColor } from "./escape.ts";
 import { hostedTransportFromEnv } from "./supabaseTransport.ts";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 
@@ -22,7 +23,7 @@ const clipAspect = clip.width / clip.height;
 const me = "p" + Math.random().toString(36).slice(2, 6);
 const clipCanvas = $<HTMLCanvasElement>("clipCanvas"), playerCanvas = $<HTMLCanvasElement>("playerCanvas"), revealCanvas = $<HTMLCanvasElement>("revealCanvas");
 
-type Standing = { id: string; name: string; score: number | null; timeline: unknown };
+type Standing = { id: string; name: string; score: number | null; timeline: unknown; sittingOut?: boolean };
 
 let room: InstanceType<typeof Room> | null = null;
 let player: Player | null = null;
@@ -90,9 +91,9 @@ function render() {
   if (!room) return;
   $("role").textContent = room.isHost ? "(you are the host)" : "";
   $<HTMLButtonElement>("start").disabled = !room.isHost || playing || !room.allReady;
-  $("roster").innerHTML = room.roster().map((p: { id: string; name: string; ready?: boolean }) => `<li>${p.name}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""} ${(p as { ready?: boolean }).ready ? "&#10003; ready" : "(not in view yet)"}</li>`).join("");
-  $("standings").innerHTML = (room.standings() as Standing[]).map((r) => `<li>${r.name}: ${r.score ?? "playing..."}</li>`).join("");
-  const waiting = (room.standings() as Standing[]).filter((r) => r.score === null).map((r) => r.name);
+  $("roster").innerHTML = room.roster().map((p: { id: string; name: string; ready?: boolean }) => `<li>${escapeHtml(p.name)}${p.id === room!.hostId ? " (host)" : ""}${p.id === me ? " (you)" : ""} ${(p as { ready?: boolean }).ready ? "&#10003; ready" : "(not in view yet)"}</li>`).join("");
+  $("standings").innerHTML = (room.standings() as Standing[]).map((r) => `<li>${escapeHtml(r.name)}: ${r.sittingOut ? "joined late, plays the next round" : escapeHtml(r.score ?? "playing...")}</li>`).join("");
+  const waiting = (room.standings() as Standing[]).filter((r) => r.score === null && !r.sittingOut).map((r) => r.name);
   const notReady = (room.roster() as { name: string; ready?: boolean }[]).filter((p) => !p.ready).map((p) => p.name);
   if ((!room.round || room.allDone) && room.isHost && notReady.length) status("Waiting for " + notReady.join(", ") + " to get their whole body in view before you can start.");
   else if (room.round && !playing && waiting.length && waiting.length < room.roster().length) status("Waiting for " + waiting.join(", ") + " to finish...");
@@ -134,7 +135,7 @@ function showReveal() {
   // Everyone plays the starter clip's one character; spreadX stands the players side by side.
   const guide = { timeline: clip.timeline, range: { startMs: 0, endMs: clip.durationMs } } as unknown as Guide;
   const roles: RevealRole[] = rows.map((r) => ({ name: r.name, score: r.score, guide, timeline: deserializeTimeline(r.timeline) as never }));
-  $("legend").innerHTML = roles.map((r, i) => `<li style="color:${PLAYER_COLORS[i % PLAYER_COLORS.length]}">${r.name}: ${r.score}</li>`).join("");
+  $("legend").innerHTML = roles.map((r, i) => `<li style="color:${safeColor(PLAYER_COLORS[i % PLAYER_COLORS.length])}">${escapeHtml(r.name)}: ${escapeHtml(r.score)}</li>`).join("");
   const started = performance.now();
   const tick = () => {
     const t = (performance.now() - started) % Math.max(1, clip.durationMs);
