@@ -178,7 +178,7 @@ export function addClip(folder: FileSystemDirectoryHandle, video: HTMLVideoEleme
 
 async function addClipNow(folder: FileSystemDirectoryHandle, video: HTMLVideoElement, file: File, type: VideoType, guides: Guide[], title: string, credit: string): Promise<Result<{ entry: BankEntry; guidesBytes: number }>> {
   // The name players see: refused when nothing is left of it after cleaning (only spaces or invisible characters).
-  if (!cleanText(title, 80)) return { data: null, error: "Name the move or dance first." };
+  if (!cleanText(title, 80)) return { data: null, error: "Give your clip a name." };
   const index = await readIndex(folder);
   if (index.error !== null) return index;
   const g = guides[0]!;
