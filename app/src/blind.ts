@@ -101,6 +101,8 @@ export interface ResultRow {
   timeline: { aspect: number; frames: { t: number; landmarks: unknown[] }[] } | null;
   /** The player's face from the start of their turn (null with no camera). */
   face: HTMLCanvasElement | null;
+  /** The player's cutouts placed on their role, in reveal ms from the start of the stretch: drawLayers takes it (used by linkReveal.ts). */
+  layer?: RevealLayer;
 }
 
 export interface GameOptions {
@@ -690,6 +692,22 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
  * side by side with the original, and a closing cast card. `played` is the scene as the turns were played
  * (slowed to `speed`); reveal time ms is play time ms / speed, so each cutout is sped up to match the clip.
  */
+/** Each player's cutouts placed on their role, in reveal ms (the clip's own speed) from the start of the stretch. */
+function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
+  const toPlay = (ms: number) => ms / speed;
+  // Players who drew the same role stand side by side around it instead of on top of each other.
+  const shiftOf = (s: Seat) => {
+    const same = seats.filter((o) => o.guide === s.guide);
+    const k = same.indexOf(s);
+    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 1.3;
+  };
+  return seats.map((s) => ({
+    cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
+    boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), spread: shiftOf(s),
+    color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`, glow: theme.glow, tagFont: theme.font,
+  }));
+}
+
 async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void): Promise<string | null> {
   const scene = played;
   // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
@@ -698,20 +716,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
   canvas.height = Math.round(canvas.width * (scene.height / scene.width));
   const W = canvas.width, H = canvas.height;
   const toPlay = (ms: number) => ms / speed;
-  // Players who drew the same role stand side by side around it instead of on top of each other.
-  const shiftOf = (s: Seat) => {
-    const same = seats.filter((o) => o.guide === s.guide);
-    const k = same.indexOf(s);
-    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 1.3;
-  };
-  const layers: RevealLayer[] = seats.map((s) => {
-    const shift = shiftOf(s);
-    return {
-      cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
-      boxAt: (ms: number) => boxAt(s.guide, toPlay(ms)), spread: shift,
-      color: s.color, tag: `${s.name} ${s.result?.score ?? "-"}`, glow: theme.glow, tagFont: theme.font,
-    };
-  });
+  const layers = revealLayers(seats, speed);
   const video = scene.video;
   const realMs = scene.durationMs * speed;
   /** The clip with no players at reveal time ms (`from` ms into the stretch, for a video that was seeked there). */
@@ -806,6 +811,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
     timeline: mediaTimeline(s, scene, speed),
     face: s.face,
   }));
+  revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
   ui.results(rows);
   if (options.reveal === false) return rows;
   const url = await recordGroupReveal(seats, rows, scene, speed, ui.revealCanvas(), (share) => ui.progress(share));
