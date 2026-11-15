@@ -28,7 +28,8 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **The library (start screen):** `#bank` is a grid of small taped `.clip` photos that scrolls up and down. On a laptop `fitRows()` in `ui/game.ts` cuts it to whole rows and sets `#screen-start[data-library="fitted"]`; a phone keeps one sideways row. `#surpriseCard` is Surprise me, its own card, first and picked by default. `.library-head` holds the search (`label.field.library-find` with `#clipSearch`) and the Players chips (`.library-players .chip[data-players]`: 0 is Any, 4 is 4 or more). `#libraryNone` is the "no clip" line.
 - **The start screen's rows:** `.masthead` (wordmark and note), `#startMode` (the mode switch with `#modeSays` beside it), the library, then `#startFoot` with `#startActions` (the Play ticket and `#playOnline`) and the send card.
 - **Your clip is in:** `#clipReady`, a note taped bottom left on laptops and at the top under the corner tags on phones; hidden during a turn.
-- **Send in a clip:** `.send-card` (`#submitOpen`) is a paper card in the Play row with `.send-card-name` and `.send-card-text`; it opens `#screen-submit`. On that screen `.rule-card.can` and `.rule-card.cannot` are the two taped cards with a list, and `.send-form` is the form card. The old `.send-invite` strip is gone.
+- **Send in a clip:** `.send-card` (`#submitOpen`) is a paper card in the Play row with `.send-card-name` and `.send-card-text`; it opens `#screen-submit`. The old `.send-invite` strip is gone.
+- **The Send in a clip screen:** `#sendSteps` is a strip of four numbered steps, built like How to play's `.step`. Each picture is a desk scene made from `.send-step-card` (a clip card with the "?"), `.send-step-tag` (a paper tag with the name in pen), `.send-step-stamp` (the red "Let in" stamp) and `.send-step-jester` (the jester's win pose). `.send-form` is the one form card: `#submitTitle` ("Name your clip") and `#submitCredit` ("Your name (optional)", Anonymous as the placeholder) on the left; what not to send (`.send-dont`), the Anthropic line and the ticket on the right. Every rule for this screen sits under `#screen-submit`, `#sendSteps` or `#submitForm`; `.send-card` belongs to the start screen only.
 - **The wordmark:** `#jester-hat` is one shared drawing of the jester's two-point hat; `.wordmark-hat` places it on the J, tuned by `--hat-x`, `--hat-y`, `--hat-w` and `--hat-r`. The letters' white edge is the `#die-cut-round` filter. The same hat is the stamp on every yellow ticket's stub and the favicon. The crown (`#crown-doodle`, `.wordmark-crown`) is gone.
 - **An illustrated step:** `.step` with `.step-pic`, as on How to play.
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
@@ -36,7 +37,8 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 - **Stage size:** each `*-wrap` is `(100dvh - budget) * 16 / 9 + 140px` wide, where the budget is the height of the heading and controls around it, so the main button stays on screen on a laptop. Budgets today: part 500, turn 360, reveal 460, crown 460.
 - **Curtains:** `.drapes > .drape.l` and `.drape.r` close over a `.box` when it has `.closed`. Reveal and crowning only.
 - **Between acts:** `.screen.leaving` and `.screen.arriving` are the fades from one screen to the next.
-- **Framing hint:** `.framing-hint` on the turn stage, with `.late` when it can be clicked to start anyway.
+- **Where to stand:** `#fitFrame` (`.fit-frame`) is the taped frame on the mirror view at the subject's place and size. `data-phase="framing"` is full strength while the player lines up, `data-phase="turn"` is faint during the turn, and `data-fit="good"` marks a good fit. Its logic is `app/src/fitFrame.ts`.
+- **Framing hint:** `.framing-hint` on the turn stage, with `.late` when it can be tapped to start anyway ("Can't fit? Tap here to start.").
 
 ## Forms
 

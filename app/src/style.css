@@ -741,13 +741,24 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 
 /* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
 /* Framing, before a whole-body turn (blind.ts): a paper tag at the bottom of the stage. After 12 s it becomes a
-   button ("Click here to start anyway"), for a room too small to fit in. */
+   button ("Tap here to start"), for a room too small to fit in. */
 .framing-hint {
   position: absolute; z-index: 6; left: 50%; bottom: 6%; translate: -50% 0; max-width: 86%; pointer-events: none;
   padding: 10px 18px 12px; background: var(--photo); box-shadow: var(--lift); rotate: -1deg;
   font: 400 clamp(17px, 1.8vw, 24px)/1.3 var(--type); color: var(--ink); text-align: center;
 }
 .framing-hint.late { pointer-events: auto; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+/* Where to stand: a taped frame on the mirror view at the subject's place and size. It says where and how big, never who. */
+.fit-frame { position: absolute; z-index: 3; pointer-events: none; border: 3px dashed rgba(255, 254, 250, .9); box-shadow: 0 0 0 1px rgba(30, 27, 24, .45), inset 0 0 0 1px rgba(30, 27, 24, .45); transition: left .25s linear, top .25s linear, width .25s linear, height .25s linear, opacity .4s var(--ease), border-color .3s var(--ease); }
+.fit-frame::before, .fit-frame::after { content: ""; position: absolute; width: 42px; height: 14px; background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, .2) 0 3px, transparent 3px 10px); box-shadow: 1px 2px 0 var(--shade); }
+.fit-frame::before { top: -9px; left: -16px; rotate: -38deg; }
+.fit-frame::after { bottom: -9px; right: -16px; rotate: -38deg; }
+.fit-frame[data-fit="good"] { border-style: solid; border-color: var(--who); }
+/* Full strength while framing (and a little heavier); faint only once the turn's moves count. */
+#fitFrame[data-phase="turn"] { opacity: .45; }
+#fitFrame[data-phase="framing"] { border-width: 4px; box-shadow: 0 0 0 2px rgba(30, 27, 24, .6), inset 0 0 0 2px rgba(30, 27, 24, .6); }
+#screen-turn[data-state="play"] .framing-hint { left: 50%; max-width: min(92%, 620px); font-size: clamp(15px, 1.6vw, 21px); }
+@media (prefers-reduced-motion: reduce) { .fit-frame { transition: none; } }
 /* Scoped to the notice: the crowning marks losing jesters .lost too, and a bare .lost pulled them onto the winner. */
 #lostNotice { position: absolute; z-index: 5; left: 50%; bottom: 6%; translate: -50% 0; max-width: 80%; pointer-events: none; }
 .place-who .aside { text-align: left; }
