@@ -3,6 +3,7 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
+import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
 import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
@@ -103,6 +104,11 @@ export function initGame(deps: GameDeps) {
   const guideCanvas = $<HTMLCanvasElement>("guideCanvas");
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
   const revealCanvas = $<HTMLCanvasElement>("revealStage");
+  // Fast forward and skip for the reveal: blind.ts reads `speed` every tick while the reveal records.
+  const revealControl = { speed: 1 };
+  const setPace = (speed: number) => { revealControl.speed = speed; $("revealFastLabel").textContent = `${speed}x`; };
+  $("revealFast").addEventListener("click", () => { const steps = [1, 2, 4]; setPace(steps[(steps.indexOf(revealControl.speed) + 1) % steps.length] ?? 1); });
+  $("revealSkip").addEventListener("click", () => setPace(16));
   const turn = $("screen-turn");
 
   // ---- Start ----
@@ -218,6 +224,8 @@ export function initGame(deps: GameDeps) {
       startProblem(`I could not read that clip: ${(err as Error).message}`);
     }
   });
+
+  installLinkGrab((s) => { scene = s; openCast(); }, startProblem); // LINK REVEAL (remove with linkReveal.ts)
 
   function startProblem(text: string) {
     $("startProblem").textContent = text;
@@ -403,15 +411,18 @@ export function initGame(deps: GameDeps) {
     },
 
     revealCanvas: () => revealCanvas,
+    revealControl,
 
     progress(share) {
       $<HTMLProgressElement>("revealBar").value = share;
     },
 
     results(r) {
+      setPace(1);
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
+      linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
     },
 
