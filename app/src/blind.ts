@@ -31,6 +31,7 @@ import { playWithSound, setAloud } from "./sound.ts";
 import { castRowShare } from "./recapRules.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
+import { steadyMarks } from "./markerSteady.ts";
 
 export interface Scene {
   name: string;
@@ -138,7 +139,8 @@ export interface GameOptions {
   reveal?: boolean;
   /**
    * Normal mode (default false, Blind): during each turn the clip's own video plays on the role's side, in time
-   * with the turn's clock, with the role drawn over it so the player knows who to copy. A drawn scene with no
+   * with the turn's clock, with the role marked on it (a thin outline in the player's colour and their name above,
+   * no stick figure over the person) so the player knows who they copy and are scored on. A drawn scene with no
    * video plays as in Blind. Scoring is the same either way.
    */
   showClip?: boolean;
@@ -542,6 +544,25 @@ function fullFigure(g: Guide): Guide {
   };
 }
 
+/**
+ * The role as drawn, held on its own person through contact: where its box or skeleton jumps further than a
+ * person moves in 1/15 s and comes back soon (another fighter or dancer taking the track for a moment), the
+ * marker glides across instead (markerSteady.ts), and outlines that do not fit the box are swapped for the last
+ * good one. Drawing only: turns are scored against the guide as it is. Things are left alone (a ball may move that fast).
+ */
+function steadyMarker(g: Guide): Guide {
+  if (isThing(g)) return g;
+  const frames = g.boxTrack.frames;
+  const lms = g.timeline && g.timeline.frames.length === frames.length ? g.timeline.frames.map((f) => f.landmarks) : undefined;
+  const m = steadyMarks({ boxes: frames.map((f) => f.box), outlines: g.outlines, landmarks: lms }, g.source.sampleHz, g.source.width / g.source.height);
+  return {
+    ...g,
+    boxTrack: { ...g.boxTrack, frames: frames.map((f, i) => ({ ...f, box: m.boxes[i] ?? null })) },
+    outlines: m.outlines,
+    timeline: g.timeline && m.landmarks ? { ...g.timeline, frames: g.timeline.frames.map((f, i) => ({ ...f, landmarks: (m.landmarks![i] as typeof f.landmarks) ?? null })) } : g.timeline,
+  };
+}
+
 /** The same guide played slower: every time stretched by 1 / speed. `range.startMs` stays the clip's media start. */
 function slowGuide(g: Guide, speed: number): Guide {
   if (speed === 1) return g;
@@ -776,16 +797,57 @@ function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
   return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color }, video: null };
 }
 
-/** Normal mode: the clip's current frame on `canvas`, where the role's view puts the clip, a little dimmed so the role reads on top. */
-function paintClip(canvas: HTMLCanvasElement, video: HTMLVideoElement, view: ReturnType<typeof roleView>, g: Guide) {
+/**
+ * Normal mode: the clip's current frame on `canvas`, where the role's view puts the clip, and the person (or thing)
+ * being copied and scored marked on it without hiding them: everything else a little dimmed, a thin line in the
+ * player's colour around them (their outline, or a rounded box where there is none) and the player's name above.
+ * `at` is the role at this moment (guideAt, index 0): the same guide and clock the turn is scored on.
+ */
+function paintClip(canvas: HTMLCanvasElement, video: HTMLVideoElement, view: ReturnType<typeof roleView>, at: Guide, color: string, tag: string) {
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#16161d";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (video.readyState < 2) return;
   const { scale, offsetX, offsetY } = view.view;
+  const sw = at.source.width * scale, sh = at.source.height * scale;
+  ctx.drawImage(video, offsetX, offsetY, sw, sh);
+  const map = (x: number, y: number): [number, number] => [x * sw + offsetX, y * sh + offsetY];
+  const box = at.boxTrack.frames[0]?.box ?? null;
+  const outline = at.outlines[0] ?? null;
+  // The target's shape: its outline, or its box with a little room, rounded.
+  let shape: Path2D | null = null;
+  if (outline && outline.length >= 3) {
+    shape = new Path2D();
+    outline.forEach(([x, y], i) => { const [px, py] = map(x, y); if (i) shape!.lineTo(px, py); else shape!.moveTo(px, py); });
+    shape.closePath();
+  } else if (box) {
+    const [x0, y0] = map(box.cx - box.w * 0.56, box.cy - box.h * 0.54), [x1, y1] = map(box.cx + box.w * 0.56, box.cy + box.h * 0.54);
+    shape = new Path2D();
+    shape.roundRect(x0, y0, x1 - x0, y1 - y0, Math.min(x1 - x0, y1 - y0) * 0.12);
+  }
+  // The same dim as before, now on everything but the target.
+  const dim = new Path2D();
+  dim.rect(0, 0, canvas.width, canvas.height);
+  if (shape) dim.addPath(shape);
   ctx.save();
-  ctx.globalAlpha = 0.8;
-  ctx.drawImage(video, offsetX, offsetY, g.source.width * scale, g.source.height * scale);
+  ctx.globalAlpha = 0.2; ctx.fillStyle = "#16161d"; ctx.fill(dim, "evenodd");
+  ctx.restore();
+  if (!shape) return;
+  const sizePx = box ? box.h * sh : canvas.height * 0.5;
+  ctx.save();
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = Math.max(3, sizePx * 0.016); ctx.stroke(shape);
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, sizePx * 0.01); ctx.stroke(shape);
+  // The name tag over their head, placed from the steadied box so it glides with them (the reveal's tag style).
+  if (box) {
+    const fontPx = Math.max(12, Math.round(canvas.height / 24));
+    ctx.font = `600 ${fontPx}px ${theme.font}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    const [tx, top] = map(box.cx, box.cy - box.h / 2);
+    const ty = Math.max(fontPx + 4, top - sizePx * 0.1);
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(tag, tx, ty);
+    ctx.fillStyle = color; ctx.fillText(tag, tx, ty);
+  }
   ctx.restore();
 }
 
@@ -798,8 +860,8 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   // The first frame where the subject is visible.
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
   const draw = () => {
-    if (video) paintClip(guideCanvas, video, shown, g);
-    drawBlind(guideCanvas, g, first, s.look, view, style);
+    if (video) paintClip(guideCanvas, video, shown, guideAt(g, g.boxTrack.frames[first]?.tMs ?? 0), s.color, s.name);
+    else drawBlind(guideCanvas, g, first, s.look, view, style);
   };
   draw();
   // Normal mode: show the clip at that moment under the role (only while nothing else is playing it).
@@ -814,11 +876,12 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
  * coming (it hides behind the role when nothing changes).
  */
 function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof roleView>, ms: number, leadMs: number, scratch: HTMLCanvasElement) {
+  // Normal mode: the clip with the role marked on it, no figure over the person.
+  if (view.video) { paintClip(canvas, view.video, view, guideAt(s.guide, ms), s.color, s.name); return; }
   if (leadMs > 0) {
     scratch.width = canvas.width; scratch.height = canvas.height;
-    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.video ? { ...view.style, background: "#000" } : view.style);
+    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style);
   }
-  if (view.video) paintClip(canvas, view.video, view, s.guide);
   drawBlind(canvas, guideAt(s.guide, ms), 0, s.look, view.view, view.style);
   if (leadMs > 0) {
     const ctx = canvas.getContext("2d")!;
@@ -1330,7 +1393,7 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   // Tracking from a real video jitters and loses people; steady every person role once (scored as is) and
   // draw a copy with every limb shown, so the figure never cuts out.
   clip = { ...clip, guides: clip.guides.map(steadyRole) };
-  const scene = slowScene({ ...clip, guides: clip.guides.map(fullFigure) }, speed);
+  const scene = slowScene({ ...clip, guides: clip.guides.map((g) => steadyMarker(fullFigure(g))) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
   for (const s of seats) { s.original = clip.guides[scene.guides.indexOf(s.guide)]!; s.withClip = !!options.showClip; }
