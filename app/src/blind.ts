@@ -977,7 +977,7 @@ async function waitForFraming(player: Player, stage: { guideCanvas: HTMLCanvasEl
         return;
       }
       const r = calibrator.update(f.landmarks as never, 30);
-      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? " Can't fit? Click here to start anyway." : "");
+      hint.textContent = r.passed ? "Got you." : r.message + (hint.dataset.late ? LATE_HINT : "");
       if (r.passed) { clearTimeout(late); done(); }
     }, () => -1);
   });

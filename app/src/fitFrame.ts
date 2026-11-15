@@ -100,7 +100,7 @@ export function fitHint(fit: Fit): string {
 }
 
 /** Added to the hint after 12 s of trying, when the hint becomes a button. */
-export const LATE_HINT = " Can't fit? Click here to start anyway.";
+export const LATE_HINT = " Can't fit? Tap here to start.";
 
 /**
  * True when the subject's feet show on the mirror view (in the clip, and not cropped off by the view), so the
