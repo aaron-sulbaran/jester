@@ -245,11 +245,12 @@ class Figure {
   pose(joints: (Vector3 | null)[], facing: number, face: number, T: number, ink: number, suit: Suit) {
     this.hide();
     const tone = (lit: string, shade: string): Tones => ({ lit: rgb(lit), shade: rgb(shade) });
-    // The subject's left in the player's colour, the right in its light shade, shadows in the dark shade.
-    setTones(this.mats.a, tone(suit.base, suit.dark));
-    setTones(this.mats.b, tone(suit.light, suit.base));
-    setTones(this.mats.suit, tone(suit.base, suit.dark), tone(suit.light, suit.base));
-    setTones(this.mats.cap, tone(suit.base, suit.dark), tone(suit.light, suit.base));
+    // A two-colour jester suit: the subject's right in the player's colour, their left in the colourway's
+    // second colour (as the sprites split it), each with its own shade.
+    setTones(this.mats.a, tone(suit.second, suit.secondDark));
+    setTones(this.mats.b, tone(suit.base, suit.dark));
+    setTones(this.mats.suit, tone(suit.second, suit.secondDark), tone(suit.base, suit.dark));
+    setTones(this.mats.cap, tone(suit.second, suit.secondDark), tone(suit.base, suit.dark));
     setTones(this.mats.shoe, tone(suit.dark, suit.dark), undefined);
     const j = (i: number) => joints[i] ?? null;
     const sides = [["l", 11, 13, 15, 23, 25, 27, 29, 31, [17, 19]], ["r", 12, 14, 16, 24, 26, 28, 30, 32, [18, 20]]] as const;

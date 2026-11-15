@@ -77,13 +77,38 @@ function mix(color: string, toward: string, t: number): string {
 }
 
 /**
- * The player's colour in the three shades the frontend agent allowed: as it is, lighter on the near side
- * (80 percent with 20 percent --photo) and darker on the far side (72 percent with 28 percent --ink).
+ * The jester colourways players pick from beside their names, each a two-colour suit like the jester
+ * sprites. The first four are the skin's player colours (--p1 to --p4) with the partners the sprites give
+ * them (art/jester/jester.py, PLAYERS), so the face badges still match. The rest: --stamp with --gold,
+ * orange (half --stamp, half --ticket) with --pen, and the jester art's purple with --gold. (The classic
+ * purple and red together stay the host's.)
  */
-export interface Suit { base: string; light: string; dark: string }
+export const JESTER_COLOURS: readonly { name: string; main: string; second: string }[] = [
+  { name: "Pink", main: "#F47FA6", second: "#6B2FB3" },
+  { name: "Blue", main: "#4F7BF0", second: "#FFC93C" },
+  { name: "Yellow", main: "#FFC93C", second: "#D93A2B" },
+  { name: "Green", main: "#3FBF8F", second: "#4F7BF0" },
+  { name: "Red", main: "#D93A2B", second: "#F4BE1A" },
+  { name: "Orange", main: "#EC8234", second: "#2848C8" },
+  { name: "Purple", main: "#6B2FB3", second: "#F4BE1A" },
+];
+
+/** The colourway whose main colour is `color` (any case), if it is one. */
+export function colourwayOf(color: string) {
+  const key = color.trim().toLowerCase();
+  return JESTER_COLOURS.find((c) => c.main.toLowerCase() === key) ?? null;
+}
+
+/**
+ * The player's suit: their colour as it is, lighter on the near side (80 percent with 20 percent --photo),
+ * darker in shade (72 percent with 28 percent --ink), and the colourway's second colour with its own shade.
+ * A colour that is no colourway pairs with its own dark shade.
+ */
+export interface Suit { base: string; light: string; dark: string; second: string; secondDark: string }
 
 export function suitFor(color: string): Suit {
-  return { base: color, light: mix(color, PHOTO, 0.2), dark: mix(color, INK, 0.28) };
+  const second = colourwayOf(color)?.second ?? mix(color, INK, 0.28);
+  return { base: color, light: mix(color, PHOTO, 0.2), dark: mix(color, INK, 0.28), second, secondDark: mix(second, INK, 0.28) };
 }
 
 // ---- Geometry ----

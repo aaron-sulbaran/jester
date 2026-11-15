@@ -9,6 +9,7 @@ import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
+import { JESTER_COLOURS } from "../clipside/puppet.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, motionOf, rankFor } from "../feelText.ts";
@@ -27,6 +28,13 @@ const cssVar = (name: string, fallback: string) => getComputedStyle(document.doc
 
 /** Player colours come from the skin (--p1 to --p4), so the cast, the turn and the reveal all match it. */
 const playerColors = () => [1, 2, 3, 4].map((i) => cssVar(`--p${i}`, PLAYER_COLORS[i - 1]!));
+/** Every jester colour a player can pick: the skin's four player colours first, then the other colourways. */
+const colourChoices = () => {
+  const players = playerColors();
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  return [...players, ...JESTER_COLOURS.map((c) => c.main).filter((m) => !players.some((p) => same(p, m)))];
+};
+const colourName = (color: string) => JESTER_COLOURS.find((c) => c.main.toLowerCase() === color.trim().toLowerCase())?.name ?? "Your";
 
 /** The recorded reveal takes the skin's paper, ink and lettering instead of the default dark card. */
 const revealTheme = () => ({
@@ -135,6 +143,8 @@ export function initGame(deps: GameDeps) {
   let bank: BankClip[] = [];
   let pick: Pick | null = null;
   let names: string[] = ["", "", ""];
+  /** Each seat's jester colour, picked on the cast screen; seats start on different colours. */
+  let seatColors: string[] = [];
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
   let videoUrl: string | null = null;
@@ -307,19 +317,55 @@ export function initGame(deps: GameDeps) {
     ($("castNames").querySelector("input") as HTMLInputElement | null)?.focus();
   }
 
+  /** Gives every seat a colour no other seat has, keeping the ones already picked. */
+  function settleColors() {
+    const choices = colourChoices();
+    seatColors = seatColors.slice(0, names.length);
+    names.forEach((_, i) => {
+      const taken = seatColors.slice(0, i);
+      if (!seatColors[i] || taken.includes(seatColors[i]!)) seatColors[i] = choices.find((c) => !taken.includes(c) && !seatColors.slice(i + 1).includes(c)) ?? choices[i % choices.length]!;
+    });
+  }
+
+  /** Seat `i` moves on to the next colour nobody else is wearing. */
+  function nextColor(i: number) {
+    const choices = colourChoices();
+    const others = seatColors.filter((_, k) => k !== i);
+    const at = choices.indexOf(seatColors[i]!);
+    for (let step = 1; step <= choices.length; step++) {
+      const c = choices[(at + step) % choices.length]!;
+      if (!others.includes(c)) { seatColors[i] = c; return; }
+    }
+  }
+
   function renderCast() {
     const parts = scene?.guides.length ?? names.length;
     const extra = names.length - parts;
     $("castParts").textContent = (parts === 1 ? "This clip has 1 part." : `This clip has ${parts} parts.`)
-      + (extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : "");
-    const colors = playerColors();
+      + (extra === 1 ? " Two of you will share one." : extra > 1 ? " Some of you will share." : extra < 0 ? " Not every part gets played." : "")
+      + " Tap your dot to change your jester's colour.";
+    settleColors();
     const box = $("castNames");
     box.innerHTML = "";
     names.forEach((value, i) => {
       const row = document.createElement("label");
       row.className = "who";
-      row.style.setProperty("--who", colors[i % colors.length]!);
-      row.innerHTML = `<span class="who-dot" aria-hidden="true"></span><span class="who-label">Player ${i + 1}</span>`;
+      row.style.setProperty("--who", seatColors[i]!);
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "who-dot";
+      dot.setAttribute("aria-label", `${colourName(seatColors[i]!)} jester. Change colour`);
+      dot.title = "Change your jester's colour";
+      dot.addEventListener("click", (e) => {
+        e.preventDefault();
+        nextColor(i);
+        renderCast();
+        box.querySelectorAll<HTMLButtonElement>(".who-dot")[i]?.focus();
+      });
+      const label = document.createElement("span");
+      label.className = "who-label";
+      label.textContent = `Player ${i + 1}`;
+      row.append(dot, label);
       const input = document.createElement("input");
       input.type = "text";
       input.maxLength = 14;
@@ -360,7 +406,8 @@ export function initGame(deps: GameDeps) {
     running = true;
     try {
       if (mode === "watch") await watchFirst(scene);
-      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme() });
+      settleColors();
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: seatColors.slice(0, cast.length), theme: revealTheme() });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -691,7 +738,7 @@ export function initGame(deps: GameDeps) {
   async function crown() {
     show("crown");
     // Stand them in seat order, not score order, so the spotlight has somewhere to travel.
-    const seated = [...rows].sort((a, b) => playerColors().indexOf(a.color) - playerColors().indexOf(b.color));
+    const seated = [...rows].sort((a, b) => seatColors.indexOf(a.color) - seatColors.indexOf(b.color));
     const castRow = $("crownCast");
     const jesters = seated.map((row) => {
       const j = new FaceJester(row.face, variantOf(row), 320);

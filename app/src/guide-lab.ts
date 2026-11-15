@@ -4,7 +4,7 @@
 
 import { boxFromLandmarks, type Guide } from "../../clip/src/index.ts";
 import { blindView, drawBlindBackground, drawBlindSubject, guidePoseAt, guideSliceAt, steadyGuide, type BlindStyle } from "./clipside/blind.ts";
-import { CONSTRUCTIONS, type Construction, type StageLook } from "./clipside/puppet.ts";
+import { CONSTRUCTIONS, JESTER_COLOURS, type Construction, type StageLook } from "./clipside/puppet.ts";
 
 const W = 1280, H = 720, HZ = 15, DURATION_S = 12, ASPECT = W / H, SCALE = 0.45;
 type V = [number, number, number];
@@ -101,7 +101,14 @@ function dancerGuide(withDepth: boolean): Guide {
 // Made steady once, as blind mode does with its roles.
 const guides = { depth: steadyGuide(dancerGuide(true)), flat: steadyGuide(dancerGuide(false)) };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const colorPick = $<HTMLSelectElement>("color"), depthBox = $<HTMLInputElement>("depth"), pauseBox = $<HTMLInputElement>("pause");
+const colorPick = $<HTMLSelectElement>("color");
+// Every colourway a player can pick on the cast screen; ?color=Red starts on one.
+for (const c of JESTER_COLOURS) {
+  const o = document.createElement("option");
+  o.value = c.main; o.textContent = c.name; o.selected = c.name.toLowerCase() === (new URLSearchParams(location.search).get("color") ?? "").toLowerCase();
+  colorPick.append(o);
+}
+const depthBox = $<HTMLInputElement>("depth"), pauseBox = $<HTMLInputElement>("pause");
 const timeSlider = $<HTMLInputElement>("time");
 const params = new URLSearchParams(location.search);
 

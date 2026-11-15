@@ -2,8 +2,8 @@
 //
 // 1. A clip goes in: the demo scene (a dancer and a ball, works offline) or a video, read by the clip side
 //    (`prepareVideo` and `subjectGuides`, one guide per subject, all over the same stretch of the clip).
-// 2. Each player gets a secret role (a person or a thing) and a look: a stick figure for a person (or one of
-//    the jester puppets on trial, ?guide=d|a|b) or the outline of a thing, never the clip. The player is never told what the role is: before the turn they see only its
+// 2. Each player gets a secret role (a person or a thing) and a look: the 3D jester for a person (?guide=a or b
+//    for the flat ones, ?guide=stick for the old stick figure) or the outline of a thing, never the clip. The player is never told what the role is: before the turn they see only its
 //    first frame, and they pick which body part copies it (a person with the whole body is scored limb by
 //    limb; any role with a hand or the head is scored as that part following the role's movement). The role is named only at the reveal.
 // 3. Players take turns on the same laptop. Each turn is scored by the engine: the pose channel for a person,
@@ -722,12 +722,11 @@ function shuffle<T>(xs: T[]): T[] {
 }
 
 /**
- * How people are drawn in blind mode. Null is the stick figure on the plain background; a, b or c is that
- * jester puppet on the stage (d: the 3D jester, a: flat sticker, b: flat cut paper; app/src/clipside/puppet.ts
- * and puppet3d.ts). The team picks one; changing this line makes it the default. Until then ?guide=d|a|b
- * (or ?guide=3d) tries one, and ?stage=plain|spot picks the stage.
+ * How people are drawn in blind mode: the 3D jester (d), picked by Aaron (app/src/clipside/puppet3d.ts). Also
+ * on hand: a, the flat sticker, and b, the flat cut paper (app/src/clipside/puppet.ts); null is the old stick
+ * figure on the plain background. ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
  */
-const DEFAULT_GUIDE: Construction | null = null;
+const DEFAULT_GUIDE: Construction | null = "d";
 
 const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
   const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
