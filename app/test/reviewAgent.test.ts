@@ -123,14 +123,16 @@ test("tracingRefusal: a real submission is never traced unless the notice names 
   assert.equal(tracingRefusal({ synthetic: true }, { env: { LANGSMITH_TRACING: "true" }, callbacks: [tracer] }), null);
 });
 
-test("reviewSubmission: an inherited tracing switch is removed, and a tracer on a real submission is refused before anything is loaded or sent", async () => {
+test("reviewSubmission: with tracing on, a real submission is refused before anything is loaded or sent", async () => {
   const before = process.env.LANGSMITH_TRACING;
   process.env.LANGSMITH_TRACING = "true";
   try {
     const input = { title: "gains", credit: null, facts: facts(), frames: [] };
-    // stopInheritedTracing() runs first, so the shell switch is gone; the tracer passed in is still refused.
+    // A shell switch alone refuses a real submission, and the refusal comes before anything is changed.
+    await assert.rejects(reviewSubmission(input, { apiKey: "not-a-key", model: "claude-sonnet-5-5" }), /real submission/);
+    assert.equal(process.env.LANGSMITH_TRACING, "true");
+    delete process.env.LANGSMITH_TRACING;
     await assert.rejects(reviewSubmission(input, { apiKey: "not-a-key", model: "claude-sonnet-5-5", callbacks: [tracer] as never }), /real submission/);
-    assert.equal(process.env.LANGSMITH_TRACING, undefined);
   } finally {
     if (before === undefined) delete process.env.LANGSMITH_TRACING; else process.env.LANGSMITH_TRACING = before;
   }

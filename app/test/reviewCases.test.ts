@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { casesDirFor, checkoutAround, inputId, saveJudged, saveOutcome, type ChamberlainCase } from "../review-cases.ts";
+import { bankAround, casesDirFor, checkoutAround, inputId, saveJudged, saveOutcome, type ChamberlainCase } from "../review-cases.ts";
 import type { Decision, ReviewInput } from "../review-agent.ts";
 
 const ROW = "0b5f3c2e-1d4a-4c8e-9f00-123456789abc";
@@ -97,4 +97,23 @@ test("writes leave no temporary files behind", () => {
   saveJudged(dir, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision });
   saveOutcome(dir, ROW, { status: "approved", by: "aaron", title: "jumping jacks", reason: "" });
   assert.deepEqual(readdirSync(dir), [`${ROW}.json`]);
+});
+
+test("nothing is saved inside a bank folder: the one the dev server serves, or any folder with a bank index", () => {
+  const root = mkdtempSync(join(tmpdir(), "chamberlain-bank-"));
+  const bank = join(root, "bank");
+  mkdirSync(bank);
+  // The served bank folder, given by the dev server, with no index yet.
+  const inServed = join(bank, "chamberlain-cases");
+  assert.match(saveJudged(inServed, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision }, bank).error ?? "", /inside the bank folder/);
+  assert.match(saveOutcome(inServed, ROW, { status: "rejected", by: "aaron", title: null, reason: "" }, bank).error ?? "", /inside the bank folder/);
+  // Any folder holding a bank index, with no bank folder given.
+  writeFileSync(join(bank, "index.json"), JSON.stringify({ schema: "bank/1", clips: [] }));
+  const deep = join(bank, "some", "chamberlain-cases");
+  assert.equal(bankAround(deep), bankAround(bank));
+  assert.match(saveJudged(deep, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision }).error ?? "", /inside the bank folder/);
+  assert.equal(existsSync(inServed) || existsSync(deep), false);
+  // Beside the bank, as jester-deploy/ lays it out, is fine.
+  const beside = join(root, "chamberlain-cases");
+  assert.equal(saveJudged(beside, { id: ROW, videoPath: null, model: "m", prompt: "p", input, decision }, bank).error, null);
 });
