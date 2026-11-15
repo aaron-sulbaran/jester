@@ -77,6 +77,7 @@ $("deskFolder").addEventListener("click", async () => {
   await rememberFolder(handle);
   syncFolder();
   await showBank();
+  syncAuto();
 });
 
 // ---- Reading a submission ----
@@ -155,12 +156,40 @@ async function readySubmission(p: Pending): Promise<Result<{ file: File; type: V
   return { data: ready, error: null };
 }
 
+// ---- Duplicates ----
+
+/**
+ * The bank clip that already holds this exact video, if any. Bank ids end in the start of the clip's
+ * fingerprint (bankIdFor) and each clip's guides.json carries all of it, so the check is exact.
+ */
+async function alreadyInBank(fingerprint: string): Promise<{ id: string; title: string } | null> {
+  if (!dir) return null;
+  const index = await readIndex(dir);
+  if (index.error !== null) return null;
+  const ends = new RegExp(`-${fingerprint.slice(0, 6)}(?:[0-9a-f]*|-\\d+)$`);
+  for (const clip of index.data.clips.filter((c) => ends.test(c.id))) {
+    try {
+      const file = await (await (await dir.getDirectoryHandle(clip.id)).getFileHandle("guides.json")).getFile();
+      const guides = JSON.parse(await file.text()) as { fingerprint?: string }[];
+      if (guides.length > 0 && guides.every((g) => g.fingerprint === fingerprint)) return { id: clip.id, title: clip.title };
+    } catch {
+      // A clip folder that cannot be read is not a match.
+    }
+  }
+  return null;
+}
+
+/** Fingerprints reviewed in this run of the queue, so a second copy sent in the same batch is caught too. */
+const seenThisRun = new Map<string, string>();
+
 // ---- Decisions ----
 
 async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Partial<Decision> = {}): Promise<Result<string>> {
   if (!dir) return { data: null, error: `Pick the bank folder${status?.bankFolder ? ` "${status.bankFolder}"` : ""} first: approved clips go there.` };
   const ready = await readySubmission(p);
   if (ready.error !== null) return ready;
+  const twin = await alreadyInBank(ready.data.found.guides[0]!.fingerprint);
+  if (twin) return { data: null, error: `This video is already in the bank as "${twin.title}". Turn this copy away.` };
   const name = cleanText(title, 80);
   if (!name) return { data: null, error: "Name the move or dance first." };
   const added = await addClip(dir, video, ready.data.file, ready.data.type, ready.data.found.guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
@@ -243,6 +272,17 @@ async function reviewQueue() {
         $("workDecision").textContent = saved.error === null ? `Turned away by the analysis: ${ready.error}` : saved.error;
         continue;
       }
+      // The same video sent twice (Lisa's double send), or one already in the bank: turned away, no model call.
+      const fingerprint = ready.data.found.guides[0]!.fingerprint;
+      const twin = await alreadyInBank(fingerprint);
+      const earlier = seenThisRun.get(fingerprint);
+      if (twin || earlier) {
+        const why = twin ? `Same video as "${twin.title}", already in the bank.` : `Same video as ${earlier}, sent earlier.`;
+        const saved = await reject(p, "check", why);
+        $("workDecision").textContent = saved.error === null ? `Turned away as a copy. ${why}` : saved.error;
+        continue;
+      }
+      seenThisRun.set(fingerprint, p.title ? `"${p.title}"` : "another clip");
       const frames = await framesOf(ready.data.found.guides[0]!);
       showFrames(frames);
       $("workTitle").textContent = `${p.title ?? "Untitled clip"}: the Chamberlain is looking at it...`;
@@ -290,13 +330,27 @@ function ask(question: string): Promise<boolean> {
   });
 }
 
+/** Waiting for the Chamberlain: new clips it has not looked at yet. Not a person's job unless it hands one over. */
+function renderQueue(pending: Pending[]) {
+  const fresh = status?.canJudge ? pending.filter((p) => !p.logged) : [];
+  const list = $("deskQueue");
+  list.replaceChildren();
+  $("deskQueueCount").textContent = fresh.length === 0 ? "Nothing new." : `${fresh.length} new ${fresh.length === 1 ? "clip" : "clips"}, reviewed next.`;
+  for (const p of fresh) {
+    const li = document.createElement("li");
+    li.textContent = `${p.title ? `"${p.title}"` : "No name"}${p.credit ? `, by ${p.credit}` : ""}, sent at ${new Date(p.created_at).toLocaleTimeString()}`;
+    list.appendChild(li);
+  }
+}
+
 function renderNeedsYou(pending: Pending[]) {
   const box = $("needsYou");
   box.replaceChildren();
   // Waiting: what the Chamberlain left for a person, and with no model key every clip it has not seen.
-  // Everything still pending: what the Chamberlain left for a person, and anything it has not looked at yet,
-  // which can be named and let in (or turned away) by hand without waiting for a review.
-  const waiting = pending.filter((p) => !p.logged || p.logged.verdict === "ask_a_person");
+  renderQueue(pending);
+  // Needs you: what the Chamberlain handed to a person. With no model key it cannot review, so every new clip
+  // is a person's to decide too.
+  const waiting = pending.filter((p) => p.logged?.verdict === "ask_a_person" || (!p.logged && status !== null && !status.canJudge));
   if (waiting.length === 0) {
     const none = document.createElement("p");
     none.className = "typed";
@@ -328,9 +382,7 @@ function renderNeedsYou(pending: Pending[]) {
     clip.src = `/__review/video?path=${encodeURIComponent(p.video_path)}`;
     const why = document.createElement("p");
     why.className = "aside";
-    why.textContent = p.logged ? `The Chamberlain: ${p.logged.reason}`
-      : status?.canJudge ? "Not reviewed yet. Review new clips asks the Chamberlain, or name it and decide yourself."
-      : "Not seen by the Chamberlain yet (no model key). Name it and decide yourself.";
+    why.textContent = p.logged ? `The Chamberlain: ${p.logged.reason}` : "Not seen by the Chamberlain (no model key). Name it and decide yourself.";
     const result = document.createElement("p");
     result.className = "problem";
     result.setAttribute("role", "alert");
@@ -467,14 +519,17 @@ async function showLog() {
 
 $("deskReview").addEventListener("click", () => void reviewQueue());
 let timer = 0;
-$("deskAuto").addEventListener("click", () => {
-  const on = !pressed("deskAuto");
-  $("deskAuto").setAttribute("aria-pressed", String(on));
+/** Keeps the Chamberlain working on its own: reviews new clips now and every minute while the chip is pressed. */
+function syncAuto() {
   clearInterval(timer);
-  if (on) {
-    void reviewQueue();
-    timer = window.setInterval(() => void reviewQueue(), 60000);
-  }
+  timer = 0;
+  if (!pressed("deskAuto") || !dir || !status?.canJudge) return;
+  void reviewQueue();
+  timer = window.setInterval(() => { if (dir) void reviewQueue(); }, 60000);
+}
+$("deskAuto").addEventListener("click", () => {
+  $("deskAuto").setAttribute("aria-pressed", String(!pressed("deskAuto")));
+  syncAuto();
 });
 $("deskAskFirst").addEventListener("click", () => {
   $("deskAskFirst").setAttribute("aria-pressed", String(!pressed("deskAskFirst")));
@@ -491,20 +546,20 @@ void rememberedFolder().then(async (handle) => {
     await showBank();
   }
   syncFolder();
+  syncAuto();
 });
 void api<Status>("status").then(async (s) => {
   if (s.error !== null) return problem(s.error);
   status = s.data;
   if (!status.canQueue) setStatus(`Not ready: put ${status.missing.join(" and ")} in ${ENV_FILE}.`);
   else if (!status.canJudge) setStatus("Ready to decide by hand. Add ANTHROPIC_API_KEY to let the Chamberlain review on its own.");
-  else setStatus(`Ready. The Chamberlain runs on ${status.model}. Pick the bank folder, then review.`);
+  else setStatus(`Ready. The Chamberlain runs on ${status.model} and reviews new clips on its own every minute while this page is open.`);
   if (status.canQueue) {
     const pending = await api<Pending[]>("pending");
     if (pending.error === null) {
       renderNeedsYou(pending.data);
-      const fresh = pending.data.filter((p) => !p.logged).length;
-      if (fresh) setStatus(`${statusBase} ${fresh} new ${fresh === 1 ? "clip is" : "clips are"} waiting below.`);
     }
   }
   await showLog();
+  syncAuto();
 });
