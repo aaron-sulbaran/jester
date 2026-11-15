@@ -21,7 +21,7 @@ import { duelGuides, duelPlaces } from "./duelPlay.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, startGuideTurn, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, puppetGrowLimit, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, startGuideTurn, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
 import { addHands } from "./clipside/hands.ts";
 import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
@@ -1225,7 +1225,9 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
     const guidePx = ref.torso * view.view.scale * (shownHeight(gc) / gc.height); // on screen at the base scale
     const k = matcher.update(playerPx, guidePx);
     const ax = ref.hipX * view.view.scale + view.view.offsetX, ay = ref.hipY * view.view.scale + view.view.offsetY;
-    return { ...view, view: scaleView(view.view, k, ax, ay) };
+    // The jester may shrink, but never grows past its whole room (hat and shoes included) on its half.
+    const grow = s.look === "puppet" ? Math.min(k, puppetGrowLimit(g, gc, view.view, ax, ay)) : k;
+    return { ...view, view: scaleView(view.view, grow, ax, ay) };
   };
   const paint = () => {
     // The clip's clock right now, so the figure moves with the sound between camera frames.
