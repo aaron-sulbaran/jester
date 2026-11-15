@@ -71,7 +71,9 @@ export class Room {
     for (const id of [...this.players.keys()]) {
       if (id === this.me) continue;
       const seen = this.lastSeen.get(id);
-      if (seen !== undefined && t - seen > this.silentMs) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); this.#dropMedia(id); removed = true; }
+      // Players are busy with the camera and tracker during a turn, so allow twice as long before dropping them mid-round.
+      const limit = this.round && !this.allDone ? this.silentMs * 2 : this.silentMs;
+      if (seen !== undefined && t - seen > limit) { this.players.delete(id); this.results.delete(id); this.lastSeen.delete(id); this.#dropMedia(id); removed = true; }
     }
     for (const [key, p] of [...this.pendingMedia]) if (t - p.at > 60000) this.pendingMedia.delete(key);
     if (removed) this.#emit("update");

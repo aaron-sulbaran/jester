@@ -130,7 +130,7 @@ test("someone silent for 10 s is dropped, the round stops waiting for them, and 
   assert.equal(b.allDone, false);                         // Ana has not finished
   // Ana's tab closes without saying goodbye (no leave message, she just stops hearing and talking): only Cy keeps pinging
   a.transport.close();
-  cb.t += 11000; cc.t += 11000;
+  cb.t += 21000; cc.t += 21000;                           // mid-round players get 20 s before being dropped
   c.tick(); await tick();                                 // Cy's ping reaches Ben, so Ben knows Cy is alive
   b.tick();                                               // Ben prunes: Ana has been silent for 11 s
   assert.deepEqual(b.roster().map((p) => p.id), ["ben", "cy"]);
