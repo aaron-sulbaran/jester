@@ -49,6 +49,29 @@ const STARTERS: StarterClip[] = [
 /** A jester cap drawn over each player's photo on the results, in their colour. */
 const CAP_SVG = `<svg class="badge-cap" viewBox="0 0 200 150" aria-hidden="true"><path d="M60 112 C46 84 34 62 14 44 C42 50 72 72 94 106 Z"/><path d="M140 112 C154 84 166 62 186 44 C158 50 128 72 106 106 Z"/><path d="M78 108 C82 74 90 42 100 16 C110 42 118 74 122 108 Z"/><path class="band" d="M48 110 Q100 94 152 110 L152 132 Q100 118 48 132 Z"/><circle class="bell" cx="14" cy="44" r="11"/><circle class="bell" cx="100" cy="16" r="11"/><circle class="bell" cx="186" cy="44" r="11"/></svg>`;
 
+/** Colours for alphabet sticker lettering: stamp red, blue, pink, yellow. */
+const STICKER_COLORS = ["#D93A2B", "#4F7BF0", "#F47FA6", "#FFC93C"];
+const TILT = [-4, 3, -2, 4, -3, 2];
+const BOB = [4, -4, 2, -3, 3, -2];
+
+/** Writes `text` into `el` as alphabet stickers: each letter its own colour (or all `color`), one white backing. */
+function letters(el: HTMLElement, text: string, color?: string) {
+  el.setAttribute("aria-label", text);
+  const wrap = document.createElement("span");
+  wrap.className = "letters";
+  wrap.setAttribute("aria-hidden", "true");
+  [...text].forEach((ch, i) => {
+    const span = document.createElement("span");
+    span.textContent = ch === " " ? "\u00a0" : ch;
+    span.style.setProperty("--c", ch === " " ? "transparent" : color ?? STICKER_COLORS[i % STICKER_COLORS.length]!);
+    span.style.setProperty("--r", `${TILT[i % TILT.length]}deg`);
+    span.style.setProperty("--y", `${BOB[i % BOB.length]}px`);
+    span.style.setProperty("--n", String(i));
+    wrap.appendChild(span);
+  });
+  el.replaceChildren(wrap);
+}
+
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
 const MIN_PLAYERS = 2;
@@ -75,7 +98,7 @@ export function initGame(deps: GameDeps) {
     b.type = "button";
     b.className = "clip";
     b.dataset.clip = c.id;
-    b.innerHTML = `<span class="clip-pic" aria-hidden="true"></span><span class="clip-name"></span><span class="clip-hint"></span>`;
+    b.innerHTML = `<span class="washi w-${["pink", "mint", "dots"][STARTERS.indexOf(c) % 3]}" aria-hidden="true"></span><span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span><span class="clip-name"></span><span class="clip-hint"></span><svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>`;
     b.querySelector(".clip-name")!.textContent = c.title;
     b.querySelector(".clip-hint")!.textContent = c.hint;
     b.addEventListener("click", () => pickStarter(c));
@@ -179,6 +202,8 @@ export function initGame(deps: GameDeps) {
   async function runGame() {
     if (!scene) return;
     const cast = names.map((n, i) => n.trim() || `Player ${i + 1}`);
+    // The reveal is drawn on a canvas in the skin's handwriting: make sure the fonts are in before it starts.
+    await Promise.all(["700 40px Gaegu", "400 40px Gaegu", "40px 'Titan One'"].map((f) => document.fonts.load(f).catch(() => [])));
     rows = [];
     videoUrl = null;
     try {
@@ -196,11 +221,11 @@ export function initGame(deps: GameDeps) {
       show("handover");
       const screen = $("screen-handover");
       screen.style.setProperty("--who", player.color);
-      $("handoverName").textContent = player.name;
+      letters($("handoverName"), player.name, player.color);
       $("handoverDone").textContent = previous ? `Nice one, ${previous.name}. Your score stays a secret until the end.` : "";
       $("handoverDone").hidden = !previous;
       const go = $<HTMLButtonElement>("handoverGo");
-      go.textContent = `I'm ${player.name}`;
+      go.querySelector(".ticket-text")!.textContent = `I'm ${player.name}`;
       go.focus();
       await clicked(go);
     },
@@ -287,7 +312,7 @@ export function initGame(deps: GameDeps) {
     const headline = winners.length === 0 ? "Everyone played!"
       : winners.length === 1 ? `${winners[0]!.name} wins!`
       : `${winners.map((w) => w.name).join(" and ")} tie!`;
-    $("resultsHeadline").textContent = headline;
+    letters($("resultsHeadline"), headline);
     const list = $("podium");
     list.innerHTML = "";
     rows.forEach((r, i) => {
@@ -297,7 +322,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"><span class="badge-photo"></span>${CAP_SVG}</span><span class="place-who"><span class="place-rank"></span><b></b><span class="place-part"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"><span class="badge-photo"></span>${CAP_SVG}</span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       const photo = li.querySelector(".badge-photo")!;
       if (r.face) { const img = new Image(); img.src = r.face.toDataURL("image/jpeg", 0.85); img.alt = `${r.name}'s face`; photo.appendChild(img); }

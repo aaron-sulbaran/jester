@@ -11,16 +11,40 @@
   <video id="clip" class="media" playsinline muted></video>
   <video id="cam" class="media" playsinline muted></video>
 
+  <!-- Paper bits used everywhere: sticker edges, a gold star. -->
+  <svg class="defs" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="die-cut" x="-8%" y="-20%" width="120%" height="150%" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="8" result="grown" />
+        <feOffset in="grown" dx="5" dy="6" result="dropped" />
+        <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+        <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+        <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
+      <filter id="sticker" x="-12%" y="-12%" width="130%" height="130%" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="grown" />
+        <feOffset in="grown" dx="4" dy="5" result="dropped" />
+        <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+        <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+        <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
+      <symbol id="star" viewBox="0 0 100 100">
+        <path d="M50 4 L62 36 L96 37 L69 58 L79 92 L50 72 L21 92 L31 58 L4 37 L38 36 Z" fill="#F4BE1A" stroke="#B9850A" stroke-width="3" stroke-linejoin="round" />
+        <path d="M50 16 L58 38 L50 34 L42 38 Z" fill="#FFE27A" />
+      </symbol>
+    </defs>
+  </svg>
+
   <main id="game">
     <!-- Start: pick a clip, play in one click. -->
     <section class="screen" id="screen-start">
       <header class="masthead">
-        <h1 class="wordmark">Jester</h1>
-        <p class="voice">Pick a clip. I'll give each of you a part from it, in secret.</p>
+        <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J</span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>
+        <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it, in secret.</p></div>
       </header>
       <div class="clips" id="clips" role="group" aria-label="Starter clips"></div>
       <div class="start-actions">
-        <button type="button" class="btn btn-main" id="play"><span id="playLabel">Play</span></button>
+        <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
         <label class="btn btn-quiet upload">Use your own video<input id="upload" type="file" accept="video/*" /></label>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
@@ -29,14 +53,14 @@
 
     <!-- Reading an uploaded clip. -->
     <section class="screen" id="screen-reading" hidden>
-      <p class="voice">Finding everyone in <span id="readingName"></span>...</p>
+      <div class="note-wrap"><p class="note">Finding everyone in <span id="readingName"></span>...</p></div>
       <progress id="readingBar" value="0" max="1"></progress>
     </section>
 
     <!-- Cast: who is playing. -->
     <section class="screen" id="screen-cast" hidden>
-      <h2 class="title">Who's playing?</h2>
-      <p class="voice" id="castParts"></p>
+      <div class="masking"><h2 class="tape">Who's playing?</h2></div>
+      <p class="typed" id="castParts"></p>
       <div class="cast" id="castNames"></div>
       <div class="cast-count">
         <button type="button" class="btn btn-quiet" id="castLess">One fewer</button>
@@ -50,81 +74,103 @@
       </div>
       <div class="row-actions">
         <button type="button" class="btn btn-quiet" id="castBack">Back</button>
-        <button type="button" class="btn btn-main" id="deal">Deal the secret parts</button>
+        <button type="button" class="btn btn-main" id="deal"><span class="ticket"><span class="ticket-text">Deal the secret parts</span></span></button>
       </div>
     </section>
 
     <!-- Pass the laptop. -->
     <section class="screen" id="screen-handover" hidden>
-      <p class="voice" id="handoverDone" hidden></p>
+      <p class="typed" id="handoverDone" hidden></p>
       <p class="pass">Pass the laptop to</p>
       <h2 class="name" id="handoverName"></h2>
-      <p class="voice">Everyone else, look away.</p>
-      <button type="button" class="btn btn-main" id="handoverGo">I'm ready</button>
-      <div class="jester jester-dance" aria-hidden="true"></div>
+      <div class="note-wrap"><p class="note">Everyone else, look away.</p></div>
+      <button type="button" class="btn btn-main" id="handoverGo"><span class="ticket"><span class="ticket-text">I'm ready</span></span></button>
+      <div class="puppet" aria-hidden="true"><span class="stick"></span><span class="jester jester-dance"></span></div>
     </section>
 
-    <!-- A turn: first the shape and how to play, then the camera under the shape. -->
+    <!-- A turn: first the shape and how to play, then the camera under the shape, on the shoebox stage. -->
     <section class="screen" id="screen-turn" data-state="part" hidden>
       <div class="turn-head">
-        <h2 class="title" id="turnName"></h2>
-        <p class="voice turn-secret">What are you? You'll find out at the end.</p>
+        <div class="masking"><h2 class="tape" id="turnName"></h2></div>
+        <div class="note-wrap turn-secret"><p class="note">What are you? You'll find out at the end.</p></div>
       </div>
-      <div class="stage" id="stage">
-        <canvas id="youCanvas" width="640" height="480" aria-label="You, in a mirror"></canvas>
-        <canvas id="guideCanvas" width="640" height="360" aria-label="Your shape to copy"></canvas>
-        <div class="count" id="count" aria-live="assertive" hidden></div>
+      <div class="stage-wrap">
+        <div class="box">
+          <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
+          <div class="inside">
+            <div class="walls" aria-hidden="true"></div>
+            <div class="stage" id="stage">
+              <canvas id="youCanvas" width="640" height="480" aria-label="You, in a mirror"></canvas>
+              <canvas id="guideCanvas" width="640" height="360" aria-label="Your shape to copy"></canvas>
+              <div class="count" id="count" aria-live="assertive" hidden></div>
+            </div>
+            <div class="valance" aria-hidden="true"><i></i></div>
+            <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
+            <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
+          </div>
+        </div>
       </div>
       <div class="part-panel">
         <p class="problem" id="partProblem" role="alert" hidden></p>
-        <p class="voice" id="partText"></p>
+        <p class="typed" id="partText"></p>
         <p class="part-ask">Copy it with your</p>
         <div class="chips" id="partChips" role="group" aria-label="Copy it with"></div>
         <div class="row-actions">
           <button type="button" class="btn btn-quiet" id="partWatch">Watch it once</button>
-          <button type="button" class="btn btn-main" id="partGo">Start</button>
+          <button type="button" class="btn btn-main" id="partGo"><span class="ticket"><span class="ticket-text">Start</span></span></button>
         </div>
       </div>
-      <p class="play-hint">Get inside the shape. Move when it moves.</p>
+      <div class="note-wrap play-hint"><p class="note">Get inside the shape. Move when it moves.</p></div>
     </section>
 
     <!-- The beat before the reveal. -->
     <section class="screen" id="screen-drumroll" hidden>
-      <div class="drum" aria-hidden="true"></div>
-      <p class="title">Drum roll, please.</p>
+      <div class="drum" aria-hidden="true"><i></i><b></b><b></b></div>
+      <div class="masking"><p class="tape">Drum roll, please.</p></div>
     </section>
 
-    <!-- The reveal plays live while it records. -->
+    <!-- The reveal plays live on the shoebox stage while it records. -->
     <section class="screen" id="screen-reveal" hidden>
-      <p class="voice">Now see what you actually did.</p>
-      <canvas id="revealStage" width="960" height="540" aria-label="The reveal: everyone in the clip"></canvas>
+      <div class="note-wrap"><p class="note">Now see what you actually did.</p></div>
+      <div class="stage-wrap reveal-wrap">
+        <div class="box">
+          <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
+          <div class="inside">
+            <div class="walls" aria-hidden="true"></div>
+            <div class="stage"><canvas id="revealStage" width="960" height="540" aria-label="The reveal: everyone in the clip"></canvas></div>
+            <div class="valance" aria-hidden="true"><i></i></div>
+            <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
+            <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
+          </div>
+        </div>
+      </div>
       <progress id="revealBar" value="0" max="1"></progress>
     </section>
 
     <!-- Results end on sending it to someone. -->
     <section class="screen" id="screen-results" hidden>
       <div class="results-head">
-        <h2 class="title" id="resultsHeadline"></h2>
-        <div class="jester jester-win" aria-hidden="true"></div>
+        <h2 class="wins" id="resultsHeadline"></h2>
+        <div class="puppet small" aria-hidden="true"><span class="stick"></span><span class="jester jester-win"></span></div>
       </div>
       <div class="results-grid">
-        <video id="resultsVideo" playsinline muted loop controls hidden></video>
+        <div class="print film"><video id="resultsVideo" playsinline muted loop controls hidden></video><span class="washi w-dots" aria-hidden="true"></span></div>
         <ol class="podium" id="podium"></ol>
       </div>
       <div class="row-actions">
         <button type="button" class="btn btn-quiet" id="again">Play again</button>
         <button type="button" class="btn btn-quiet" id="newClip">New clip</button>
-        <button type="button" class="btn btn-main" id="send">Send this to someone</button>
+        <button type="button" class="btn btn-main" id="send"><span class="ticket"><span class="ticket-text">Send this to someone</span></span></button>
       </div>
-      <p class="voice" id="sendNote" aria-live="polite"></p>
+      <p class="typed" id="sendNote" aria-live="polite"></p>
       <p class="aside"><a id="resultsSave" download="jester.webm" hidden>Save the video</a></p>
     </section>
 
     <!-- Something broke: say so and offer a way back. -->
     <section class="screen" id="screen-oops" hidden>
-      <h2 class="title">That did not work.</h2>
-      <p class="voice" id="oopsText"></p>
-      <button type="button" class="btn btn-main" id="oopsBack">Back to the start</button>
+      <div class="masking"><h2 class="tape">That did not work.</h2></div>
+      <p class="typed" id="oopsText"></p>
+      <button type="button" class="btn btn-main" id="oopsBack"><span class="ticket"><span class="ticket-text">Back to the start</span></span></button>
     </section>
   </main>
 
