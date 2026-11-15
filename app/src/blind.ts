@@ -26,6 +26,7 @@ import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
 import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { Calibrator } from "../../spikes/pose-match/calibration.mjs";
 import { cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock } from "./cutout.ts";
+import { playWithSound } from "./sound.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
 
@@ -631,12 +632,11 @@ export function drawDemoScene(ctx: CanvasRenderingContext2D, W: number, H: numbe
 function videoClock(video: HTMLVideoElement, fromMs: number): SegmentClock {
   return {
     async start() {
-      video.muted = true;
       video.pause();
       const seeked = new Promise((r) => { video.addEventListener("seeked", r, { once: true }); setTimeout(r, 1500); });
       video.currentTime = fromMs / 1000;
       await seeked;
-      await video.play();
+      await playWithSound(video);
     },
     now: () => video.currentTime * 1000 - fromMs,
     stop: () => { video.pause(); video.playbackRate = 1; },
@@ -757,7 +757,7 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
-  return recordSegments(canvas, segments, onProgress, control);
+  return recordSegments(canvas, segments, onProgress, control, video);
 }
 
 // ---- The game ----

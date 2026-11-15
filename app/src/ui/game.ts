@@ -8,6 +8,7 @@ import { demoScene, drawDemoScene, dribbleScene, runBlindGame, SPEEDS, videoScen
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
+import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
@@ -317,7 +318,7 @@ export function initGame(deps: GameDeps) {
     const play = () => {
       cancelAnimationFrame(raf);
       const t0 = performance.now();
-      if (s.video) { s.video.currentTime = s.startMs / 1000; s.video.muted = true; void s.video.play().catch(() => {}); }
+      if (s.video) { s.video.currentTime = s.startMs / 1000; void playWithSound(s.video); }
       const frame = () => {
         const ms = performance.now() - t0;
         if (s.video) ctx.drawImage(s.video, 0, 0, canvas.width, canvas.height);
