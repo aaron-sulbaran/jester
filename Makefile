@@ -17,12 +17,12 @@ setup: ## Install every package from its lockfile (npm ci)
 dev: ## Run the game at http://localhost:5173
 	cd app && npm run dev
 
-test: ## Typecheck and test engine, clip, eval and the webcam side; typecheck app
+test: ## Typecheck and test engine, clip, eval, app and the webcam side
 	@for p in $(CHECKED); do echo "== $$p: typecheck and tests"; (cd $$p && npm run check) || exit 1; done
 	@echo "== webcam side and rooms (spikes/pose-match): tests"
 	node --test spikes/pose-match/
-	@echo "== app: typecheck"
-	cd app && npm run typecheck
+	@echo "== app: typecheck and tests"
+	cd app && npm run typecheck && npm test
 
 build: ## Typecheck and build the game into app/dist
 	cd app && npm run build
