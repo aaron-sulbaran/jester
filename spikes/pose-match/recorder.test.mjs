@@ -65,3 +65,12 @@ test("unknown formats are rejected", () => {
   assert.throws(() => deserializeTimeline({ v: 2 }));
   assert.throws(() => deserializeTimeline(null));
 });
+
+test("every: 2 keeps half the frames and stays readable", () => {
+  const r = new PerformanceRecorder();
+  for (let i = 0; i < 10; i++) r.add(frame, i * 33);
+  const timeline = r.finish();
+  const data = serializeTimeline(timeline, { every: 2 });
+  assert.equal(data.f.length, 5);
+  assert.equal(deserializeTimeline(data).frames.length, 5);
+});

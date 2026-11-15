@@ -30,6 +30,6 @@ export function recordingPlayer(inner: Player): RecordingPlayer {
     stop() { inner.stop(); },
     setCapture: inner.setCapture ? (fn) => inner.setCapture!(fn) : undefined,
     finish: (durationMs) => recorder.finish({ durationMs, aspect } as never),
-    compact(durationMs) { return serializeTimeline(recorder.finish({ durationMs, aspect } as never)); },
+    compact(durationMs) { return serializeTimeline(recorder.finish({ durationMs, aspect } as never), { every: 2 }); },
   };
 }

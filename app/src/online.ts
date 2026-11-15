@@ -13,6 +13,7 @@ import { cameraPlayer, playRound, simulatedPlayer, type Player } from "./round.t
 import { recordingPlayer } from "./recording.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { drawReveal, type RevealRole } from "./composite.ts";
+import { hostedTransportFromEnv } from "./supabaseTransport.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clip = starterClip();
@@ -28,6 +29,7 @@ let playing = false;
 let revealTimer = 0;
 let revealedRound = -1;
 
+const simulated = () => $<HTMLInputElement>("sim").checked;
 const status = (t: string) => { $("status").textContent = t; };
 const clipPoseAt = (ms: number) => (sampleAt(clip.samples, Math.max(0, ms) / 1000)?.landmarks ?? null) as never;
 
@@ -43,17 +45,24 @@ async function enter(rawCode: string) {
   try { player = await getPlayer(); }
   catch (err) { return status("Camera did not start: " + (err as Error).message + ". Tick 'Simulated player' to try without one."); }
   const name = $<HTMLInputElement>("name").value || me;
-  room = new Room({ transport: broadcastChannelTransport(code), code, playerId: me, name });
+  const hosted = hostedTransportFromEnv(code);
+  room = new Room({ transport: hosted ?? broadcastChannelTransport(code), code, playerId: me, name });
   room.on("update", render);
   room.on("start", onStart);
   room.join();
   $("lobby").classList.remove("hidden");
   $("stage").classList.remove("hidden");
   $("roomCode").textContent = code;
-  status("In room " + code + ". Wait for the host to start.");
+  status("In room " + code + (hosted ? " (online)" : " (this browser only)") + ". Wait for the host to start.");
   fitCanvas(clipCanvas, clipAspect); fitCanvas(playerCanvas, clipAspect);
   drawFrame(clipCanvas, null, clipPoseAt(0));
   render();
+  // Live preview of yourself while you wait, so you can check you are in frame.
+  const preview = () => {
+    if (!playing && !simulated()) drawFrame(playerCanvas, $<HTMLVideoElement>("cam"), null, { mirror: true });
+    requestAnimationFrame(preview);
+  };
+  preview();
 }
 
 function render() {
@@ -80,7 +89,7 @@ async function onStart(round: { clipId: string; startAt: number; roundNo: number
   const rec = recordingPlayer(player!);
   const result = await playRound(clip, null, rec, (f) => {
     drawFrame(clipCanvas, null, clipPoseAt(f.clipMs));
-    drawFrame(playerCanvas, null, f.player as never, { mirror: true, color: "#4cc9f0" });
+    drawFrame(playerCanvas, simulated() ? null : $<HTMLVideoElement>("cam"), f.player as never, { mirror: true, color: "#4cc9f0" });
   });
   playing = false;
   room!.submitResult({ score: result.result.score ?? 0, timeline: rec.compact(clip.durationMs) });
