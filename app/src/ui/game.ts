@@ -3,12 +3,13 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
-import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
+import { demoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
+import { rememberSubmission, watchSubmissions } from "../submissionWatch.ts";
 import { playWithSound } from "../sound.ts";
-import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
+import { FaceJester, preloadJesters, variantFor, variantOfColour, VARIANTS } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
 import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
 import { awardsFor, motionOf, rankFor } from "../feelText.ts";
@@ -57,10 +58,10 @@ const clicked = (el: HTMLElement, signal?: AbortSignal) => new Promise<void>((re
   signal?.addEventListener("abort", stop, { once: true });
 });
 
-const SCREENS = ["howto", "start", "room", "reading", "cast", "watch", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
+const SCREENS = ["howto", "start", "room", "reading", "cast", "handover", "turn", "drumroll", "reveal", "crown", "results", "oops"] as const;
 type ScreenName = (typeof SCREENS)[number];
 /** Screens where a game is under way: leaving from these asks first. */
-const MID_GAME: readonly ScreenName[] = ["watch", "handover", "turn", "drumroll", "reveal"];
+const MID_GAME: readonly ScreenName[] = ["handover", "turn", "drumroll", "reveal"];
 
 /** Shows one screen and hides the rest. The body carries the name too, so the look can theme per screen. */
 function show(name: ScreenName) {
@@ -79,8 +80,8 @@ const HOWTO_SEEN = "jester.howtoSeen";
 
 interface StarterClip { id: string; title: string; hint: string; make: () => Scene }
 
-/** Blind: you only see your shape, everyone finds out at the end. Watch first: everyone watches the clip, then plays it. */
-type Mode = "blind" | "watch";
+/** Blind: you only see your shape, everyone finds out at the end. Normal: you dance along with the clip itself. */
+type Mode = "blind" | "normal";
 /** What the Play ticket will start. A surprise is a random bank clip nobody sees first. */
 type Pick = { kind: "bank"; clip: BankClip } | { kind: "starter"; starter: StarterClip } | { kind: "surprise" };
 
@@ -237,6 +238,38 @@ export function initGame(deps: GameDeps) {
     if (r.error) startProblem(`The bank did not load: ${r.error}`);
   });
 
+  // ---- Your clip is in: a clip sent from this tab joined the bank (submissionWatch.ts) ----
+  let readyClip: BankClip | null = null;
+  /** Playing it starts from the start screen, so mid-round the notice waits for the round to end. */
+  const syncReady = () => {
+    if (!readyClip) return;
+    const between = document.body.dataset.screen === "start" || document.body.dataset.screen === "results";
+    $("clipReadyText").textContent = between
+      ? `Good news! "${readyClip.title}" is in the bank. The Chamberlain let it in.`
+      : `Good news! "${readyClip.title}" is in the bank. It's on the start screen after this round.`;
+    $("clipReadyPlay").hidden = !between;
+  };
+  new MutationObserver(syncReady).observe(document.body, { attributes: true, attributeFilter: ["data-screen"] });
+  watchSubmissions((clip) => {
+    if (!bank.some((c) => c.id === clip.id)) bank = [...bank, clip];
+    renderBank();
+    readyClip = clip;
+    $("clipReady").hidden = false;
+    syncReady();
+  });
+  $("clipReadyPlay").addEventListener("click", () => {
+    const clip = readyClip;
+    readyClip = null;
+    $("clipReady").hidden = true;
+    if (!clip) return;
+    if (document.body.dataset.screen !== "start") show("start");
+    choose({ kind: "bank", clip });
+  });
+  $("clipReadyLater").addEventListener("click", () => {
+    readyClip = null;
+    $("clipReady").hidden = true;
+  });
+
   $("play").addEventListener("click", async () => {
     if (!pick) return;
     $("startProblem").hidden = true;
@@ -260,7 +293,7 @@ export function initGame(deps: GameDeps) {
     if (!file) return say("Pick a clip to send.");
     if (!$<HTMLInputElement>("submitConsent").checked) return say("Tick the line about who is in it to send it.");
     const title = $<HTMLInputElement>("submitTitle").value.trim();
-    if (!title) return say("Name the move or dance in your clip.");
+    if (!title) return say("Give your clip a name.");
     const send = $<HTMLButtonElement>("submitSend");
     const bar = $<HTMLProgressElement>("submitBar");
     send.disabled = true; bar.hidden = false; bar.value = 0;
@@ -268,6 +301,8 @@ export function initGame(deps: GameDeps) {
     const r = await submitClip(file, { title, ...(credit ? { credit } : {}) }, (share) => { bar.value = share; });
     send.disabled = false; bar.hidden = true;
     if (r.error !== null) return say(r.error);
+    // This tab watches the bank for it, and says so when it is let in (submissionWatch.ts).
+    void rememberSubmission(file, title);
     $("submitForm").hidden = true;
     $("submitThanks").hidden = false;
   });
@@ -366,8 +401,7 @@ export function initGame(deps: GameDeps) {
     for (const n of cast) restartsLeft.set(n, RESTARTS_PER_PLAYER);
     running = true;
     try {
-      if (mode === "watch") await watchFirst(scene);
-      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme() });
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme(), showClip: mode === "normal" });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -383,7 +417,7 @@ export function initGame(deps: GameDeps) {
   // Each player plays their own part on their own device, so there is no "pass the laptop" screen: the handover
   // is skipped, nobody's results are shown until everyone is in, then everyone sees the same reveal and results.
 
-  const lobby = initRoomLobby({ clipVideo: deps.clipVideo, show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
+  const lobby = initRoomLobby({ clipVideo: deps.clipVideo, mode: () => mode, show: () => show("room"), goHome: () => goHome(), onRound: (room, round) => { void runOnline(room, round); } });
 
   /** The scene a round names: built in, from the bank, or the host's upload (the host has it; the others wait for it). */
   async function sceneForRound(room: LobbyRoom, round: OnlineRound): Promise<{ data: Scene; error: null } | { data: null; error: string }> {
@@ -415,7 +449,7 @@ export function initGame(deps: GameDeps) {
     const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
     const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
     try {
-      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false, showClip: round.extra?.mode === "normal" });
       await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
@@ -530,37 +564,6 @@ export function initGame(deps: GameDeps) {
     show("start");
   });
 
-  /** Watch first: the whole group watches the clip once (or more) before the parts are dealt. */
-  async function watchFirst(s: Scene) {
-    show("watch");
-    const canvas = $<HTMLCanvasElement>("watchStage");
-    canvas.height = Math.round(canvas.width * (s.height / s.width));
-    const ctx = canvas.getContext("2d")!;
-    let raf = 0;
-    const play = () => {
-      cancelAnimationFrame(raf);
-      const t0 = performance.now();
-      if (s.video) { s.video.currentTime = s.startMs / 1000; void playWithSound(s.video); }
-      const frame = () => {
-        const ms = performance.now() - t0;
-        if (s.video) ctx.drawImage(s.video, 0, 0, canvas.width, canvas.height);
-        else drawDemoScene(ctx, canvas.width, canvas.height, s, Math.min(ms, s.durationMs));
-        if (ms < s.durationMs) raf = requestAnimationFrame(frame);
-        else s.video?.pause();
-      };
-      raf = requestAnimationFrame(frame);
-    };
-    const again = $("watchAgain");
-    again.addEventListener("click", play);
-    play();
-    try { await clicked($("watchGo"), sig()); }
-    finally {
-      again.removeEventListener("click", play);
-      cancelAnimationFrame(raf);
-      s.video?.pause();
-    }
-  }
-
   const ui: BlindUi = {
     async handover(player, previous) {
       live();
@@ -590,7 +593,7 @@ export function initGame(deps: GameDeps) {
       turn.dataset.state = "part";
       turn.style.setProperty("--who", player.color);
       $("turnName").textContent = `${player.name}'s turn`;
-      $("turnSecret").textContent = mode === "watch" ? "You saw the clip. This shape is your part." : "What are you? You'll find out at the end.";
+      $("turnSecret").textContent = mode === "normal" ? "Dance along with the clip. Your part is in your colour." : "What are you? You'll find out at the end.";
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       if (!startingOver || role.problem) {
@@ -700,8 +703,14 @@ export function initGame(deps: GameDeps) {
 
   /** Each player wears the jester colourway that matches their colour (player 1 is p1, and so on). */
   function variantOf(row: ResultRow) {
-    const i = playerColors().indexOf(row.color);
-    return variantFor(i < 0 ? rows.indexOf(row) : i);
+    const own = variantOfColour(row.color);
+    if (own) return own;
+    // A colour with no rendered jester gets the first colourway nobody else at the table is wearing, so two
+    // players never crown as the same jester.
+    const taken = new Set(rows.map((r) => variantOfColour(r.color)).filter((v): v is string => v !== null));
+    const free = VARIANTS.filter((v) => !taken.has(v));
+    const unmatched = rows.filter((r) => variantOfColour(r.color) === null);
+    return free[unmatched.indexOf(row)] ?? variantFor(rows.indexOf(row));
   }
 
   // ---- Between the reveal and the crowning: the curtain call ----

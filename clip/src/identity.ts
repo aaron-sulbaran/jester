@@ -192,6 +192,10 @@ function pairSwaps(a: Track, b: Track, aspect: number): number[] {
   if (frames.length < 2) return [];
   const sigA = shapeSignature(a.points.filter((p) => p.frame < contact), aspect);
   const sigB = shapeSignature(b.points.filter((p) => p.frame < contact), aspect);
+  // Without both body shapes nothing says who is who. A point measured against an unknown shape
+  // would cost nothing, so the swapped reading would win on every frame and hand one person's
+  // points to a short piece of track that has no shape of its own.
+  if (!sigA || !sigB) return [];
 
   // Who is where in state s: s = 0 as linked, s = 1 swapped.
   const pointsAt = (f: number, s: number): [TrackPoint | undefined, TrackPoint | undefined] =>

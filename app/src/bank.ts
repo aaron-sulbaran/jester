@@ -65,6 +65,12 @@ export async function listBank(): Promise<{ data: BankClip[]; error: null } | { 
   return { data: clips, error: null };
 }
 
+/** The bank read again, not from the page's copy: for noticing a clip that joined it while the page was open. */
+export async function refreshBank(): Promise<{ data: BankClip[]; error: null } | { data: null; error: string }> {
+  listed = null;
+  return listBank();
+}
+
 /** Enough of a guide to draw and score it; the rest was written by the same code that reads it. */
 export function looksLikeGuide(x: unknown): x is Guide {
   if (typeof x !== "object" || x === null) return false;

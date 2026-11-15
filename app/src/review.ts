@@ -199,7 +199,7 @@ async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Part
   const twin = await alreadyInBank(ready.data.found.guides[0]!.fingerprint, folder);
   if (twin) return { data: null, error: `This video is already in the bank as "${twin.title}". Turn this copy away.` };
   const name = cleanText(title, 80);
-  if (!name) return { data: null, error: "Name the move or dance first." };
+  if (!name) return { data: null, error: "Give your clip a name." };
   const added = await addClip(folder, video, ready.data.file, ready.data.type, ready.data.found.guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
   if (added.error !== null) return added;
   const saved = await api("decide", {
@@ -387,7 +387,7 @@ function renderNeedsYou(pending: Pending[]) {
     const field = document.createElement("label");
     field.className = "field";
     const fieldLabel = document.createElement("span");
-    fieldLabel.textContent = "Name the move or dance";
+    fieldLabel.textContent = "Give it a name";
     const nameInput = document.createElement("input");
     nameInput.type = "text";
     nameInput.maxLength = 80;
@@ -435,7 +435,7 @@ function renderNeedsYou(pending: Pending[]) {
     };
     yes.addEventListener("click", async () => {
       const title = cleanText(nameInput.value, 80);
-      if (!title) { result.textContent = "Name the move or dance first."; result.hidden = false; nameInput.focus(); return; }
+      if (!title) { result.textContent = "Give your clip a name."; result.hidden = false; nameInput.focus(); return; }
       if (await ask(`Let "${title}" into the bank? Everyone playing on the site can pick it a few minutes later.`)) {
         void act(() => approve(p, title, "aaron", { reason: title === p.title ? "Let in by hand." : `Let in by hand, named "${title}".` })).then(() => showBank());
       }

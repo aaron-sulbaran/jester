@@ -14,11 +14,11 @@ import { bankSceneId, packScene, sceneFromBank, setHostUpload, UPLOAD_ID } from 
 export const ONLINE_SCENES = { duo: duoScene, dribble: dribbleScene, demo: demoScene } as const;
 export type OnlineSceneId = keyof typeof ONLINE_SCENES;
 export type LobbyRoom = InstanceType<typeof Room>;
-export interface OnlineRound { clipId: string; startAt: number; roundNo: number; extra?: { assign?: Record<string, number>; speed?: number } }
+export interface OnlineRound { clipId: string; startAt: number; roundNo: number; extra?: { assign?: Record<string, number>; speed?: number; mode?: string } }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(room: LobbyRoom, round: OnlineRound): void; clipVideo: HTMLVideoElement }) {
+export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(room: LobbyRoom, round: OnlineRound): void; clipVideo: HTMLVideoElement; mode?: () => string }) {
   let room: LobbyRoom | null = null;
   const me = "p" + Math.random().toString(36).slice(2, 7);
 
@@ -141,15 +141,15 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       if (id === UPLOAD_ID) {
         if (!uploaded) return;
         // Deal first, then send the clip's guides: the others wait for them to arrive.
-        hostDeal(room as never, uploaded, UPLOAD_ID, { speed: 1 });
+        hostDeal(room as never, uploaded, UPLOAD_ID, { speed: 1, mode: hooks.mode?.() ?? "blind" });
         await room.sendMedia("scene", packScene(uploaded).data!);
       } else if (id === "bank") {
         const clipId = bankSelect.value;
         const s = await sceneFromBank(clipId, hooks.clipVideo);
         if (s.error !== null) return problem(s.error);
-        hostDeal(room as never, s.data, bankSceneId(clipId), { speed: 1 });
+        hostDeal(room as never, s.data, bankSceneId(clipId), { speed: 1, mode: hooks.mode?.() ?? "blind" });
       } else {
-        hostDeal(room as never, ONLINE_SCENES[id as OnlineSceneId](), id, { speed: 1 });
+        hostDeal(room as never, ONLINE_SCENES[id as OnlineSceneId](), id, { speed: 1, mode: hooks.mode?.() ?? "blind" });
       }
     } catch (err) {
       problem((err as Error).message);
