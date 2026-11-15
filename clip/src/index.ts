@@ -11,7 +11,7 @@ export { crossingShare, motionPerFrame, rankCandidates, pickConfirmFrame, pointN
 export { checkClip, checkSubject } from "./rules.ts";
 export type { Verdict } from "./rules.ts";
 export { keyMoments, paceOf } from "./moments.ts";
-export { buildGuide } from "./guide.ts";
+export { buildGuide, shotEndMs } from "./guide.ts";
 export { hideUnsureJoints, UNSURE_BELOW, UNSURE_RADIUS } from "./steady.ts";
 export { largestBlobInBox } from "./outline.ts";
 export type { BinaryMask } from "./outline.ts";
