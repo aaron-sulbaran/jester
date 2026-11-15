@@ -331,7 +331,12 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 #submitForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 44px; align-items: start; }
 #submitForm .send-fields, #submitForm .send-go { display: grid; gap: 12px; }
 #submitForm .send-dont h3 { margin: 0 0 6px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
-#submitForm .send-dont li::marker { color: var(--stamp); }
+/* The X on the heading and on each line says "no" before the words do. */
+#submitForm .send-dont h3 { display: flex; align-items: center; gap: .22em; }
+#submitForm .send-dont h3 .ico { width: 1.05em; height: 1.05em; }
+#submitForm .send-dont .how { padding-left: 0; list-style: none; }
+#submitForm .send-dont .how li { display: grid; grid-template-columns: auto 1fr; gap: .45em; align-items: start; }
+#submitForm .send-dont .how .ico { width: 1.05em; height: 1.05em; margin-top: .2em; }
 #submitCredit::placeholder { color: #6B5A48; opacity: 1; font-weight: 400; }
 
 /* The four steps, built like How to play's. Each picture is a little scene on the desk made of the game's own
@@ -885,8 +890,9 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 #blindBoard td { padding: 4px 12px 4px 0; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
 
-/* Reveal: fast forward and skip. */
-.reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+/* Reveal: fast forward and skip. Each label stays on one line; on a phone the second tag drops under the first. */
+.reveal-pace { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 10px; }
+.reveal-pace .btn-quiet { white-space: nowrap; }
 
 /* ---------- Game feel (ui/feel.ts): where the "can't see you" notice sits, and the award line on the podium ---------- */
 /* Framing, before a whole-body turn (blind.ts): a paper tag at the bottom of the stage. After 12 s it becomes a
@@ -920,3 +926,32 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 body[data-screen="turn"] #clipReady { display: none; }
 /* On a phone it sits at the top, under the corner tags, clear of the Play ticket at the bottom. */
 @media (max-width: 760px) { #clipReady { left: 8px; right: 8px; top: 62px; bottom: auto; width: auto; } }
+
+/* ---------- Control icons: the <symbol id="ico-..."> sprite in index.html, drawn in the Home tent's pen ---------- */
+/* Each sits before its words and never replaces them: <svg class="ico" aria-hidden="true"><use href="#ico-..." /></svg>. */
+.ico { width: 1.45em; height: 1.45em; flex: none; overflow: visible; }
+/* On a paper tag the icon takes the punched hole's place, so every tag carries one mark on its left. */
+.btn-quiet:has(> .ico) { gap: .45em; padding-left: .85em; }
+.btn-quiet:has(> .ico)::before { display: none; }
+/* In a text link the icon sits on the line with the words. */
+.link > .ico, .aside a > .ico { margin-right: .35em; vertical-align: -.42em; }
+/* Sound: the horn plays when sound is on and is crossed out when it is off. */
+#soundToggle[aria-pressed="true"] .ico-off, #soundToggle[aria-pressed="false"] .ico-on { display: none; }
+/* Start over stays one line beside its loop; a little smaller on a phone so it fits a 320 px screen. */
+.restart .btn-quiet { white-space: nowrap; }
+@media (max-width: 760px) { .restart .btn-quiet { font-size: 20px; } }
+
+/* ---------- The start screen's drifting props (#homeDrift) ---------- */
+/* Paper stickers beside the title, each bobbing on its own slow clock so they never move in step. Behind the
+   content, laptop widths only, start screen only. Still under prefers-reduced-motion and Calm motion (body.calm). */
+#screen-start { position: relative; isolation: isolate; }
+.home-drift { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.drift-prop { position: absolute; width: var(--s); height: var(--s); overflow: visible; rotate: var(--r); filter: url(#die-cut); }
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.calm) .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
+}
+@keyframes home-drift {
+  from { translate: -4px -10px; transform: rotate(-4deg); }
+  to { translate: 5px 10px; transform: rotate(5deg); }
+}
+@media (max-width: 1100px) { .home-drift { display: none !important; } }

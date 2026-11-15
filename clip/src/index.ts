@@ -17,7 +17,7 @@ export { buildGuide, shotEndMs } from "./guide.ts";
 export { hideUnsureJoints, UNSURE_BELOW, UNSURE_RADIUS } from "./steady.ts";
 export { largestBlobInBox } from "./outline.ts";
 export type { BinaryMask } from "./outline.ts";
-export { placeSubject } from "./view.ts";
+export { growLimit, placeSubject } from "./view.ts";
 export { bodySpread, bodyTurns, frameTurn, widestSpread, NO_TURN } from "./turn.ts";
 export type { Turn } from "./turn.ts";
 export { boneLengths, facingOf, liftPose } from "./lift.ts";
