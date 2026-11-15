@@ -36,10 +36,10 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 | Engine | `engine/` | Scores a copy: 12 limb directions (so height, size and distance do not matter), the round read both as a mirror image and the same way round with the better kept, one lag for the round, and credit only for accuracy that beats standing still or for moving the way the clip moves, so standing still scores near 0. Things are scored by how the player's body follows the thing's box. Same inputs, same score, bit for bit. | 88 |
 | Rooms | `spikes/pose-match/rooms.mjs`, `app/src/ui/room.ts`, `app/src/supabaseTransport.ts` | Four letter room codes over Supabase Realtime: presence, host handoff, a start synced to the host's clock, late joiners sit out one round, shared results. | 21 |
 | Eval | `eval/`, `app/round-log-plugin.ts` | Records every scored round (pose points only, no video) and replays them all against the engine on disk, so a scoring change shows what got better or worse. | 12 |
-| Chamberlain | `app/review-agent.ts`, `app/review-dev-server.ts`, `app/src/review.ts` | Reviews the clips players submit and decides which join the bank ([below](#the-chamberlain-our-clip-reviewer)). | none yet |
-| Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | typecheck and build |
+| Chamberlain | `app/review-agent.ts`, `app/review-dev-server.ts`, `app/src/review.ts` | Reviews the clips players submit and decides which join the bank ([below](#the-chamberlain-our-clip-reviewer)). Bank ids and title cleaning are tested with the clip side, and the "your clip is in" matcher with the game. | none yet for its own judgments; the replay eval is in PR 124 |
+| Game | `app/` | The screens, the look, blind mode, online play and the recorded reveal. Vite and TypeScript. | 33, plus typecheck and build |
 
-298 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
+331 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
 
 ## The Chamberlain: our clip reviewer
 
@@ -91,7 +91,7 @@ make dev
 
 Then open http://localhost:5173. No settings file is needed: the dev server takes the two public Supabase settings from the live site by itself, and without a network the game still runs in one browser. Every setting is named in [`app/.env.example`](app/.env.example). Add `?nocam=1` to play with simulated players and no camera.
 
-`make test` runs the type checks and all 298 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
+`make test` runs the type checks and all 331 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md).
 
 ## Team and how we built it
 
