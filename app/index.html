@@ -125,28 +125,12 @@
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
 
-      <!-- Submit your own: present but quiet. An AI reviewer (the Chamberlain, review-agent.ts) checks every clip first; a person decides the unsure ones. -->
-      <details class="submit" id="submit">
-        <summary>Submit your own clip</summary>
-        <div class="submit-body">
-          <ul class="how">
-            <li>Upload a short clip of people moving. Funny is good.</li>
-            <li>An AI reviewer, the Chamberlain, looks at every clip first. To do that, a few frames of your clip, what the game measured in it, its title and your credit are sent to Anthropic, the company that makes the AI.</li>
-            <li>If it is unsure about a clip, a person on the team decides.</li>
-            <li>Nothing you submit is public until then.</li>
-          </ul>
-          <form id="submitForm" novalidate>
-            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /></label>
-            <label class="field"><span>Give it a name</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
-            <label class="field"><span>Credit (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" /><small>Your name or handle, shown small under the clip.</small></label>
-            <label class="consent"><input id="submitConsent" type="checkbox" required /><span>I filmed this, and everyone in it is fine with it being used.</span></label>
-            <button type="submit" class="btn btn-quiet" id="submitSend">Send it in</button>
-            <progress id="submitBar" value="0" max="1" hidden></progress>
-            <p class="problem" id="submitProblem" role="alert" hidden></p>
-          </form>
-          <div class="note-wrap" id="submitThanks" hidden><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides. Keep playing; if it's in within the hour, I'll tell you here.</p></div>
-        </div>
-      </details>
+      <!-- Send in a clip: an invite under the Play ticket; the form has its own screen (#screen-submit). -->
+      <aside class="send-invite" aria-labelledby="sendInviteText">
+        <span class="washi w-dots" aria-hidden="true"></span>
+        <p class="send-invite-text" id="sendInviteText">Got a dance or a trick on your phone? Send it in and everyone can play it.</p>
+        <button type="button" class="btn btn-quiet" id="submitOpen">Send in a clip</button>
+      </aside>
 
       <!-- Team tools: shown on a local dev server or with ?dev=1, never to visitors (game.ts sets body.dev). -->
       <p class="aside dev-only">
@@ -156,6 +140,50 @@
     </section>
 
     <!-- Play with friends online: a room code, each on their own device (ui/room.ts). No passing the laptop. -->
+    <!-- Send in a clip: what you can and can't send, what happens next, and the form. -->
+    <section class="screen" id="screen-submit" hidden>
+      <div class="masking"><h2 class="tape">Send in a clip</h2></div>
+      <div class="note-wrap"><p class="note">Send me a move and everyone gets to play it. The Chamberlain looks it over and lets it in if it's fine. If it isn't sure, one of us decides.</p></div>
+      <p class="typed send-when">Usually within a few minutes while we're around. Nothing you send is public until it's let in.</p>
+      <div class="send-layout">
+        <div class="send-rules">
+          <section class="rule-card can" aria-labelledby="sendCan">
+            <span class="washi w-mint" aria-hidden="true"></span>
+            <h3 id="sendCan">You can send</h3>
+            <ul class="how">
+              <li>A short video of people moving, or a person moving a thing: a dance, a trick, a workout.</li>
+              <li>MP4, WebM or MOV, up to 25 MB.</li>
+              <li>At least 3 seconds long. Only the first 30 seconds get played.</li>
+            </ul>
+          </section>
+          <section class="rule-card cannot" aria-labelledby="sendCannot">
+            <span class="washi w-pink" aria-hidden="true"></span>
+            <h3 id="sendCannot">Please don't send</h3>
+            <ul class="how">
+              <li>Anything sexual, violent or hateful.</li>
+              <li>Anything meant to shock or bully someone.</li>
+              <li>Writing in the video that tries to talk the reviewer into something.</li>
+              <li>A clip where nobody and nothing moves. The game turns those away.</li>
+            </ul>
+          </section>
+        </div>
+        <div class="send-form" id="submit">
+          <form id="submitForm" novalidate>
+            <label class="field"><span>Your clip</span><input id="submitFile" type="file" accept="video/*" required /></label>
+            <label class="field"><span>Give it a name</span><input id="submitTitle" type="text" maxlength="40" autocomplete="off" required /><small>Hint at it without giving it away, like "Gains" for a squat. Everyone sees this name, and in Blind it's the only clue.</small></label>
+            <label class="field"><span>Credit (optional)</span><input id="submitCredit" type="text" maxlength="40" autocomplete="off" /><small>Your name or handle, shown small under the clip.</small></label>
+            <label class="consent"><input id="submitConsent" type="checkbox" required /><span>I filmed this, and everyone in it is fine with it being used.</span></label>
+            <p class="aside send-privacy">To check it, a few frames of your clip, what the game measured in it, its name and your credit are sent to Anthropic, the company that makes the AI.</p>
+            <button type="submit" class="btn btn-main" id="submitSend"><span class="ticket"><span class="ticket-text">Send it in</span></span></button>
+            <progress id="submitBar" value="0" max="1" hidden></progress>
+            <p class="problem" id="submitProblem" role="alert" hidden></p>
+          </form>
+          <div class="note-wrap" id="submitThanks" hidden><p class="note">Thanks! The Chamberlain looks at it first. If it isn't sure, one of us decides. Keep playing; if it's in within the hour, I'll tell you here.</p></div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-quiet" id="submitBack">Back to the start</button>
+    </section>
+
     <section class="screen" id="screen-room" hidden>
       <div class="masking"><h2 class="tape">Play with friends, anywhere</h2></div>
       <div class="room-box">
