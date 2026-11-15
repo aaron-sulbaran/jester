@@ -165,6 +165,7 @@ body:not(.solo) #solo { display: none; }
 #screen-start .wordmark { font-size: clamp(60px, 7.5vw, 104px); padding-bottom: 12px; }
 .masthead { display: grid; gap: 10px; justify-items: center; }
 .masthead .note-wrap { max-width: min(700px, 100%); }
+.masthead .note-wrap { max-width: min(700px, 100%); }
 /* Top right on every screen, across from the Home tab: How to play (start screen only) and Sound. */
 .side-nav { position: fixed; z-index: 20; top: 14px; right: 14px; display: flex; gap: 10px; align-items: center; }
 .side-nav .btn-quiet { min-height: 44px; padding: 8px 16px 8px 36px; font-size: 16px; }
@@ -216,16 +217,7 @@ body:not(.solo) #solo { display: none; }
 #screen-start .mode[aria-checked="true"] { background: var(--ticket); box-shadow: inset 0 0 0 2px var(--ink); }
 .mode-says { margin-top: -6px; font-size: 16px; min-height: 1.4em; }
 
-/* The bank: taped photos. Posters show in Normal; in Blind they stay under the question mark. */
-/* One row of taped photos you scroll sideways, so a full bank never pushes the Play ticket off the screen. The
-   padding leaves room for the tape, the picked clip's star and the hard shadows inside the scrolling row. */
-.bank {
-  display: flex; flex-wrap: nowrap; gap: 30px; justify-content: safe center; align-items: flex-start;
-  width: 100%; max-width: 1240px; overflow: auto hidden; overscroll-behavior-x: contain;
-  padding: 30px 26px 24px; margin: -12px 0 -8px; scroll-snap-type: x proximity; scroll-padding-inline: 26px;
-  scrollbar-width: thin; scrollbar-color: #B48C61 transparent;
-}
-.bank .clip { flex: 0 0 auto; scroll-snap-align: start; }
+/* The library: taped photos. Posters show in Normal; in Blind they stay under the question mark. */
 .clip-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 body[data-mode="blind"] .clip-pic img { display: none; }
 body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
@@ -233,14 +225,99 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .clip.surprise .clip-pic { background: var(--stamp) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
 .bank-note { max-width: 46ch; }
 
-/* Send in a clip. On the start screen: an invite under the Play ticket, a paper strip in the Jester's pen with a
-   tag that opens its own screen; Play stays the one ticket. */
-.send-invite {
-  position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px;
-  width: min(680px, 100%); padding: 16px 20px 16px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
+/* The start screen reads top to bottom as one page: the wordmark and the Jester's note, how to play (Blind or
+   Normal), the library with Surprise me first, then Play, playing online, and sending in a clip. On a laptop it
+   all fits one screen (1440 by 900, 1024 by 768): the library scrolls inside itself, one whole row at a time. */
+#screen-start .start-mode { display: grid; justify-items: center; gap: 8px; }
+#screen-start .masthead { grid-area: mast; }
+#startMode { grid-area: mode; }
+#libraryHead { grid-area: head; }
+#surpriseCard { grid-area: surp; }
+#bank { grid-area: bank; }
+#libraryNone { grid-area: bank; align-self: start; justify-self: center; margin-top: 40px; }
+#startFoot { grid-area: foot; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 30px; }
+#startProblem { grid-area: prob; justify-self: center; }
+#screen-start > .dev-only { grid-area: dev; }
+
+/* Find a clip by name, and how many players. A visible label on each, per the house rules for fields. */
+.library-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 22px; text-align: left; }
+.library-find { flex: 1 1 220px; max-width: 360px; }
+.library-find > span, .library-players-label { font-size: 15px; }
+.library-find input { min-height: 44px; padding: 6px 12px; border: 0; border-radius: 0; background: var(--photo); box-shadow: var(--lift); font: 700 22px var(--hand); color: var(--pen); }
+.library-find input::-webkit-search-cancel-button { cursor: pointer; }
+.library-players { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.library-players-label { margin-right: 4px; }
+.library-players .chip { min-width: 44px; padding: 7px 12px; }
+.library-players .chip[aria-checked="true"] { background: var(--ticket); box-shadow: 3px 4px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+.library-none { font-size: 16px; }
+
+/* The clips: a grid of small taped photos that scrolls up and down, snapping to whole rows so a photo is never
+   cut in half at rest. The padding leaves room for the tape, the picked clip's star and the hard shadows. */
+#bank {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); grid-auto-rows: max-content; gap: 30px 24px;
+  align-content: start; min-height: 0; overflow: hidden auto; overscroll-behavior: contain;
+  padding: 22px 26px 14px 14px; margin: -14px -26px -8px -14px; scroll-snap-type: y mandatory; scroll-padding-top: 22px;
+  scrollbar-width: thin; scrollbar-color: #B48C61 transparent;
 }
-.send-invite .washi { top: -13px; left: 26px; width: 84px; height: 24px; rotate: -4deg; }
-.send-invite-text { margin: 0; flex: 1 1 280px; text-align: left; font: 700 23px/1.25 var(--hand); letter-spacing: -.03em; color: var(--pen); }
+#bank .clip { width: auto; padding: 8px 8px 10px; scroll-snap-align: start; gap: 2px; }
+#bank .clip .washi { top: -12px; width: 64px; height: 22px; }
+#bank .clip-name { margin-top: 4px; font-size: 22px; overflow-wrap: anywhere; min-height: 2em; }
+#bank .clip-hint { font-size: 13px; }
+#bank .clip-credit:empty { display: none; }
+#bank .clip-q { font-size: 44px; -webkit-text-stroke-width: 3px; }
+#bank .clip-star { top: -18px; right: -16px; width: 52px; height: 52px; }
+
+/* Surprise me: the first choice, a bigger photo beside the library. */
+#surpriseCard { width: 100%; align-self: start; rotate: -1.2deg; padding: 10px 10px 12px; }
+#surpriseCard .clip-name { font-size: 34px; }
+#surpriseCard .clip-hint { font-size: 15px; }
+#surpriseCard .clip-q { font-size: 84px; }
+
+/* Send in a clip: its own paper card, as big as the Play row beside it, in the Jester's pen. Play stays the one ticket. */
+.send-card {
+  position: relative; display: grid; gap: 2px; align-content: center; min-height: 84px; padding: 12px 22px 14px 52px;
+  border: 0; cursor: pointer; text-align: left; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+}
+.send-card::before { content: ""; position: absolute; left: 20px; top: 50%; width: 14px; height: 14px; translate: 0 -50%; border-radius: 50%; background: var(--kraft); box-shadow: inset 0 0 0 2.5px #B48C61; }
+.send-card .washi { top: -12px; left: 30px; width: 84px; height: 24px; rotate: -4deg; }
+.send-card-name { font: 700 32px/1 var(--hand); letter-spacing: -.045em; }
+.send-card-text { font: 700 20px/1.2 var(--hand); letter-spacing: -.03em; color: var(--pen); }
+.send-card:hover { transform: translateY(-2px) rotate(-.6deg); box-shadow: 7px 9px 0 var(--shade); }
+.send-card:active { transform: translateY(2px); box-shadow: 1px 1px 0 var(--shade); }
+#startActions { justify-content: flex-start; gap: 18px; }
+
+@media (min-width: 761px) {
+  #screen-start {
+    display: grid; height: 100vh; height: 100dvh; min-height: 620px; padding-top: 18px; padding-bottom: 20px;
+    grid-template-columns: minmax(200px, 236px) minmax(0, 980px); justify-content: center;
+    grid-template-rows: auto auto auto minmax(auto, 1fr) auto auto auto;
+    grid-template-areas: "mast mast" "mode mode" "head head" "surp bank" "foot foot" "prob prob" "dev dev";
+    gap: 12px 30px; align-items: start; align-content: center;
+  }
+  /* Once game.ts has cut the library to whole rows, the page closes up around it instead of leaving a gap. */
+  #screen-start[data-library="fitted"] { grid-template-rows: auto auto auto auto auto auto auto; }
+  #screen-start .masthead { gap: 4px; }
+  #screen-start .wordmark { font-size: clamp(56px, min(7.5vw, 9vh), 96px); padding-bottom: 4px; }
+  #screen-start .masthead .note { --lh: 32px; font-size: 26px; padding: 16px 22px 10px 54px; }
+  /* The picked mode's line sits beside the switch, so the two read as one setting. */
+  #screen-start #startMode { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 22px; }
+  #startMode .mode-says { margin: 0; text-align: left; max-width: 30ch; }
+  #bank { align-self: stretch; }
+  #surpriseCard { margin-top: 8px; }
+  #startFoot { flex-wrap: nowrap; }
+  #startActions { flex-wrap: nowrap; }
+  .send-card { flex: 0 1 420px; min-width: 0; }
+  #startActions .ticket-text { text-wrap: balance; }
+  #playOnline { white-space: nowrap; }
+}
+@media (min-width: 761px) and (max-width: 1180px) {
+  .send-card { padding-left: 46px; }
+  .send-card::before { left: 17px; }
+  .send-card-name { font-size: 28px; }
+  .send-card-text { font-size: 18px; }
+}
+
 /* Its own screen: what happens next, then what you can and can't send beside the form. */
 #screen-submit { justify-content: flex-start; gap: 18px; }
 .send-when { font-size: 16px; }
@@ -514,10 +591,22 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
   .btn-main { width: 100%; }
   .btn-main .ticket { width: 100%; justify-content: center; }
   /* No sticky bars: on a phone a pinned ticket covered the first clip and the part chips. */
-  .bank .clip { width: 68vw; }
+  /* The library on a phone: one row that scrolls sideways, the next photo peeking in at the edge. */
+  #bank { display: flex; gap: 22px; overflow: auto hidden; scroll-snap-type: x proximity; scroll-padding-inline: 14px; margin: -14px -16px -10px; padding: 24px 16px 18px; width: calc(100% + 32px); }
+  #bank .clip { flex: 0 0 auto; width: 56vw; }
+  #bank .clip-name { min-height: 0; }
+  /* Surprise me on a phone: a wide photo with its words beside the picture, so the library shows right under it. */
+  #surpriseCard { grid-template-columns: 42% 1fr; grid-template-rows: 1fr auto; column-gap: 12px; align-items: center; }
+  #surpriseCard .clip-pic { grid-row: 1 / 3; }
+  #surpriseCard .clip-name { align-self: end; margin: 0; font-size: 28px; }
+  #surpriseCard .clip-hint { align-self: start; font-size: 14px; }
+  #surpriseCard .clip-q { font-size: 56px; }
+  #startFoot { flex-direction: column; align-items: stretch; }
+  .send-card { flex: 0 0 auto; }
+  #screen-start > * { width: 100%; }
+  #screen-start .masthead, #startMode { width: auto; }
   .send-layout { grid-template-columns: minmax(0, 1fr); gap: 26px; }
-  .send-invite { padding: 14px 16px; }
-  .send-invite-text { font-size: 21px; }
+  #startActions { justify-content: center; }
   .side-nav { top: 8px; right: 8px; gap: 8px; }
   .side-nav .btn-quiet { min-height: 40px; padding: 6px 12px 6px 30px; font-size: 14px; }
   .side-nav .btn-quiet::before { left: 11px; }

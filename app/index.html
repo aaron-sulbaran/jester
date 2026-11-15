@@ -120,27 +120,53 @@
         <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it.</p></div>
       </header>
 
-      <div class="modes-pick" role="radiogroup" aria-label="Game mode">
-        <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
-        <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+      <div class="start-mode" id="startMode">
+        <div class="modes-pick" role="radiogroup" aria-label="Game mode">
+          <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
+          <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
+        </div>
+        <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
       </div>
-      <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
 
+      <!-- Surprise me: the first choice, a random clip from the ones the library shows (game.ts fills its line). -->
+      <button type="button" class="clip surprise" id="surpriseCard" data-key="surprise" aria-pressed="true">
+        <span class="washi w-pink" aria-hidden="true"></span>
+        <span class="clip-pic" aria-hidden="true"><span class="clip-q">?</span></span>
+        <span class="clip-name">Surprise me</span>
+        <span class="clip-hint" id="surpriseHint"></span>
+        <svg class="clip-star" aria-hidden="true"><use href="#star" /></svg>
+      </button>
+
+      <!-- The library: every clip, found by name or by how many players it needs (one player per part). -->
+      <div class="library-head" id="libraryHead" role="search" aria-label="Find a clip">
+        <label class="field library-find"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
+        <div class="library-players" role="radiogroup" aria-labelledby="playersLabel">
+          <span class="library-players-label" id="playersLabel">Players</span>
+          <button type="button" class="chip" role="radio" data-players="0" aria-checked="true">Any</button>
+          <button type="button" class="chip" role="radio" data-players="1" aria-checked="false">1</button>
+          <button type="button" class="chip" role="radio" data-players="2" aria-checked="false">2</button>
+          <button type="button" class="chip" role="radio" data-players="3" aria-checked="false">3</button>
+          <button type="button" class="chip" role="radio" data-players="4" aria-checked="false" aria-label="4 or more">4+</button>
+        </div>
+      </div>
       <div class="bank" id="bank" role="group" aria-label="Clips"></div>
+      <p class="typed library-none" id="libraryNone" role="status" hidden></p>
       <p class="typed bank-note" id="bankNote" hidden></p>
 
-      <div class="start-actions">
-        <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
-        <button type="button" class="btn btn-quiet" id="playOnline">Play with friends online</button>
+      <div class="start-foot" id="startFoot">
+        <div class="start-actions" id="startActions">
+          <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
+          <button type="button" class="btn btn-quiet" id="playOnline">Play online</button>
+        </div>
+
+        <!-- Send in a clip: its own card in the Play row; the form has its own screen (#screen-submit). -->
+        <button type="button" class="send-card" id="submitOpen" aria-describedby="sendInviteText">
+          <span class="washi w-dots" aria-hidden="true"></span>
+          <b class="send-card-name">Send in a clip</b>
+          <span class="send-card-text" id="sendInviteText">Got a dance or a trick on your phone? Everyone gets to play it.</span>
+        </button>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
-
-      <!-- Send in a clip: an invite under the Play ticket; the form has its own screen (#screen-submit). -->
-      <aside class="send-invite" aria-labelledby="sendInviteText">
-        <span class="washi w-dots" aria-hidden="true"></span>
-        <p class="send-invite-text" id="sendInviteText">Got a dance or a trick on your phone? Send it in and everyone can play it.</p>
-        <button type="button" class="btn btn-quiet" id="submitOpen">Send in a clip</button>
-      </aside>
 
       <!-- Team tools: shown on a local dev server or with ?dev=1, never to visitors (game.ts sets body.dev). -->
       <p class="aside dev-only">
