@@ -5,6 +5,7 @@ import { timeline, dance, squatDance, STAND, mirrorCopy } from "../../engine/tes
 import { fingerprint, newRoundId, packPose, unpackPose, looksLikeRecord, RECORD_SCHEMA, type RoundRecord } from "../src/record.ts";
 import { judge, legSwingDeg, rescore, setConstant, type Rescored } from "../src/judge.ts";
 import { deriveAll, transformPlayer, isSource, TRANSFORMS } from "../src/derive.ts";
+import { withoutDeviceDetails } from "../src/store.ts";
 
 function record(tag: RoundRecord["tag"], reference = timeline(dance), player = timeline((t) => mirrorCopy(dance(t)))): RoundRecord {
   const result = scorePoseRound(reference, player);
@@ -119,4 +120,13 @@ test("a weak round is not a source, and derived cases are never sources", () => 
   const good = record("nailed");
   const [late] = deriveAll([{ record: good, now: rescore(good), was: good.result.score }], ["late"]);
   assert.equal(isSource({ record: late!.record, now: late!.now, was: null }), false);
+});
+
+test("a frozen case keeps no device details", () => {
+  const r = record("nailed");
+  const played = { ...r, device: { userAgent: "Mozilla/5.0 test", cores: 10, gpu: "Some GPU", camera: { label: "Some Camera", width: 640, height: 480, frameRate: 30 }, playerFps: 29.9 } };
+  const clean = withoutDeviceDetails(played);
+  assert.deepEqual(clean.device, { userAgent: "", gpu: null, camera: { label: "", width: 640, height: 480, frameRate: 30 }, playerFps: 29.9 });
+  assert.ok(!("cores" in clean.device));
+  assert.deepEqual(rescore(clean), rescore(played));
 });
