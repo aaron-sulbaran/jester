@@ -20,7 +20,7 @@ import { partsWorthOffering } from "./partChoices.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, startGuideTurn, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, drawFollowCard, enableFollowSwap, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, startGuideTurn, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
 import { addHands } from "./clipside/hands.ts";
 import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
@@ -770,12 +770,12 @@ function shuffle<T>(xs: T[]): T[] {
 }
 
 /**
- * How people are drawn in blind mode. Null is the stick figure on the plain background (the default until Aaron
- * has played a Blind round with a real camera on the 3D jester and seen a normal score); "d" is the 3D jester
- * Aaron picked (app/src/clipside/puppet3d.ts); a and b are the flat sticker and flat cut paper (puppet.ts).
+ * How people are drawn in blind mode: "d", the 3D jester Aaron picked (app/src/clipside/puppet3d.ts), with the key
+ * joints on a corner card a tap swaps in (clipside/blind.ts). Null is the stick figure on the plain background;
+ * a and b are the flat sticker and flat cut paper (puppet.ts).
  * ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
  */
-const DEFAULT_GUIDE: Construction | null = null;
+const DEFAULT_GUIDE: Construction | null = "d";
 
 const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
   const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
@@ -906,10 +906,16 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
   const draw = () => {
     if (video) paintClip(guideCanvas, video, shown, guideAt(g, g.boxTrack.frames[first]?.tMs ?? 0), s.color, s.name);
-    else if (s.look === "puppet") drawBlind(guideCanvas, guideSliceAt(g, first), 0, s.look, view, style, guidePoseAt(g, first));
+    else if (s.look === "puppet") {
+      const slice = guideSliceAt(g, first);
+      drawBlind(guideCanvas, slice, 0, s.look, view, style, guidePoseAt(g, first));
+      // The corner card: the same pose's key joints; a tap swaps which one the player follows.
+      drawFollowCard(guideCanvas, slice, 0, view, style);
+    }
     else drawBlind(guideCanvas, g, first, s.look, view, style);
   };
   draw();
+  if (s.look === "puppet" && !video) enableFollowSwap(guideCanvas, draw);
   // Normal mode: show the clip at that moment under the role (only while nothing else is playing it).
   if (video && video.paused) {
     video.currentTime = (scene.startMs + (s.original.boxTrack.frames[first]?.tMs ?? 0)) / 1000;
@@ -934,7 +940,10 @@ function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof r
       const ctx = canvas.getContext("2d")!;
       ctx.save(); ctx.globalAlpha = 0.3; ctx.drawImage(scratch, 0, 0); ctx.restore();
     }
-    drawBlindSubject(canvas, roleAt(s, ms), 0, s.look, view.view, view.style, now);
+    const at = roleAt(s, ms);
+    drawBlindSubject(canvas, at, 0, s.look, view.view, view.style, now);
+    // The card keeps the turn's base view (like the stage), not the one resized to the player.
+    if (s.look === "puppet") drawFollowCard(canvas, at, 0, view.stageView, view.style);
     return;
   }
   if (leadMs > 0) {
@@ -1169,6 +1178,8 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   const view = roleView(s, stage.guideCanvas, scene);
   // A puppet guide only while the page keeps up (frame rate, and the 3D jester's draw time); else the stick figure.
   startGuideTurn(s.look === "puppet" ? view.style.puppet ?? null : null);
+  // During the turn too, a tap on the corner card swaps what the player follows (the paint loop redraws).
+  if (s.look === "puppet" && !view.video) enableFollowSwap(stage.guideCanvas, () => {});
   const scratch = document.createElement("canvas");
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;

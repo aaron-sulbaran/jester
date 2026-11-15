@@ -291,6 +291,127 @@ export function startGuideTurn(puppet: Construction | null) {
   requestAnimationFrame(count);
 }
 
+// ---- Following the jester or the key joints ----
+
+/**
+ * Which view a player follows. "jester" (the default): the 3D jester big, with the same pose's key joints on a
+ * card in the top corner. "joints": the key joints big, the card offering the jester back. Tapping the card swaps
+ * them; the choice is remembered in this browser. The key joints are the ones drawn on the player's own body.
+ */
+export type Follow = "jester" | "joints";
+const FOLLOW_KEY = "jester.follow";
+let follow: Follow = (() => { try { return localStorage.getItem(FOLLOW_KEY) === "joints" ? "joints" : "jester"; } catch { return "jester"; } })();
+export const getFollow = (): Follow => follow;
+export function setFollow(f: Follow) {
+  follow = f;
+  try { localStorage.setItem(FOLLOW_KEY, f); } catch { /* private mode: it just will not be remembered */ }
+}
+
+/** Shoulders, elbows, wrists, hips, knees and ankles, and the lines between them. */
+const KEY_BONES: [number, number][] = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
+const KEY_JOINTS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+
+/** The key joints figure: thick lines and dots in the player's colour, outlined in ink, `unit` (a torso length) setting the size. */
+function drawKeyJoints(ctx: CanvasRenderingContext2D, landmarks: readonly (readonly [number, number, number])[], map: (x: number, y: number) => [number, number], unit: number, color: string) {
+  const at = (i: number) => { const l = landmarks[i]; return l && l[2] >= MIN_VISIBILITY ? map(l[0], l[1]) : null; };
+  const line = Math.max(3, unit * 0.12), dot = Math.max(4, unit * 0.11), ink = Math.max(2, unit * 0.04);
+  ctx.save();
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const [width, colour] of [[line + ink * 2, "#1E1B18"], [line, color]] as const) {
+    ctx.strokeStyle = colour; ctx.lineWidth = width;
+    for (const [a, b] of KEY_BONES) {
+      const p = at(a), q = at(b);
+      if (!p || !q) continue;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    }
+  }
+  for (const j of KEY_JOINTS) {
+    const p = at(j);
+    if (!p) continue;
+    ctx.beginPath(); ctx.arc(p[0], p[1], dot, 0, Math.PI * 2);
+    ctx.fillStyle = "#FFFFFF"; ctx.fill(); ctx.lineWidth = ink; ctx.strokeStyle = "#1E1B18"; ctx.stroke();
+  }
+  // The head as a ring at the nose, so the figure reads as a body.
+  const nose = at(0);
+  if (nose) { ctx.beginPath(); ctx.arc(nose[0], nose[1], unit * 0.28, 0, Math.PI * 2); ctx.lineWidth = line * 0.8; ctx.strokeStyle = color; ctx.stroke(); }
+  ctx.restore();
+}
+
+/** Where the corner card sits on a canvas: the top right, about a quarter of the width, the canvas's own shape. */
+export function followCard(canvas: { width: number; height: number }) {
+  const w = Math.round(canvas.width * 0.26), h = Math.round((w * canvas.height) / canvas.width), m = Math.round(canvas.width * 0.03);
+  return { x: canvas.width - w - m, y: m, w, h };
+}
+
+/**
+ * The corner card over a drawn puppet guide: the same pose's key joints (following the jester), or the jester to
+ * tap back to (following the joints). Nothing when the guard has handed the turn to the stick figure, which is
+ * the key joints already.
+ */
+export function drawFollowCard(canvas: HTMLCanvasElement, guide: Guide, index: number, view: View, style: BlindStyle) {
+  if (guard.mode === "stick") return;
+  const landmarks = guide.timeline?.frames[index]?.landmarks;
+  const ctx = canvas.getContext("2d")!;
+  const card = followCard(canvas);
+  const perCssPx = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+  const ink = Math.max(2, 2.5 * perCssPx);
+  ctx.save();
+  // A paper card with the look's hard shadow.
+  ctx.fillStyle = "rgba(30,27,24,0.34)";
+  ctx.fillRect(card.x + 4 * perCssPx, card.y + 5 * perCssPx, card.w, card.h);
+  ctx.fillStyle = "#FFFFFF"; ctx.fillRect(card.x, card.y, card.w, card.h);
+  ctx.lineWidth = ink; ctx.strokeStyle = "#1E1B18"; ctx.strokeRect(card.x, card.y, card.w, card.h);
+  // The label fits the card's width.
+  const fit = (text: string, size: number) => {
+    ctx.font = `700 ${size}px Gaegu, "Comic Sans MS", cursive`;
+    const wide = ctx.measureText(text).width;
+    return wide > card.w * 0.9 ? Math.floor((size * card.w * 0.9) / wide) : size;
+  };
+  const labelPx = fit("Tap to follow", Math.max(11 * perCssPx, card.h * 0.11));
+  ctx.font = `700 ${labelPx}px Gaegu, "Comic Sans MS", cursive`;
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillStyle = "#1E1B18";
+  if (follow === "jester" && landmarks) {
+    ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h); ctx.clip();
+    // The guide's view shrunk into the card and zoomed on its middle (the fit centres the subject there), so the
+    // key joints fill the card rather than copying the whole canvas's margins.
+    const k = (card.w / canvas.width) * 1.5;
+    const map = (x: number, y: number): [number, number] => {
+      const [px, py] = toCanvas(view, guide, x, y);
+      return [card.x + card.w / 2 + (px - canvas.width / 2) * k, card.y + card.h * 0.45 + (py - canvas.height / 2) * k];
+    };
+    const torso = puppetClip(guide).torso;
+    const unit = (torso !== null ? torso * view.scale : canvas.height * 0.15) * k;
+    drawKeyJoints(ctx, landmarks, map, unit, style.color);
+    ctx.fillText("Tap to follow", card.x + card.w / 2, card.y + card.h - labelPx * 0.3);
+  } else {
+    ctx.fillText("Tap to follow", card.x + card.w / 2, card.y + card.h / 2);
+    ctx.fillText("the jester", card.x + card.w / 2, card.y + card.h / 2 + labelPx * 1.1);
+  }
+  ctx.restore();
+}
+
+const swappers = new WeakMap<HTMLCanvasElement, () => void>();
+
+/** Lets a tap on the corner card swap what the player follows; `redraw` repaints the canvas after a swap. */
+export function enableFollowSwap(canvas: HTMLCanvasElement, redraw: () => void) {
+  const known = swappers.has(canvas);
+  swappers.set(canvas, redraw);
+  if (known) return;
+  const inCard = (e: MouseEvent) => {
+    const r = canvas.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const x = ((e.clientX - r.left) * canvas.width) / r.width, y = ((e.clientY - r.top) * canvas.height) / r.height;
+    const c = followCard(canvas);
+    return x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h;
+  };
+  canvas.addEventListener("click", (e) => {
+    if (!inCard(e) || guard.mode === "stick") return;
+    setFollow(follow === "jester" ? "joints" : "jester");
+    swappers.get(canvas)?.();
+  });
+  canvas.addEventListener("mousemove", (e) => { canvas.style.cursor = inCard(e) && guard.mode !== "stick" ? "pointer" : ""; });
+}
+
 /** True when the guard has handed this turn to the stick figure. */
 export function guideGaveWay(): boolean {
   return guard.mode === "stick";
@@ -384,6 +505,14 @@ export function drawBlindSubject(
 
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   if (!landmarks) return;
+
+  if (look === "puppet" && guard.mode !== "stick" && follow === "joints") {
+    // Following the joints: the key joints big, at the stick figure's places, sized like the puppet.
+    const clipFacts = (pose ?? guidePoseAt(guide, index)).clip;
+    const unit = clipFacts.torso !== null ? clipFacts.torso * view.scale : sizePx * 0.3;
+    drawKeyJoints(ctx, landmarks, map, unit, style.color);
+    return;
+  }
 
   if (look === "puppet" && guard.mode !== "stick") {
     const at = pose ?? guidePoseAt(guide, index);
