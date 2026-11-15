@@ -8,6 +8,7 @@ import { fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, type BodyPart, 
 import { createWebcamTracker as createTrackerJs } from "../../spikes/pose-match/webcam.mjs";
 import { simulatedPlayerPose } from "../../spikes/pose-match/synthetic.mjs";
 import type { Clip } from "./clip.ts";
+import { live } from "./liveHands.ts";
 import type { ObjectClip } from "./objectClips.ts";
 import type { PersonMask } from "./cutout.ts";
 
@@ -34,7 +35,7 @@ export interface Player {
 
 /** The real camera, through Lisa's tracker (smoothed pose). */
 export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   cam.srcObject = stream;
   await cam.play();
   let sink: ((f: WebcamFrame) => void) | null = null;
@@ -45,6 +46,7 @@ export async function cameraPlayer(cam: HTMLVideoElement): Promise<Player> {
     model: new URLSearchParams(location.search).get("model") ?? "full", // add ?model=heavy to the page address for the most accurate (slower) tracker
     // Drop the mask and outline: the pose channel does not use them, and a minute of masks is a lot of memory.
     onFrame: (f: any) => {
+      live.hands = f.hands ?? []; live.at = performance.now(); // fingers, drawn by draw.ts
       if (!sink) return;
       const clipMs = clock();
       sink({ t: f.t, landmarks: f.landmarks, aspect: f.aspect, mirrored: f.mirrored, clipTimeMs: clipMs });

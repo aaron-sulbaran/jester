@@ -133,19 +133,43 @@ export function extractOutline(mask, maxPoints = 120) {
   return points;
 }
 
+// ---- Hands (fingers) ----
+// One Euro smoothing per hand landmark, keyed by the hand's label so Left and Right keep their own filters.
+// A hand that vanishes for longer than HAND_HOLD_MS starts fresh when it comes back.
+export const HAND_HOLD_MS = 300;
+export class HandSmoother {
+  constructor(options = {}) { this.options = options; this.byLabel = new Map(); }
+  reset() { this.byLabel.clear(); }
+  /** raw: [{ label, landmarks: [{x, y, z}] }]. Returns the same shape, smoothed. */
+  smooth(raw, tMs) {
+    const out = [];
+    for (const hand of raw || []) {
+      let state = this.byLabel.get(hand.label);
+      if (!state || tMs - state.seen > HAND_HOLD_MS) {
+        state = { filters: hand.landmarks.map(() => ({ x: new OneEuroFilter(this.options), y: new OneEuroFilter(this.options) })), seen: tMs };
+        this.byLabel.set(hand.label, state);
+      }
+      state.seen = tMs;
+      out.push({ label: hand.label, landmarks: hand.landmarks.map((p, i) => ({ ...p, x: state.filters[i].x.filter(p.x, tMs), y: state.filters[i].y.filter(p.y, tMs) })) });
+    }
+    return out;
+  }
+}
+
 // ---- Frame building ----
-export function buildFrame({ t, landmarks, aspect, maskValues, maskWidth, maskHeight, outlineScale = 4 }) {
+export function buildFrame({ t, landmarks, aspect, maskValues, maskWidth, maskHeight, outlineScale = 4, hands = [] }) {
   let mask = null, outline = null;
   if (maskValues) {
     mask = binarizeMask(maskValues, maskWidth, maskHeight);
     outline = extractOutline(downsampleMask(mask, outlineScale));
   }
-  return { t, landmarks: landmarks || null, aspect, mirrored: false, mask, outline };
+  return { t, landmarks: landmarks || null, aspect, mirrored: false, mask, outline, hands };
 }
 
 // ---- Browser tracker ----
 export const MP_BUNDLE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 export const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+export const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 export const MODEL_URLS = {
   heavy: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
   full: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
@@ -164,8 +188,16 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
   let delegate = "GPU", modelName = model, landmarker;
   try { landmarker = await make(modelName, "GPU"); } catch { delegate = "CPU"; landmarker = await make(modelName, "CPU"); }
 
+  // Fingers: a second model (21 points per hand). Off with ?hands=0, and switched off by itself if the frame rate drops.
+  let handLandmarker = null;
+  if (new URLSearchParams(globalThis.location?.search ?? "").get("hands") !== "0") {
+    try {
+      handLandmarker = await mp.HandLandmarker.createFromOptions(vision, { baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate }, runningMode: "VIDEO", numHands: 2 });
+    } catch { handLandmarker = null; }
+  }
   const smoother = new PoseSmoother(filter);
-  const stats = { fps: 0, model: modelName, delegate };
+  const handSmoother = new HandSmoother(filter);
+  const stats = { fps: 0, model: modelName, delegate, hands: !!handLandmarker };
   let running = false, busy = false, last = -1, startPerf = 0, lastTs = 0, frames = 0, windowStart = 0, slowWindows = 0;
 
   function tick() {
@@ -185,7 +217,13 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
       if (m) { maskValues = m.getAsFloat32Array(); mw = m.width; mh = m.height; }
       const aspect = video.videoWidth / video.videoHeight || 4 / 3;
       if (!raw) smoother.reset();
-      onFrame(buildFrame({ t, landmarks: smoother.smooth(raw, t), aspect, maskValues, maskWidth: mw, maskHeight: mh }));
+      let hands = [];
+      if (handLandmarker) {
+        const h = handLandmarker.detectForVideo(video, ts);
+        const rawHands = (h.landmarks || []).map((lm, i) => ({ label: h.handednesses?.[i]?.[0]?.categoryName ?? "Hand" + i, landmarks: lm.map((p) => ({ x: p.x, y: p.y, z: p.z })) }));
+        hands = handSmoother.smooth(rawHands, t);
+      }
+      onFrame(buildFrame({ t, landmarks: smoother.smooth(raw, t), aspect, maskValues, maskWidth: mw, maskHeight: mh, hands }));
       if (m) m.close();
     } finally { busy = false; }
     frames++;
@@ -193,7 +231,10 @@ export async function createWebcamTracker({ video, onFrame, model = new URLSearc
     if (now - windowStart >= 1000) {
       stats.fps = (frames * 1000) / (now - windowStart); frames = 0; windowStart = now;
       slowWindows = stats.fps < minFps ? slowWindows + 1 : 0;
-      if (slowWindows >= 3 && modelName !== "lite") {
+      if (slowWindows >= 3 && handLandmarker) {
+        // First give up fingers, then lower the body model.
+        slowWindows = 0; handLandmarker.close(); handLandmarker = null; stats.hands = false;
+      } else if (slowWindows >= 3 && modelName !== "lite") {
         const next = modelName === "heavy" ? "full" : "lite";
         slowWindows = 0; modelName = next; stats.model = next;
         make(next, delegate).then((next) => { const old = landmarker; landmarker = next; old.close(); }).catch(() => {});

@@ -9,3 +9,6 @@ export const FACE_BONES = [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6
 export const DETAIL_BONES = [...BODY_BONES, ...HAND_BONES, ...FOOT_BONES, ...FACE_BONES];
 /** Joints drawn as dots: shoulders, elbows, wrists, hips, knees, ankles. */
 export const JOINTS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+
+/** MediaPipe Hand Landmarker: 21 points per hand (0 wrist; 1-4 thumb; 5-8 index; 9-12 middle; 13-16 ring; 17-20 pinky). */
+export const FINGER_BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
