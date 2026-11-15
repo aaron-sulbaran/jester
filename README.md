@@ -10,9 +10,9 @@ Under the party game is a computer vision judge, and we use LangChain deep agent
 
 Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainment**. Special track: **LangChain, Best use of deepagents**.
 
-![Inspiration](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-inspiration.png)
-
 ## Inspiration
+
+![Inspiration](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-inspiration.png)
 
 Webcam games where you copy a dancer are a known genre. When we looked, we found more than ten from past hackathons, three of which placed.
 
@@ -22,9 +22,9 @@ The second idea came from party games. What if nobody knows what they are copyin
 
 And one honest line about who it is for: it gets a group of friends moving around one laptop, with no equipment beyond a webcam.
 
-![What it does](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-what.png)
-
 ## What it does
+
+![What it does](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-what.png)
 
 - **Pick a clip** from the clip library: find one by name, filter by how many players it fits, or press Surprise me.
 - **Set up the game.** Say how many are playing. Two or more can take turns on one laptop, play a **Duel** where everyone copies the same person and the best copy wins, or each play on their own device.
@@ -42,9 +42,18 @@ And one honest line about who it is for: it gets a group of friends moving aroun
 
 Online, each player is on their own device, so step 3 is skipped.
 
-![How we built it](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-how.png)
+![Main track: Entertainment](https://aaronsulbaran.com/hack-princeton/brand/devpost/track-entertainment.png)
+
+### Why Jester is entertainment
+
+- It is a party game first, built for a few friends around one laptop or online, with a jester as the host.
+- The laugh is built in: secret parts mean you find out at the reveal what you were really copying.
+- The retry loop: play the same clip again to beat a friend's score.
+- New clips become levels without anyone drawing them, so the game does not run out of things to copy.
 
 ## How we built it
+
+![How we built it](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-how.png)
 
 Three parts, three owners, and one shared format agreed in the first hours: `pose-timeline/1`, 33 body points per frame with real time stamps. The game runs in the browser.
 
@@ -97,15 +106,6 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 
 530 tests in all, every one passing on main (`make test`, run Nov 15). Lab pages that try one part at a time on the dev server are listed in [`docs/labs.md`](docs/labs.md).
 
-![Main track: Entertainment](https://aaronsulbaran.com/hack-princeton/brand/devpost/track-entertainment.png)
-
-### Why Jester is entertainment
-
-- It is a party game first, built for a few friends around one laptop or online, with a jester as the host.
-- The laugh is built in: secret parts mean you find out at the reveal what you were really copying.
-- The retry loop: play the same clip again to beat a friend's score.
-- New clips become levels without anyone drawing them, so the game does not run out of things to copy.
-
 ![Best use of deepagents, by LangChain](https://aaronsulbaran.com/hack-princeton/brand/devpost/track-deepagents.png)
 
 ### Deep agents for a fairer judge, without retraining a model
@@ -132,8 +132,6 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 
 ![Tech stack](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-stack.png)
 
-## Tech stack
-
 | Part | What we used |
 | --- | --- |
 | Language and build | TypeScript 5.7, Vite 6 |
@@ -142,6 +140,7 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 | Video decoding | Mediabunny on WebCodecs, with a video element fallback |
 | Saved analyses | IndexedDB, keyed by the file's SHA-256 |
 | Reveal video | Canvas capture and MediaRecorder (WebM) |
+| The 3D jester guide | three.js |
 | Deep agents | LangChain deepagents (`createDeepAgent`); Claude Sonnet 5.5 for the Chamberlain; Claude Opus 5.5 with Muse Spark 1.3 subagents for the referee coach; LangSmith tracing |
 | Clip bank, submissions and rooms | Supabase (Storage, tables, Realtime) |
 | Hosting | Vercel |
@@ -149,9 +148,17 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 | Fonts | Gaegu and Titan One (SIL Open Font License), Special Elite (Apache License 2.0) |
 | Tests | Node's built-in test runner, and GitHub Actions on every pull request |
 
-![Challenges](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-challenges.png)
+### Credits
 
-## Challenges
+- **Aaron Sulbaran** ([aaron-sulbaran](https://github.com/aaron-sulbaran)): the clip side, the video bank, the Chamberlain, the round log and eval, and the look. **Lisa Hadi** ([lisahadi](https://github.com/lisahadi)): the webcam side and online rooms. **Alex Huang** ([alexx0711](https://github.com/alexx0711)): the scoring engine, the blind game and the reveal.
+- [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/guide) from Google for pose, hand and object tracking; [LangChain deepagents](https://github.com/langchain-ai/deepagents); [Anthropic](https://www.anthropic.com) Claude and Meta's Muse Spark for the agents; [LangSmith](https://smith.langchain.com) for tracing; [Mediabunny](https://mediabunny.dev) for decoding; [Supabase](https://supabase.com); [Vercel](https://vercel.com); [Blender](https://www.blender.org); [three.js](https://threejs.org) for the 3D jester guide.
+- Fonts: Gaegu and Titan One under the SIL Open Font License, and Special Elite under the Apache License 2.0.
+- Built with AI coding assistants. Every change was reviewed by the team.
+- Also: the One Euro Filter (Casiez, Roussel and Vogel, CHI 2012) for smoothing, and on the link lab page the [YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference) and the browser's own tab capture.
+
+## Challenges we ran into
+
+![Challenges we ran into](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-challenges.png)
 
 - **The same clip must give the same guide.** Our first stand-in read the clip from a playing video, timed by the wall clock, so the same file gave different guides. Now frames are decoded at fixed times and the analysis is saved under the file's fingerprint.
 - **One dancer, many tracks.** People cross, turn and hide behind each other, and a tracker loses them. Early runs split one dancer into a pile of short tracks. Rejoining after gaps of up to 3 seconds, plus cut detection, fixed most of it.
@@ -160,9 +167,9 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 - **A reviewer people can talk to is a reviewer people can steer.** In its first run, a clip's title tried to tell the Chamberlain what to decide. It handed that clip to a person, and code, not the prompt, now decides what can get in without a fitting name.
 - **Fast motion.** At 15 frames a second, a sudden move can fall between frames.
 
-![Accomplishments](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-wins.png)
+## Accomplishments that we're proud of
 
-## Accomplishments
+![Accomplishments that we're proud of](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-wins.png)
 
 - A clip nobody drew by hand becomes a playable level, analysed in the browser.
 - Your guide in Blind mode is a 3D jester that moves the way your part moves. It became the default after two of us played real-camera rounds on it.
@@ -172,9 +179,9 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 - 530 automated tests pass on main, and every pull request runs them.
 - A jester host of our own, from a Blender script, who wears each player's face at the crown.
 
-![What we learned](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-learned.png)
-
 ## What we learned
+
+![What we learned](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-learned.png)
 
 - **Measure with code, decide with rules.** Every number in a guide comes from the tracker, so a score can be explained.
 - **Repeatable takes design.** It took decoding at fixed times and saving the analysis under the file's fingerprint.
@@ -182,9 +189,9 @@ Jester's judge is computer vision plus a scoring engine that gives the same scor
 - **Turn every round into evidence.** Once rounds replay exactly, a fairness bug becomes a test case, and an agent can look for the next one.
 - **Agree on the data first.** One shared pose format, settled early, let three people build three parts at the same time.
 
-![What's next](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-next.png)
+## What's next for Jester
 
-## What's next
+![What's next for Jester](https://aaronsulbaran.com/hack-princeton/brand/devpost/heading-next.png)
 
 - **A hosted Chamberlain** behind a login, so the bank grows while our laptops are closed, and near-duplicate detection on top of exact copies.
 - **Paste a link instead of a file.** Grabbing a YouTube or Instagram clip from a browser tab already works on our lab page, but not yet in the game.
@@ -207,21 +214,11 @@ Then open http://localhost:5173. No settings file is needed: the dev server take
 
 `make test` runs the type checks and all 530 tests, `make build` builds the game into `app/dist`, and `make help` lists the targets. Each folder's README goes deeper: [`app/`](app/README.md), [`engine/`](engine/README.md), [`clip/`](clip/README.md), [`eval/`](eval/README.md), [`agent/`](agent/README.md).
 
-## Team and how we built it
+## Built with coding agents
 
-- **Aaron Sulbaran** ([aaron-sulbaran](https://github.com/aaron-sulbaran)): the clip side, the video bank, the Chamberlain, the round log and eval, and the look.
-- **Lisa Hadi** ([lisahadi](https://github.com/lisahadi)): the webcam side and online rooms.
-- **Alex Huang** ([alexx0711](https://github.com/alexx0711)): the scoring engine, the blind game and the reveal.
-
-**AI tools.** Built with AI coding assistants, and every change was reviewed by the team. Each of us worked with Claude Code (Claude Opus 5.5, Sonnet 5.5 and Fable 5.2); commits written with it carry a `Co-Authored-By` line naming the model. The game itself calls no language model: every score comes from the pose and object models running in the browser and from fixed code. The model calls are the deep agents' (above), which run on our laptops.
+**AI tools.** Each of us worked with Claude Code (Claude Opus 5.5, Sonnet 5.5 and Fable 5.2); commits written with it carry a `Co-Authored-By` line naming the model. The game itself calls no language model: every score comes from the pose and object models running in the browser and from fixed code. The model calls are the deep agents' (above), which run on our laptops.
 
 **How we built this.** Three people each ran several coding agents at once, so the repo carries its own rules for them. [`AGENTS.md`](AGENTS.md) at the root is what every agent reads first, whatever tool it runs in: how to tell the team which files it is about to touch and what it changed, to commit only as its own person, and that anything a player or a judge sees (screens, wording, colours, the Devpost pictures) keeps one look, so feature work reuses the parts listed in [`docs/design/look-parts.md`](docs/design/look-parts.md). [`CLAUDE.md`](CLAUDE.md) is one line that points Claude Code at the same file, so there is a single copy of the rules. Agents worked on their own branches, and each part has a pure, tested core (`clip/`, `engine/`, the webcam and room modules) that the app imports, which kept parallel work from breaking each other.
-
-## Credits
-
-- [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/guide) from Google for pose, hand and object tracking; [LangChain deepagents](https://github.com/langchain-ai/deepagents); [Anthropic](https://www.anthropic.com) Claude and Meta's Muse Spark for the agents; [LangSmith](https://smith.langchain.com) for tracing; [Mediabunny](https://mediabunny.dev) for decoding; [Supabase](https://supabase.com); [Vercel](https://vercel.com); [Blender](https://www.blender.org).
-- Fonts: Gaegu and Titan One under the SIL Open Font License, and Special Elite under the Apache License 2.0.
-- Smoothing: the One Euro Filter (Casiez, Roussel and Vogel, CHI 2012). Links on the lab page: the [YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference) and the browser's own tab capture.
 
 ## Clips
 
