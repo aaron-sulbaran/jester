@@ -5,8 +5,8 @@
 <title>Devpost track banner</title>
 <link rel="stylesheet" href="devpost.css" />
 <style>
-  /* 1600 by 300. One admission ticket per track: track.html?name=Entertainment&kicker=Main%20track&line=...
-     Sponsor names go in as plain text (kicker or line), never as logos. */
+  /* 1600 by 300. One admission ticket per track: track.html?name=Entertainment&line=...
+     Sponsor names go in the line as plain text, never as logos. No label above the name. */
   body { width: 1600px; height: 300px; }
   .sheet { left: 16px; right: 28px; top: 12px; bottom: 22px; }
   .w1 { left: 70px; top: 18px; rotate: -10deg; }
@@ -16,9 +16,8 @@
   .ticket .stub { right: 30px; width: 170px; background-size: 96px auto; }
   .ticket .stub b { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 400 20px/1 var(--type); }
   .words { display: grid; gap: 4px; min-width: 0; }
-  .kicker { font: 400 30px/1 var(--type); }
-  .name { margin: 0; font: 400 96px/1 var(--sticker); padding: 2px 6px 10px; white-space: nowrap; }
-  .line { font: 400 24px/1.2 var(--type); }
+  .name { margin: 0; font: 400 104px/1 var(--sticker); padding: 2px 6px 12px; white-space: nowrap; }
+  .line { font: 400 30px/1.2 var(--type); }
   .puppet { right: 52px; top: 6px; width: 262px; height: 262px; rotate: 4deg; }
   .puppet .stick { top: 196px; }
 </style>
@@ -27,9 +26,8 @@
 <div class="sheet"><div class="kraft"></div></div>
 <div class="ticket-wrap"><div class="ticket">
   <div class="words">
-    <span class="kicker" data-param="kicker">Main track</span>
     <h1 class="name"><span data-letters="Entertainment" data-param="name"></span></h1>
-    <span class="line" data-param="line">HackPrinceton Fall 2026</span>
+    <span class="line" data-param="line">Our main track at HackPrinceton Fall 2026</span>
   </div>
   <i class="stub"><b>Admit one</b></i>
 </div></div>
@@ -40,7 +38,7 @@
   // Long track names shrink until they fit the ticket.
   const name = document.querySelector(".name");
   const room = document.querySelector(".words").clientWidth;
-  let size = 96;
+  let size = 104;
   while (name.scrollWidth > room && size > 48) name.style.fontSize = `${(size -= 4)}px`;
   document.title = `Track: ${name.textContent}`;
 </script>

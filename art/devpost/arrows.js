@@ -17,8 +17,8 @@ function drawArrows(links) {
   for (const [from, to, side, label, dashed] of links) {
     const a = card(from), b = card(to);
     let x1, y1, x2, y2, bend;
-    if (side === "right") { x1 = a.r + 10; y1 = a.cy - 20; x2 = b.l - 14; y2 = b.cy - 10; bend = [0, -34]; }
-    if (side === "left") { x1 = a.l - 10; y1 = a.cy + 10; x2 = b.r + 14; y2 = b.cy + 20; bend = [0, 34]; }
+    if (side === "right") { x1 = a.r + 6; y1 = a.cy - 20; x2 = b.l - 8; y2 = b.cy - 10; bend = [0, -14]; }
+    if (side === "left") { x1 = a.l - 6; y1 = a.cy + 10; x2 = b.r + 8; y2 = b.cy + 20; bend = [0, 14]; }
     if (side === "down") { x1 = a.cx + 40; y1 = a.b + 12; x2 = b.cx + 40; y2 = b.t - 16; bend = [36, 0]; }
     if (side === "up") { x1 = a.cx - 60; y1 = a.t - 12; x2 = b.cx - 60; y2 = b.b + 16; bend = [-36, 0]; }
     const mx = (x1 + x2) / 2 + bend[0], my = (y1 + y2) / 2 + bend[1];

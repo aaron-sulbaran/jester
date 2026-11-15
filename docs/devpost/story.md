@@ -1,6 +1,6 @@
 ![Jester: act out any clip, get judged](https://jester-pi.vercel.app/devpost/hero.png)
 
-**Jester turns a short clip into a party game.** Each player secretly gets one part of the clip, say the thrower, the dog or the ball, and copies it on the webcam from nothing but a stick figure or an outline. Then the real clip plays back with everyone's cutouts on top, the scores come out, and a jester crowns the winner.
+**Jester turns a short clip into a party game.** Each player secretly gets one part of the clip, maybe the thrower or maybe the dog, and copies it on the webcam from nothing but a stick figure or an outline. Then the real clip plays back with everyone's cutouts on top, and a jester crowns the winner.
 
 ![Inspiration](https://jester-pi.vercel.app/devpost/heading-inspiration.png)
 
@@ -19,7 +19,7 @@ And one honest line about who it is for: it gets a group of friends moving aroun
 - **Pass the laptop.** "Everyone else, look away." Each player sees only their part, drawn as a stick figure (a person) or an outline (a thing). They choose to copy it with their whole body, a hand, their head or a foot, and can watch it once before it counts.
 - **3, 2, 1, copy.** The part plays on the left, the player's camera on the right. The clip can be slowed to 0.75 or 0.5 speed.
 - **The reveal.** After a drum roll, the original clip plays, then plays again with every player's cutout drawn on their part, with names and scores. It is recorded in the browser as a video you can save or send.
-- **The crown.** Each player's face goes on a jester, a spotlight sweeps across them, and the winner gets crowned.
+- **The crown.** Each player's face goes on a jester, and the spotlight settles on the winner.
 - **Play with friends online.** Make a room or join one with its 4-letter code. Each player plays their own part on their own device, and everyone gets the same reveal and results. Online rounds use our two built-in clips for now. [check: tried between two devices]
 - **Submit your own clip.** It goes into a review queue, and a person checks every clip before it joins the bank.
 
@@ -108,7 +108,7 @@ Three parts, three owners, and one shared format agreed in the first hours: `pos
 ![What we learned](https://jester-pi.vercel.app/devpost/heading-learned.png)
 
 - **Measure with code, decide with rules.** Every number in a guide comes from the tracker, so a score can be explained.
-- **Repeatable takes design.** It took fixed decode times, a fingerprint and a saved analysis, not luck.
+- **Repeatable takes design.** It took decoding at fixed times and saving the analysis under the file's fingerprint.
 - **Compare directions, not positions.** It makes size and distance from the camera disappear.
 - **Agree on the data first.** One shared pose format, settled early, let three people build three parts at the same time. [check]
 

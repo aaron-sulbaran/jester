@@ -77,7 +77,7 @@ Caption: "Copy it live. Your part on the left, you on the right."
 **6. The reveal.** The "Your cast" part of the reveal video, with everyone's cutouts on the real clip and their names and scores. If the clip has a dog or a ball, use the moment that shows who played it.
 Caption: "The reveal: everyone's cutout on the real clip. Surprise, you were the dog."
 
-Spare if one slot does not come out well: the crown, with each player's face on a jester and the spotlight on the winner. Caption: "The crown. One jester wins."
+Spare if one slot does not come out well: the crown, with each player's face on a jester and the spotlight on the winner. Caption: "The crown: the spotlight finds the winner."
 
 ## 4. Paste and check
 
@@ -105,7 +105,7 @@ Spare if one slot does not come out well: the crown, with each player's face on 
 
 ## Adding a track banner
 
-If a sponsor track is confirmed and its feature is in main: add one line to `TRACKS` in `art/devpost/render.mjs`, for example `{ slug: "gemini", name: "Gemini API", kicker: "Special track", line: "Sponsored by Google" }`, run the renderer (below), and add a section to the story after the Entertainment one: the banner image, a `###` heading and three or four bullets. Sponsor names are text only, no logos.
+If a sponsor track is confirmed and its feature is in main: add one line to `TRACKS` in `art/devpost/render.mjs`, for example `{ slug: "gemini", name: "Gemini API", line: "A special track sponsored by Google" }`, run the renderer (below), and add a section to the story after the Entertainment one: the banner image, a `###` heading and three or four bullets. Sponsor names are text only, no logos.
 
 ## Rendering the pictures again
 

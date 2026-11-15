@@ -15,23 +15,21 @@
   .card .art { height: 150px; }
   .sil { position: absolute; color: var(--paper); }
   .sil svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  .mini { position: absolute; width: 30%; padding: 5px 5px 8px; background: var(--photo); box-shadow: 3px 4px 0 rgba(0,0,0,.35); }
+  .mini { position: absolute; width: 30%; padding: 5px 5px 8px; background: var(--photo); box-shadow: 3px 4px 0 var(--shade); }
   .mini i { display: grid; place-items: center; aspect-ratio: 16 / 10; background: var(--backdrop) repeating-linear-gradient(-35deg, transparent 0 6px, rgba(255,255,255,.08) 6px 7px); font: 400 28px/1 var(--sticker); font-style: normal; color: var(--ticket); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
   .chips { position: absolute; display: flex; gap: 8px; }
-  .chips span { padding: 4px 10px; background: var(--photo); font: 400 16px/1.2 var(--type); box-shadow: 2px 3px 0 rgba(0,0,0,.35); white-space: nowrap; }
-  .chips span.on { background: var(--ticket); box-shadow: 2px 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px var(--ink); }
-  .who { position: absolute; left: 14px; right: 14px; display: flex; align-items: center; gap: 10px; padding: 5px 12px; background: var(--photo); font: 400 18px/1.2 var(--type); box-shadow: 3px 4px 0 rgba(0,0,0,.35); }
+  .chips span { padding: 4px 10px; background: var(--photo); font: 400 16px/1.2 var(--type); box-shadow: 2px 3px 0 var(--shade); white-space: nowrap; }
+  .chips span.on { background: var(--ticket); box-shadow: 2px 3px 0 var(--shade), inset 0 0 0 2px var(--ink); }
+  .who { position: absolute; left: 14px; right: 14px; display: flex; align-items: center; gap: 10px; padding: 5px 12px; background: var(--photo); font: 400 18px/1.2 var(--type); box-shadow: 3px 4px 0 var(--shade); }
   .who i { width: 16px; height: 16px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--ink); }
   .who b { margin-left: auto; font: 400 20px/1 var(--sticker); }
   .name-big { position: absolute; left: 0; right: 0; top: 18px; text-align: center; font: 400 74px/1 var(--sticker); }
   .look-away { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 700 26px/1 var(--hand); color: var(--photo); letter-spacing: -.03em; }
   .count { position: absolute; left: 50%; top: 50%; translate: -50% -50%; font: 400 92px/1 var(--sticker); color: var(--stamp); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; filter: url(#die-cut); rotate: -4deg; }
   .split::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; background: rgba(255,255,255,.3); }
-  .blur { position: absolute; border-radius: 50%; background: rgba(255, 255, 255, .28); filter: blur(10px); }
-  .score-tag { position: absolute; padding: 2px 8px; background: var(--photo); font: 400 15px/1.3 var(--type); white-space: nowrap; box-shadow: 2px 3px 0 rgba(0,0,0,.35); }
-  .spot { position: absolute; inset: 0; background: radial-gradient(ellipse 34% 70% at 50% 62%, rgba(255, 244, 200, .32) 0 60%, rgba(10, 12, 30, .55) 100%); }
+  .score-tag { position: absolute; padding: 2px 8px; background: var(--photo); font: 400 15px/1.3 var(--type); white-space: nowrap; box-shadow: 2px 3px 0 var(--shade); }
   .crown-j { position: absolute; top: -14px; width: 150px; left: calc(50% - 75px); filter: url(#sticker); }
-  .side-j { position: absolute; top: 34px; width: 104px; opacity: .8; }
+  .side-j { position: absolute; top: 34px; width: 104px; filter: url(#sticker); }
   .foot { position: relative; margin-top: 44px; display: flex; justify-content: space-between; align-items: center; }
   .foot .note { white-space: nowrap; }
   
@@ -82,7 +80,7 @@
   <div class="sheet"><div class="kraft"></div></div>
   <div class="head">
     <div class="masking"><h1 class="tape">How a round runs</h1></div>
-    <p class="typed">One laptop, one webcam, 2 to 4 players.</p>
+    <p class="typed">2 to 4 players on one laptop with a webcam.</p>
   </div>
 
   <div class="cards">
@@ -161,7 +159,6 @@
       <span class="num" style="--c:var(--p1)">7</span><i class="washi w-dots"></i>
       <h2>The reveal</h2>
       <div class="art">
-        <span class="blur" style="left:6%;top:10%;width:30%;height:84%"></span>
         <span class="sil" style="left:10%;top:16%;width:20%;height:80%;color:var(--p1)"><svg><use href="#throw" /></svg></span>
         <span class="sil" style="left:44%;top:4%;width:18%;height:38%;color:var(--p3)"><svg><use href="#tuck" /></svg></span>
         <span class="sil" style="left:56%;top:48%;width:38%;height:46%;color:var(--p4)"><svg><use href="#crawl" /></svg></span>
@@ -177,10 +174,9 @@
       <div class="art" style="background:var(--backdrop) linear-gradient(transparent 78%, #93613A 78%)">
         <img class="side-j" style="left:2%" src="../../app/public/look/jester/alex-still.webp" alt="" />
         <img class="side-j" style="right:2%" src="../../app/public/look/jester/lisa-still.webp" alt="" />
-        <span class="spot"></span>
         <img class="crown-j" src="../../app/public/look/jester/aaron-still.webp" alt="" />
       </div>
-      <p>Faces on jesters, a spotlight, one winner.</p>
+      <p>Each player's face on a jester, and the spotlight finds the winner.</p>
     </section>
   </div>
 

@@ -25,7 +25,7 @@ const MAX_BYTES = 800 * 1024;
 
 /** One line per track we enter. `name` is drawn in alphabet stickers; sponsor names stay plain text. */
 const TRACKS = [
-  { slug: "entertainment", name: "Entertainment", kicker: "Main track", line: "HackPrinceton Fall 2026" },
+  { slug: "entertainment", name: "Entertainment", line: "Our main track at HackPrinceton Fall 2026" },
 ];
 
 const HEADINGS = ["inspiration", "what", "how", "stack", "challenges", "wins", "learned", "next"];
@@ -34,7 +34,7 @@ const HEADINGS = ["inspiration", "what", "how", "stack", "challenges", "wins", "
 const JOBS = [
   { name: "hero", page: "hero.html", width: 1600, height: 900 },
   ...HEADINGS.map((s) => ({ name: `heading-${s}`, page: "heading.html", query: { s }, width: 1600, height: 256 })),
-  ...TRACKS.map((t) => ({ name: `track-${t.slug}`, page: "track.html", query: { name: t.name, kicker: t.kicker, line: t.line }, width: 1600, height: 300 })),
+  ...TRACKS.map((t) => ({ name: `track-${t.slug}`, page: "track.html", query: { name: t.name, line: t.line }, width: 1600, height: 300 })),
   { name: "diagram-clip-to-guide", page: "diagram-guide.html", width: 1600, height: "page" },
   { name: "diagram-round", page: "diagram-round.html", width: 1600, height: "page" },
 ];
