@@ -5,7 +5,8 @@ import type { Prepared } from "./analyze.ts";
 
 const DB_NAME = "jester";
 const STORE = "prepared";
-const SCHEMA = "prepared/3";
+// 4: thing tracks are rejoined and barely-seen things dropped, so older saved analyses list split things.
+const SCHEMA = "prepared/4";
 
 interface PreparedRecord { schema: typeof SCHEMA; fingerprint: string; savedAt: number; prepared: Prepared }
 
