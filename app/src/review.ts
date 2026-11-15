@@ -17,7 +17,7 @@ type NameCheck = "fits" | "does_not_fit" | "inappropriate" | "missing";
 interface Decision {
   verdict: "approve" | "reject" | "ask_a_person"; reason: string; nameCheck: NameCheck; nameNote: string; framesCheck: string; findings: Finding[]; steps: string[];
   /** Sent back with a flag, so Aaron's decision on it can become a precedent (review-precedents.ts). */
-  contentCheck?: string; steering?: boolean; playability?: string;
+  contentCheck?: string; steering?: boolean; playability?: string; nameKind?: string;
 }
 interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null; publish: { state: string; at: string | null; detail: string } }
 interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
@@ -323,7 +323,7 @@ async function reviewQueue() {
         const reason = d.verdict === "approve" ? `The Chamberlain would let it in: ${d.reason}` : d.reason;
         const saved = await api("flag", {
           id: p.id, video_path: p.video_path, title: p.title, reason, steps: d.steps, findings: d.findings, framesCheck: d.framesCheck,
-          agentVerdict: d.verdict, nameCheck: d.nameCheck, contentCheck: d.contentCheck, steering: d.steering, playability: d.playability,
+          agentVerdict: d.verdict, nameCheck: d.nameCheck, nameKind: d.nameKind, contentCheck: d.contentCheck, steering: d.steering, playability: d.playability,
         });
         showDecision(d, saved.error === null ? `Waiting for you. ${reason}` : saved.error, p.title);
       }
