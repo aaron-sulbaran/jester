@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jester duel lab</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 16px; background: #111116; color: #f2f2f5; font: 15px/1.45 system-ui, -apple-system, sans-serif; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    h2 { margin: 0 0 8px; font-size: 17px; }
+    .sub { color: #a0a3b1; margin: 0 0 12px; }
+    .panel { background: #1b1b23; border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; max-width: 1000px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 8px; }
+    input, select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #3a3a48; background: #24242e; color: inherit; }
+    button { cursor: pointer; background: #f5c542; color: #16161d; border: 0; font-weight: 600; }
+    button:disabled { opacity: .4; cursor: default; }
+    label { user-select: none; }
+    .hidden { display: none !important; }
+    .stage { display: flex; flex-wrap: wrap; gap: 12px; max-width: 1000px; margin: 0 0 12px; }
+    figure { margin: 0; flex: 1 1 300px; }
+    figcaption { color: #a0a3b1; font-size: 13px; margin: 4px 0 0; }
+    canvas { width: 100%; height: auto; background: #000; border-radius: 6px; display: block; }
+    #status { font-weight: 600; min-height: 1.4em; }
+    #countdown { font-size: 40px; font-weight: 800; color: #f5c542; min-height: 1.2em; }
+    table { border-collapse: collapse; margin: 0 0 8px; }
+    td, th { padding: 3px 14px 3px 0; text-align: left; }
+    th { color: #a0a3b1; font-weight: 500; }
+    #behind { color: #f5c542; }
+    .offscreen { position: absolute; left: -9999px; width: 2px; height: 2px; }
+  </style>
+</head>
+<body>
+  <h1>Jester duel lab</h1>
+  <p class="sub">One clip, one subject. Everyone copies it at the same moment on their own device, and the best copy wins.</p>
+
+  <section id="join" class="panel">
+    <div class="row">
+      <input id="name" placeholder="Your name" size="12" />
+      <button id="create">New room</button>
+      <input id="code" placeholder="CODE" size="6" maxlength="4" />
+      <button id="enter">Join</button>
+    </div>
+    <label><input id="sim" type="checkbox" /> Simulated player (no camera, copies the clip with some wobble)</label>
+  </section>
+
+  <p id="status">Make a room in one tab, then join it from another tab or laptop with the code.</p>
+  <div id="countdown"></div>
+
+  <section id="lobby" class="panel hidden">
+    <h2>Room <span id="roomCode"></span> <small id="where" class="sub"></small></h2>
+    <ol id="roster"></ol>
+    <div id="hostControls" class="hidden">
+      <div class="row">
+        <label>Clip <select id="clip"></select></label>
+        <label>Look <select id="look">
+          <option value="blind">Blind: only the stick figure, never the clip</option>
+          <option value="watch">Watch first: see the clip once, then copy it</option>
+        </select></label>
+      </div>
+      <div class="row">
+        <label><input id="elim" type="checkbox" /> Elimination: last place is out each round; the last two play best of three</label>
+      </div>
+      <div class="row"><button id="start">Start round</button></div>
+    </div>
+    <p id="elimLine" class="sub"></p>
+  </section>
+
+  <section id="stage" class="stage hidden">
+    <figure><canvas id="clipCanvas" width="640" height="360"></canvas><figcaption>The subject</figcaption></figure>
+    <figure><canvas id="playerCanvas" width="640" height="480"></canvas><figcaption>You</figcaption></figure>
+  </section>
+
+  <section id="results" class="panel hidden">
+    <h2>Round <span id="roundNo"></span> standings</h2>
+    <table><thead><tr><th>Place</th><th>Player</th><th>Score</th><th>Timing</th></tr></thead><tbody id="standings"></tbody></table>
+    <p id="behind"></p>
+    <canvas id="revealCanvas" width="960" height="540"></canvas>
+    <p class="sub">The clip again, with every player's moves standing beside the subject.</p>
+    <div class="row"><button id="next" class="hidden">Next round</button></div>
+  </section>
+
+  <video id="cam" class="offscreen" playsinline muted></video>
+  <video id="clipVideo" class="offscreen" playsinline muted></video>
+  <script type="module" src="./src/duel-lab.ts"></script>
+</body>
+</html>

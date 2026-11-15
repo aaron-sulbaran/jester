@@ -419,3 +419,6 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
 #blindCanvas, #blindVideo { width: 100%; max-width: 960px; background: #000; }
 #blindBoard td { padding: 4px 12px 4px 0; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+
+/* Reveal: fast forward and skip. */
+.reveal-pace { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
