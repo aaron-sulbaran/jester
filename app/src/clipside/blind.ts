@@ -3,7 +3,7 @@
 // Placement comes from `placeSubject` in ../../../clip.
 
 import { steadyFps, typicalMs } from "./guideRate.ts";
-import { boneLengths, boxFromLandmarks, bodyTurns, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
+import { boneLengths, boxFromLandmarks, bodyTurns, growLimit, hideUnsureJoints, liftPose, NO_TURN, placeSubject, type BoneLengths, type Guide, type Outline, type Placement, type Turn, type View } from "../../../clip/src/index.ts";
 import { smoothTimeline, type Landmark } from "../../../engine/src/index.ts";
 import { drawPuppet, floorShadow, HAT_REACH, HEAD, newSwing, stageImage, suitFor, type Construction, type StageLook, type StageSpot, type Swing } from "./puppet.ts";
 
@@ -219,6 +219,18 @@ function puppetRoom(guide: Guide): Pick<Guide, "source" | "boxTrack" | "outlines
     return { ...f, box: { cx: (left + right) / 2, cy: (top + bottom) / 2, w: right - left, h: bottom - top } };
   });
   return { source: guide.source, boxTrack: { ...guide.boxTrack, frames }, outlines: frames.map(() => null) };
+}
+
+const rooms = new WeakMap<Guide, Pick<Guide, "source" | "boxTrack" | "outlines">>();
+
+/**
+ * How much the puppet may grow about (ax, ay) in canvas pixels (to match the player's size) and keep its whole room,
+ * hat, shoes and white edge included, on the canvas. Use with a view from `blindView(..., "fit", "puppet")`.
+ */
+export function puppetGrowLimit(guide: Guide, canvas: HTMLCanvasElement, view: View, ax: number, ay: number): number {
+  let room = rooms.get(guide);
+  if (!room) { room = puppetRoom(guide); rooms.set(guide, room); }
+  return growLimit(room, canvas, view, ax, ay);
 }
 
 function toCanvas(view: View, guide: Guide, x: number, y: number): [number, number] {
