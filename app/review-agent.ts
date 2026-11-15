@@ -92,20 +92,38 @@ export function promptVersion(): string {
 }
 
 /**
- * Extra settings for one run, passed to the agent's invoke: the eval sends callbacks (to count tokens), tags,
- * metadata and a run name, so a LangSmith trace can be found by case. The desk sends none.
+ * Extra settings for one run, for the eval; the desk sends none. Callbacks (to count tokens), tags, metadata, a
+ * run name and a run id go to the agent's invoke. `traceTo` names a LangSmith project to send this one run to
+ * (it needs LANGSMITH_API_KEY in the environment); runs without it are never traced.
  */
 export interface RunOptions {
   callbacks?: object[];
   tags?: string[];
   metadata?: Record<string, unknown>;
   runName?: string;
+  runId?: string;
+  traceTo?: string;
 }
 
-/** Waits for LangChain's background callbacks (LangSmith uploads) to finish, before a script exits. */
+interface TraceClient { awaitPendingTraceBatches?: () => Promise<void>; getRunUrl?: (o: { runId: string; projectOpts?: { projectName?: string } }) => Promise<string> }
+const tracers: { client: TraceClient; projectName: string }[] = [];
+
+/** Waits for LangChain's background callbacks and every LangSmith upload to finish, before a script exits. */
 export async function flushTraces(): Promise<void> {
   const { awaitAllCallbacks } = await import("@langchain/core/callbacks/promises");
   await awaitAllCallbacks();
+  await Promise.all(tracers.map((t) => t.client.awaitPendingTraceBatches?.()));
+}
+
+/** The LangSmith page of a traced run, or null when it cannot be looked up. Call after flushTraces(). */
+export async function traceUrl(runId: string): Promise<string | null> {
+  const t = tracers[0];
+  if (!t?.client.getRunUrl) return null;
+  try {
+    return await t.client.getRunUrl({ runId, projectOpts: { projectName: t.projectName } });
+  } catch {
+    return null;
+  }
 }
 
 /** Text of a LangChain message's content, whether a string or a list of blocks. */
@@ -173,12 +191,20 @@ export async function reviewSubmission(input: ReviewInput, settings: { apiKey: s
     ...input.frames.map((url) => ({ type: "image_url", image_url: { url } })),
   ];
 
+  const { traceTo, ...run } = settings.run ?? {};
+  if (traceTo) {
+    const { LangChainTracer } = await import("@langchain/core/tracers/tracer_langchain");
+    const tracer = new LangChainTracer({ projectName: traceTo });
+    tracers.push({ client: tracer.client as unknown as TraceClient, projectName: traceTo });
+    run.callbacks = [...(run.callbacks ?? []), tracer];
+  }
+
   // The timeout cancels the run itself, so a stuck review stops spending model calls.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("The Chamberlain took too long.")), TIMEOUT_MS);
   let state: { todos?: { content?: string }[]; messages?: { name?: string; content?: unknown; getType?: () => string }[] };
   try {
-    state = (await agent.invoke({ messages: [{ role: "user", content }] }, { ...settings.run, recursionLimit: 60, signal: controller.signal } as Parameters<typeof agent.invoke>[1])) as typeof state;
+    state = (await agent.invoke({ messages: [{ role: "user", content }] }, { ...run, recursionLimit: 60, signal: controller.signal } as Parameters<typeof agent.invoke>[1])) as typeof state;
   } catch (err) {
     if (controller.signal.aborted) throw new Error("The Chamberlain took too long.");
     throw err;

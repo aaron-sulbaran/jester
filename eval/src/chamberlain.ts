@@ -1,0 +1,227 @@
+// npm run chamberlain: replays every Chamberlain case through reviewSubmission (app/review-agent.ts) with the
+// prompt and model on disk, and reports agreement with what people decided, false approvals, the escalation rate,
+// and every case that came out differently. One case is one review (several model calls), so it costs money:
+// the plan line says how many reviews before anything runs, and the report gives tokens and dollars.
+//
+//   npm run chamberlain                          synthetic cases and every desk case
+//   npm run chamberlain -- --dry-run             list the cases and their truth; no model calls
+//   npm run chamberlain -- --source synthetic    only the committed synthetic cases (or: desk)
+//   npm run chamberlain -- --only name-missing,steer-frame-words
+//   npm run chamberlain -- --model claude-opus-5-5 --concurrency 2
+//   npm run chamberlain -- --trace-desk          also send desk cases (real frames) to LangSmith
+//
+// Keys: read from the review env file by absolute path (JESTER_REVIEW_ENV, else jester-deploy/.env.review found
+// beside a parent of this repo) and never printed. Desk cases are its sibling folder chamberlain-cases/, saved by
+// the dev server; reports go to chamberlain-cases/runs/. Both are outside the repo: they hold real titles.
+// With LANGSMITH_API_KEY in the env file, synthetic runs are traced to the LangSmith project
+// jester-chamberlain-eval. Desk runs are not, unless --trace-desk, since their frames show real people.
+
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { SYNTHETIC, syntheticCase } from "../chamberlain-cases.ts";
+import {
+  addUsage, classify, costUsd, deskCase, nameCheckHolds, renderReport, summarize,
+  type CaseFile, type CaseResult, type Decision, type EvalCase, type ReviewInput, type Run, type Usage,
+} from "./chamberlainCases.ts";
+
+const PROJECT = "jester-chamberlain-eval";
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+/** What the runner uses from app/review-agent.ts, loaded at run time so the eval's typecheck never needs the agent packages. */
+interface AgentModule {
+  DEFAULT_MODEL: string;
+  promptVersion(): string;
+  reviewSubmission(input: ReviewInput, settings: {
+    apiKey: string; model: string;
+    run?: { callbacks?: object[]; tags?: string[]; metadata?: Record<string, unknown>; runName?: string; runId?: string; traceTo?: string };
+  }): Promise<Decision>;
+  flushTraces(): Promise<void>;
+  traceUrl(runId: string): Promise<string | null>;
+}
+
+const { values: args } = parseArgs({
+  options: {
+    "dry-run": { type: "boolean", default: false },
+    source: { type: "string", default: "all" },
+    only: { type: "string" },
+    model: { type: "string" },
+    concurrency: { type: "string", default: "4" },
+    "trace-desk": { type: "boolean", default: false },
+  },
+});
+
+function findEnvFile(): string | null {
+  if (process.env.JESTER_REVIEW_ENV) return resolve(process.env.JESTER_REVIEW_ENV);
+  for (let dir = dirname(REPO), i = 0; i < 4; dir = dirname(dir), i++) {
+    const candidate = join(dir, "jester-deploy", ".env.review");
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** KEY=VALUE lines, as the dev server reads them. Missing file: nothing. */
+function readEnvFile(path: string | null): Record<string, string> {
+  if (!path) return {};
+  try {
+    const out: Record<string, string> = {};
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+      if (m && m[2]) out[m[1]!] = m[2].replace(/^["']|["']$/g, "");
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function deskCases(dir: string | null): EvalCase[] {
+  if (!dir || !existsSync(dir)) return [];
+  const out: EvalCase[] = [];
+  for (const name of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+    try {
+      out.push(deskCase(JSON.parse(readFileSync(join(dir, name), "utf8")) as CaseFile));
+    } catch {
+      console.warn(`Skipped ${name}: not a readable case file.`);
+    }
+  }
+  return out;
+}
+
+function lastRun(runsDir: string | null): Run | null {
+  if (!runsDir || !existsSync(runsDir)) return null;
+  const latest = readdirSync(runsDir).filter((f) => f.endsWith(".json")).sort().pop();
+  if (!latest) return null;
+  try {
+    return JSON.parse(readFileSync(join(runsDir, latest), "utf8")) as Run;
+  } catch {
+    return null;
+  }
+}
+
+/** Runs `work` over `items`, at most `limit` at a time, keeping the order of `items`. */
+async function pool<T, R>(items: T[], limit: number, work: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await work(items[i]!, i);
+    }
+  });
+  await Promise.all(lanes);
+  return out;
+}
+
+async function main(): Promise<number> {
+  const envFile = findEnvFile();
+  const env = readEnvFile(envFile);
+  const casesDir = envFile ? join(dirname(envFile), "chamberlain-cases") : null;
+  const runsDir = casesDir ? join(casesDir, "runs") : null;
+  const agent = (await import(new URL("../../app/review-agent.ts", import.meta.url).href)) as AgentModule;
+  const model = args.model ?? env.JESTER_REVIEW_MODEL ?? agent.DEFAULT_MODEL;
+  const prompt = agent.promptVersion();
+
+  const only = args.only ? new Set(args.only.split(",").map((s) => s.trim())) : null;
+  const all = [...(args.source === "desk" ? [] : SYNTHETIC.map(syntheticCase)), ...(args.source === "synthetic" ? [] : deskCases(casesDir))];
+  const cases = all.filter((c) => !only || only.has(c.id));
+  if (!cases.length) {
+    console.error(only ? `No case is named ${[...only].join(", ")}.` : "No cases to run.");
+    return 1;
+  }
+
+  const desk = cases.filter((c) => c.source === "desk");
+  const previous = lastRun(runsDir);
+  const perReview = previous?.results.length ? (costUsd(previous.model, previous.results.reduce((u, r) => addUsage(u, r.usage), { calls: 0, input: 0, output: 0 })) ?? 0) / previous.results.length : null;
+  console.log(`${cases.length} cases: ${cases.length - desk.length} synthetic, ${desk.length} from the desk (${desk.filter((c) => c.truth).length} with a person's outcome or a hand label).`);
+  console.log(`Each case is one Chamberlain review on ${model} (prompt ${prompt}): the Chamberlain and its playability checker, several model calls.${perReview ? ` Last run: about $${perReview.toFixed(3)} a review, so about $${(perReview * cases.length).toFixed(2)} for this one.` : ""}`);
+  if (desk.length && !casesDir) console.log("No env file found, so no desk cases.");
+
+  if (args["dry-run"]) {
+    for (const c of cases) {
+      const truth = c.truth ? [c.truth.want, ...c.truth.alsoOk].join(" or ") : "no truth";
+      console.log(`  ${c.id.padEnd(38)} ${truth.padEnd(26)} ${c.truthFrom}`);
+    }
+    return 0;
+  }
+
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.error(envFile ? `No ANTHROPIC_API_KEY in ${basename(envFile)}.` : "No review env file: set JESTER_REVIEW_ENV to jester-deploy/.env.review.");
+    return 2;
+  }
+  // Tracing is opt-in per run (traceTo), never global: a LANGSMITH_TRACING in the shell must not send desk frames.
+  for (const k of ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING"]) delete process.env[k];
+  const tracing = Boolean(env.LANGSMITH_API_KEY);
+  if (tracing) for (const [k, v] of Object.entries(env)) if (k.startsWith("LANGSMITH_") && k !== "LANGSMITH_TRACING") process.env[k] = v;
+  const secrets = [apiKey, env.LANGSMITH_API_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter((k): k is string => Boolean(k));
+  const scrub = (text: string) => secrets.reduce((t, k) => t.split(k).join("[key]"), text);
+
+  const runIds = new Map<string, string>();
+  const started = new Date().toISOString();
+  const results = await pool(cases, Number(args.concurrency) || 4, async (c, i): Promise<CaseResult> => {
+    const usage: Usage = { calls: 0, input: 0, output: 0 };
+    const meter = {
+      handleLLMEnd(output: { generations?: { message?: { usage_metadata?: { input_tokens?: number; output_tokens?: number } } }[][] }) {
+        const m = output.generations?.[0]?.[0]?.message;
+        usage.calls++;
+        usage.input += m?.usage_metadata?.input_tokens ?? 0;
+        usage.output += m?.usage_metadata?.output_tokens ?? 0;
+      },
+    };
+    const trace = tracing && (c.source === "synthetic" || args["trace-desk"]);
+    const runId = randomUUID();
+    if (trace) runIds.set(c.id, runId);
+    const t0 = Date.now();
+    let decision: Decision | null = null;
+    let error: string | null = null;
+    try {
+      decision = await agent.reviewSubmission(c.input, {
+        apiKey, model,
+        run: {
+          callbacks: [meter], tags: ["chamberlain-eval", c.source], metadata: { case: c.id, source: c.source, prompt },
+          runName: `chamberlain-eval ${c.id}`, runId, ...(trace ? { traceTo: env.LANGSMITH_PROJECT || PROJECT } : {}),
+        },
+      });
+    } catch (err) {
+      error = scrub((err as Error).message);
+    }
+    const outcome = classify(c.truth, decision);
+    const ms = Date.now() - t0;
+    console.log(`[${i + 1}/${cases.length}] ${c.id}: ${decision?.verdict ?? "failed"} (${outcome}), ${Math.round(ms / 1000)} s`);
+    return {
+      id: c.id, source: c.source, about: c.about, truth: c.truth, truthFrom: c.truthFrom,
+      before: c.before?.verdict ?? null, decision, error, outcome, nameHolds: nameCheckHolds(c.truth, decision), ms, usage,
+    };
+  });
+
+  if (tracing) {
+    await agent.flushTraces();
+    for (const r of results) {
+      const id = runIds.get(r.id);
+      if (id) r.traceUrl = await agent.traceUrl(id);
+    }
+  }
+
+  const run: Run = { at: started, model, prompt, results };
+  const report = renderReport(run, previous);
+  console.log(`\n${report}`);
+  if (runsDir) {
+    mkdirSync(runsDir, { recursive: true, mode: 0o700 });
+    chmodSync(runsDir, 0o700);
+    const stamp = started.replace(/[:.]/g, "-");
+    writeFileSync(join(runsDir, `${stamp}.json`), JSON.stringify(run, null, 2) + "\n", { mode: 0o600 });
+    writeFileSync(join(runsDir, `${stamp}.md`), report, { mode: 0o600 });
+    console.log(`Saved to ${join(runsDir, `${stamp}.md`)}.`);
+  }
+  if (tracing) console.log(`Traces: LangSmith project ${env.LANGSMITH_PROJECT || PROJECT}${args["trace-desk"] ? "" : " (synthetic cases only)"}.`);
+  else console.log("No LANGSMITH_API_KEY in the env file, so nothing was traced.");
+
+  const s = summarize(results);
+  if (s.falseApprovals) console.error(`${s.falseApprovals} false approval${s.falseApprovals === 1 ? "" : "s"}: the Chamberlain let in a clip it should not have.`);
+  return s.falseApprovals ? 1 : 0;
+}
+
+process.exitCode = await main();
