@@ -83,6 +83,9 @@ test("the report shows cost, changes since the last run and the differences, wit
   assert.match(md, /about \$0\.01/);
   assert.match(md, /1 verdict changed: c \(ask_a_person to approve\)/);
   assert.match(md, /### x: FALSE APPROVAL/);
+  const withChecks = renderReport({ at: "2026-11-15T06:00:00.000Z", model: "m", prompt: "p", results: [result({ outcome: "escalated", decision: { ...decided("ask_a_person"), contentCheck: "borderline", steering: true, playability: "unsure", precedent: "like the floss case" } })] }, null);
+  assert.match(withChecks, /Checks: content borderline, steering yes, playability unsure/);
+  assert.match(withChecks, /Precedent: like the floss case/);
   assert.doesNotMatch(md, /\u2014/);
 });
 

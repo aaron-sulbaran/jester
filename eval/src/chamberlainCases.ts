@@ -20,7 +20,14 @@ export interface ClipFacts {
   warnings: string[];
 }
 
-export interface ReviewInput { title: string | null; credit: string | null; facts: ClipFacts; frames: string[] }
+export interface ReviewInput {
+  title: string | null;
+  credit: string | null;
+  facts: ClipFacts;
+  frames: string[];
+  /** The precedents the Chamberlain read with this review (app/review-precedents.ts), replayed as captured. */
+  precedents?: unknown[];
+}
 
 export interface Decision {
   verdict: Verdict;
@@ -30,6 +37,11 @@ export interface Decision {
   framesCheck: string;
   findings: { from: string; text: string }[];
   steps: string[];
+  /** From the one-call Chamberlain (PR 128): passed through and shown in the report when present. */
+  contentCheck?: "clean" | "borderline" | "breaks_rules";
+  steering?: boolean;
+  playability?: "plays well" | "does not play" | "unsure";
+  precedent?: string;
 }
 
 /** A desk case file, as app/review-cases.ts writes it. */
@@ -256,6 +268,9 @@ export function renderReport(run: Run, previous: Run | null): string {
     if (r.decision) {
       const d = r.decision;
       lines.push(`- Now: ${d.verdict}. ${cell(d.reason)}`, `- Name: ${d.nameCheck}. ${cell(d.nameNote)}`, `- Frames: ${cell(d.framesCheck)}`);
+      const checks = [d.contentCheck && `content ${d.contentCheck}`, d.steering !== undefined && `steering ${d.steering ? "yes" : "no"}`, d.playability && `playability ${d.playability}`].filter(Boolean);
+      if (checks.length) lines.push(`- Checks: ${checks.join(", ")}`);
+      if (d.precedent) lines.push(`- Precedent: ${cell(d.precedent)}`);
       for (const f of d.findings) lines.push(`- ${f.from}: ${cell(f.text)}`);
     }
     if (r.traceUrl) lines.push(`- Trace: ${r.traceUrl}`);
