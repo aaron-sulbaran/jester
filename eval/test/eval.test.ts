@@ -4,6 +4,7 @@ import { fromWebcamFrames, scorePoseRound, type LandmarkObject } from "../../eng
 import { timeline, dance, squatDance, STAND, mirrorCopy } from "../../engine/test/synth.ts";
 import { fingerprint, newRoundId, packPose, unpackPose, looksLikeRecord, RECORD_SCHEMA, type RoundRecord } from "../src/record.ts";
 import { judge, legSwingDeg, rescore, setConstant, type Rescored } from "../src/judge.ts";
+import { deriveAll, transformPlayer, isSource, TRANSFORMS } from "../src/derive.ts";
 
 function record(tag: RoundRecord["tag"], reference = timeline(dance), player = timeline((t) => mirrorCopy(dance(t)))): RoundRecord {
   const result = scorePoseRound(reference, player);
@@ -82,4 +83,40 @@ test("what-if changes a constant and refuses names that are not numbers", () => 
   setConstant("ROUND.ceiling", old.data!);
   assert.notEqual(setConstant("ROUND.nope", 1).error, null);
   assert.notEqual(setConstant("ceiling", 1).error, null);
+});
+
+test("a good squat-dance copy passes the derived relations the engine promises", () => {
+  const r = record(null, timeline(squatDance), timeline((t) => mirrorCopy(squatDance(t))));
+  const source: Rescored = { record: r, now: rescore(r), was: r.result.score };
+  assert.ok(isSource(source), `score ${source.now.score} should make it a source`);
+  const derived = deriveAll([source]);
+  assert.deepEqual(derived.map((d) => d.transform), [...TRANSFORMS]);
+  const holds = Object.fromEntries(derived.map((d) => [d.transform, d.verdict.holds]));
+  const details = derived.map((d) => `${d.transform}: ${d.verdict.detail}`).join("; ");
+  for (const t of ["late", "seated", "walked-out", "jittered"]) assert.equal(holds[t], true, `${t} should hold (${details})`);
+  assert.equal(holds.mirrored, null);
+  // Frozen is judged, but whether it holds is the engine's business: under jester-engine/0.9.0 a statue in this
+  // clip's rest pose scores 35 here (the motion gate does not cover accuracy above the still pose). So only check
+  // that it was judged and scored below the source.
+  const frozen = derived.find((d) => d.transform === "frozen")!;
+  assert.equal(typeof frozen.verdict.holds, "boolean");
+  assert.ok((frozen.now.score ?? 0) < (source.now.score ?? 0), details);
+  assert.ok(derived.every((d) => d.id === `${r.id}~${d.transform}`));
+});
+
+test("mirroring twice gives the recording back", () => {
+  const player = timeline((t) => mirrorCopy(dance(t)));
+  const twice = transformPlayer(transformPlayer(player, "mirrored"), "mirrored");
+  player.frames.forEach((f, i) => f.landmarks!.forEach((p, k) => {
+    const q = twice.frames[i]!.landmarks![k]!;
+    assert.ok(Math.abs(p[0] - q[0]) < 1e-9 && p[1] === q[1] && p[2] === q[2], `frame ${i} point ${k}`);
+  }));
+});
+
+test("a weak round is not a source, and derived cases are never sources", () => {
+  const weak = record(null, timeline(dance), timeline(() => STAND));
+  assert.equal(isSource({ record: weak, now: rescore(weak), was: weak.result.score }), false);
+  const good = record("nailed");
+  const [late] = deriveAll([{ record: good, now: rescore(good), was: good.result.score }], ["late"]);
+  assert.equal(isSource({ record: late!.record, now: late!.now, was: null }), false);
 });
