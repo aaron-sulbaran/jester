@@ -55,7 +55,7 @@ const rows = await runBlindGame(scene, names, ui, { simMode, noise, getCamera },
 - What a player sees: never the role's name. `ui.showPart` is called while the stage shows the role's first frame; the player picks a body part (offered for every role) and can watch it once (`role.preview()`, unscored). A person copied with the whole body is scored limb by limb (pose channel); anything copied with a hand or the head is scored as that part following the role's box (trajectory channel).
 - During a turn the role is drawn smoothly (blended between samples) with a faint copy `leadMs` (400) ahead, so the next move shows coming.
 - Speed: `speed` 1, 0.75 or 0.5 slows every turn. Turns are scored in the clip's own time (the player's frames are sped back up), so slow motion does not change scores, and lag is forgiven in proportion. The reveal plays at the clip's own speed with each cutout sped up to match.
-- End: `ui.results(rows)` (name, role, look, score, winner or tied, plus `guide` and `timeline` in clip media ms for Lisa's `drawReveal`), then the reveal records on `ui.revealCanvas()` and `ui.revealReady(url)` hands over a webm to play and download.
+- End: `ui.results(rows)` (name, role, look, score, winner or tied, plus `guide` and `timeline` in clip media ms for Lisa's `drawReveal`), then the reveal records on `ui.revealCanvas()` and `ui.revealReady(url)` hands over a webm to play and download. The reveal is four segments in one file (`recordSegments` in `src/cutout.ts`): a title card, the cast over the clip at the clip's own speed, the busiest 6 seconds side by side with the original, and a cast card (each player's cutout, role, score, winner).
 
 ## How the engine is wired
 
