@@ -9,7 +9,7 @@ export interface BlindStyle { background: string; color: string }
 
 const DEFAULT_STYLE: BlindStyle = { background: "#16161d", color: "#f5c542" };
 
-const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]] as const;
+import { DETAIL_BONES as BONES } from "../../../spikes/pose-match/skeleton.mjs";
 const MIN_VISIBILITY = 0.5;
 
 /** The guide's frame at media time `mediaMs`, clamped to its range. */

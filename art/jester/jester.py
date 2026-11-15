@@ -14,6 +14,7 @@ P = argparse.ArgumentParser()
 P.add_argument('--out', default='app/public/look/jester')
 P.add_argument('--test', action='store_true', help='Render one still for art direction')
 P.add_argument('--badge', action='store_true', help='Render the cap and collar with the face left open, for player face badges')
+P.add_argument('--run', action='store_true', help='Render a side profile run cycle (16 frames) for the loading bars')
 P.add_argument('--faces', action='store_true', help='Render every animation with a see-through face hole per player colourway, plus where the face sits in each frame')
 ARGS = P.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 OUT = Path(ARGS.out).resolve()
@@ -387,6 +388,19 @@ def pose(anim, frame):
             knees[i].rotation_euler.x = 1.9*crouch+.15*max(0,z/1.30)
             caps[i].rotation_euler.y = side*.40*math.sin(frame*1.15)*math.sin(math.pi*t)
             caps[i].rotation_euler.x = .25*math.sin(frame*.95)*math.sin(math.pi*t)
+    elif anim=='run':
+        # A side profile run: legs swing forward and back with the knee folding on the way through, arms pump
+        # against the legs, a forward lean, two bounces per stride, cap points flopping behind.
+        for i, side in enumerate((-1, 1)):
+            phase = p + i*math.pi
+            legs[i].rotation_euler.x = -.95*math.sin(phase)
+            knees[i].rotation_euler.x = 1.35*max(0, math.sin(phase + 1.2))
+            arms[i].rotation_euler.x = -.95*math.sin(phase + math.pi)
+            elbows[i].rotation_euler.x = -1.15
+            caps[i].rotation_euler.x = .32*math.sin(2*p - .9) - .25
+        hips.location.z += .11*abs(math.sin(p))
+        torso.rotation_euler.x = .32
+        head.rotation_euler.x = -.16 + .05*math.sin(2*p)
     else:
         slump, shrug = smooth_keys(frame, [
             (0, (0, 0)), (5, (1, 0)), (8, (1, .15)),
@@ -424,6 +438,38 @@ def render(path,size):
     scene.render.filepath=str(path)
     bpy.ops.render.render(write_still=True)
 
+
+if ARGS.run:
+    # The loading bar runner: the classic jester seen from its side, running to the right, 16 frames a loop.
+    ANIMS['run'] = 16
+    SIZE = 192
+    # Mostly side on, turned a little toward the front so both cap points and the face still read.
+    camera.location = (-11 * math.cos(math.radians(30)), -11 * math.sin(math.radians(30)), 1.95)
+    camera.rotation_euler = (Vector((0, 0, 1.95)) - camera.location).to_track_quat('-Z', 'Y').to_euler()
+    camera.data.ortho_scale = 4.7
+    palette(PALETTES['classic'])
+    for ob in rig: ob.animation_data_clear()
+    for frame in range(17):
+        pose('run', frame)
+    TEMP = OUT / '_run'
+    TEMP.mkdir(exist_ok=True)
+    for frame in range(16):
+        scene.frame_set(frame)
+        render(TEMP / f'run-{frame:02}.png', SIZE)
+    subprocess.run(['/usr/bin/env', 'python3', '-c', r"""
+from PIL import Image
+from pathlib import Path
+import sys, shutil
+out = Path(sys.argv[1])
+strip = Image.new('RGBA', (192 * 16, 192))
+for f in range(16):
+    with Image.open(out / '_run' / f'run-{f:02}.png') as im:
+        strip.paste(im, (192 * f, 0))
+strip.save(out / 'classic-run.webp', format='WEBP', quality=82, method=4, alpha_quality=100)
+shutil.rmtree(out / '_run')
+""", str(OUT)], check=True)
+    print('RUN_SECONDS', round(time.monotonic() - START, 2))
+    sys.exit(0)
 
 if ARGS.faces:
     # Player jesters: the face is a holdout (transparent, but it still hides what is behind it) with its ink

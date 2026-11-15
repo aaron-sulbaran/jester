@@ -344,6 +344,52 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
 .cast-slot.won { transform: scale(1.12) translateY(-4%); z-index: 2; }
 .cast-slot.lost { opacity: .85; }
 
+/* ---------- Loading bars: a dashed paper track, a marching striped fill, the jester running on top ---------- */
+/* The plain <progress> already looks like the paper track, so the first frame (and no JavaScript) matches. */
+progress { -webkit-appearance: none; appearance: none; height: 18px; border: 2.5px dashed var(--ink); border-radius: 10px; background: var(--photo); box-shadow: 3px 4px 0 var(--shade); overflow: hidden; }
+progress::-webkit-progress-bar { background: var(--photo); }
+progress::-webkit-progress-value { background: repeating-linear-gradient(-45deg, var(--ticket) 0 8px, var(--stamp) 8px 16px); }
+progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(--ticket) 0 8px, var(--stamp) 8px 16px); }
+.jbar { --p: 0; --run: 64px; position: relative; container-type: inline-size; width: min(100%, 440px); height: calc(var(--run) + 4px); }
+.jbar-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* The track is inset by half a runner each side, so the runner's middle sits exactly on the fill's edge. */
+.jbar-track { position: absolute; left: calc(var(--run) / 2); right: calc(var(--run) / 2); bottom: 0; height: 18px; background: var(--photo); border: 2.5px dashed var(--ink); border-radius: 10px; box-shadow: 3px 4px 0 var(--shade); overflow: hidden; }
+.jbar-fill { position: absolute; inset: 0; background: repeating-linear-gradient(-45deg, var(--ticket) 0 8px, var(--stamp) 8px 16px); clip-path: inset(0 calc((1 - var(--p)) * 100%) 0 0); transition: clip-path .3s linear; }
+/* The fill drives the runner, so the two never drift apart. */
+.jbar-runner { position: absolute; left: 0; bottom: 13px; width: var(--run); height: var(--run); background: url("/jester/classic-run.webp") 0 0 / calc(16 * var(--run)) var(--run) no-repeat; transform: translateX(calc(var(--p) * (100cqw - var(--run)))); transition: transform .3s linear; filter: drop-shadow(2px 3px 0 var(--shade)); }
+#solo .jbar, #submitForm .jbar { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .jbar-fill, .jbar-runner { transition: none; } }
+
+/* ---------- Home, the leave check, Start over ---------- */
+/* Home: a paper tab taped to the top left of every screen once you leave the start. */
+.game-nav { position: fixed; z-index: 20; top: 14px; left: 14px; }
+.tab-btn { display: grid; justify-items: center; gap: 0; min-height: 44px; padding: 0 6px 2px; border: 0; cursor: pointer; background: none; font: 400 15px var(--type); color: var(--ink); rotate: -3deg; filter: drop-shadow(3px 4px 0 var(--shade)); transition: transform .15s var(--ease); }
+.tab-btn .tent { width: 76px; height: auto; display: block; }
+.tent-label { margin-top: -2px; padding: 0 8px; background: var(--photo); box-shadow: 0 1px 0 var(--shade); }
+.tab-btn:focus-visible { outline: 3px solid var(--pen); outline-offset: 3px; }
+.tab-btn:hover { transform: translateY(-2px) rotate(2deg) scale(1.06); }
+.leave { border: 0; padding: 0; background: none; overflow: visible; }
+.leave::backdrop { background: rgba(30, 27, 24, .45); }
+.leave[open] { display: grid; gap: 18px; justify-items: center; }
+/* Start over: shown only in the first seconds of a turn, big and on the stage, with a bar running out. */
+#screen-turn .stage-wrap { position: relative; }
+.restart { position: absolute; z-index: 8; left: 50%; top: 16%; translate: -50% 0; display: grid; gap: 6px; justify-items: center; }
+.restart .btn-quiet { min-height: 60px; font-size: 22px; padding: 12px 26px 12px 46px; box-shadow: 6px 7px 0 var(--shade); rotate: -1.5deg; }
+.restart-bar { width: 240px; height: 8px; background: rgba(255, 254, 250, .6); box-shadow: 2px 3px 0 var(--shade); overflow: hidden; }
+.restart-bar i { display: block; height: 100%; background: var(--stamp); transform-origin: left; }
+.restart.running .restart-bar i { animation: drain var(--window, 5s) linear forwards; }
+@keyframes drain { to { transform: scaleX(0); } }
+
+/* ---------- How to play ---------- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px; width: min(100%, 1160px); counter-reset: step; }
+.step { position: relative; display: grid; gap: 8px; align-content: start; padding: 14px 14px 18px; background: var(--photo); box-shadow: var(--lift); text-align: left; rotate: -1.2deg; counter-increment: step; }
+.step:nth-child(even) { rotate: 1.2deg; }
+.step::before { content: counter(step); position: absolute; top: -18px; left: -14px; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--ticket); font: 400 26px var(--sticker); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; color: var(--ticket); filter: url(#sticker); }
+.step-pic { display: grid; place-items: center; aspect-ratio: 16 / 10; background: #2E4593; color: var(--ticket); }
+.step-pic svg { width: 62%; height: 80%; }
+.step b { font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
+.step > span:last-child { font-size: 15px; line-height: 1.4; }
+
 /* ---------- Motion: one moment per screen, and quick reactions to touch ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .screen:not([hidden]) > * { animation: land .45s var(--ease) both; }
@@ -360,6 +406,11 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
   .place { animation: land .5s var(--ease) both; animation-delay: calc(var(--i) * .2s + .3s); }
   .wins .letters span { animation: slap .4s var(--ease) both; animation-delay: calc(var(--n) * .05s); }
   @keyframes slap { from { opacity: 0; transform: scale(1.8) rotate(12deg); } }
+  /* Stripes march forward one period (16 px across at 45 degrees is 22.63 px along the bar); the jester runs 16 frames. */
+  .jbar-fill { animation: march .6s linear infinite; }
+  @keyframes march { to { background-position: 22.63px 0; } }
+  .jbar-runner { animation: run-cycle .66s steps(16) infinite; }
+  @keyframes run-cycle { to { background-position-x: calc(-16 * var(--run)); } }
   .jester { animation: strip 1s steps(24) infinite; }
   .jester-win { animation-iteration-count: 3; animation-fill-mode: forwards; }
   @keyframes strip { to { background-position-x: calc(-24 * 150px); } }
@@ -390,6 +441,11 @@ progress { width: min(100%, 420px); height: 12px; accent-color: var(--pen); }
   .place { grid-template-columns: 84px 1fr auto; }
   .place-score { font-size: 40px; }
   .crown-head { min-height: 90px; }
+  .steps { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .step-pic { aspect-ratio: 16 / 7; }
+  .game-nav { top: 8px; left: 8px; }
+  /* Room for the Home tab, so it never sits on the first line of a screen. */
+  body:not([data-screen="start"]):not([data-screen="howto"]) .screen { padding-top: 64px; }
   .crown-wrap .stage { aspect-ratio: 4 / 5; }
   .cast-row { flex-wrap: wrap; align-content: flex-end; }
   .cast-slot { flex: 1 1 40%; max-width: 48%; }
