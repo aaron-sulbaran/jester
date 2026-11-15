@@ -32,7 +32,7 @@ export function installFeel() {
 
 /** The button each waiting screen moves on with. */
 const SKIP_BUTTONS: Partial<Record<string, string>> = {
-  howto: "howtoGo", handover: "handoverGo", watch: "watchGo", reveal: "revealSkip", crown: "crownGo",
+  howto: "howtoGo", handover: "handoverGo", reveal: "revealSkip", crown: "crownGo",
 };
 /** Waits that the skip key ends early (the drum roll before the reveal). */
 const skipWaits = new Set<() => void>();

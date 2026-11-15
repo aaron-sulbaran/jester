@@ -94,7 +94,7 @@
     <section class="screen" id="screen-howto" hidden>
       <div class="masking"><h2 class="tape">How to play</h2></div>
       <ol class="steps">
-        <li class="step"><span class="step-pic" aria-hidden="true"><span class="clip-q">?</span></span><b>Pick a clip.</b><span>In Blind, nobody sees it. In Watch first, you all watch it together.</span></li>
+        <li class="step"><span class="step-pic" aria-hidden="true"><span class="clip-q">?</span></span><b>Pick a clip.</b><span>In Blind, nobody sees it. In Normal, you dance along with it.</span></li>
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 200 130"><path d="M50 22 H150 Q156 22 156 28 V88 H44 V28 Q44 22 50 22 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M60 34 H140 V78 H60 Z" fill="#2848C8"/><path d="M30 92 H170 L160 106 H40 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round"/><path d="M128 118 Q160 124 176 108" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round"/><path d="M168 100 L178 107 L166 114" fill="none" stroke="#FFFEFA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>Pass the laptop.</b><span>Each player gets a secret part from the clip: a person, or a thing like a ball.</span></li>
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="-20 -30 340 300"><use href="/art.svg#dog" width="300" height="180" y="60" style="color: rgba(255, 254, 250, .32)" /><use href="/art.svg#player" x="95" y="-20" width="140" height="190" style="color: var(--ticket)" /></svg></span><b>Copy the shape.</b><span>Stand back so your whole body is in view. Get inside the shape and move when it moves, like a mirror.</span></li>
         <li class="step"><span class="step-pic" aria-hidden="true"><svg viewBox="0 0 300 180"><use href="/art.svg#crawl" /></svg></span><b>See what you did.</b><span>Everyone is cut out into the clip, then the best jester gets the spotlight.</span></li>
@@ -112,7 +112,7 @@
 
       <div class="modes-pick" role="radiogroup" aria-label="Game mode">
         <button type="button" class="mode" role="radio" data-mode="blind" aria-checked="true"><b>Blind</b><span>You only see your shape. Everyone finds out at the end.</span></button>
-        <button type="button" class="mode" role="radio" data-mode="watch" aria-checked="false"><b>Watch first</b><span>Everyone watches the clip, then plays it.</span></button>
+        <button type="button" class="mode" role="radio" data-mode="normal" aria-checked="false"><b>Normal</b><span>Dance along with the clip.</span></button>
       </div>
       <p class="typed mode-says" id="modeSays" aria-hidden="true"></p>
 
@@ -194,27 +194,6 @@
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
         <button type="button" class="link" id="roomBack">Back</button>
-      </div>
-    </section>
-
-    <!-- Watch first: the whole group watches the clip once before the parts are dealt. -->
-    <section class="screen" id="screen-watch" hidden>
-      <div class="masking"><h2 class="tape">Everyone, watch this.</h2></div>
-      <div class="stage-wrap reveal-wrap">
-        <div class="box">
-          <div class="board-wrap" aria-hidden="true"><div class="board"></div></div>
-          <div class="inside">
-            <div class="walls" aria-hidden="true"></div>
-            <div class="stage"><canvas id="watchStage" width="960" height="540" aria-label="The clip"></canvas></div>
-            <div class="valance" aria-hidden="true"><i></i></div>
-            <div class="curtain l" aria-hidden="true"><i></i><span class="washi w-mint"></span></div>
-            <div class="curtain r" aria-hidden="true"><i></i><span class="washi w-pink"></span></div>
-          </div>
-        </div>
-      </div>
-      <div class="row-actions">
-        <button type="button" class="btn btn-quiet" id="watchAgain">Watch again</button>
-        <button type="button" class="btn btn-main" id="watchGo"><span class="ticket"><span class="ticket-text">Deal the parts</span></span></button>
       </div>
     </section>
 
