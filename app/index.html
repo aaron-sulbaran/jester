@@ -385,15 +385,21 @@
       <div class="start-foot" id="startFoot">
         <div class="start-actions" id="startActions">
           <button type="button" class="btn btn-main" id="play"><span class="ticket"><span class="ticket-text" id="playLabel">Play</span></span></button>
-          <!-- One way online: "Each on your own device" in How? presses this for you (ui/room.ts listens on it). -->
-          <button type="button" class="btn btn-quiet" id="playOnline" hidden>Play online</button>
         </div>
 
-        <!-- Send in a clip: its own card in the Play row; the form has its own screen (#screen-submit). -->
-        <button type="button" class="send-card" id="submitOpen" aria-describedby="sendInviteText">
+        <!-- The two other ways in, as matching paper cards beside the ticket: the online room (ui/room.ts listens on
+             #playOnline; "Each on your own device" in How? opens the same room), and Send in a clip (#screen-submit). -->
+        <button type="button" class="send-card start-door" id="playOnline" aria-describedby="playOnlineText">
+          <span class="washi w-mint" aria-hidden="true"></span>
+          <svg class="ico start-door-ico" aria-hidden="true"><use href="#ico-online" /></svg>
+          <b class="send-card-name">Play online</b>
+          <span class="send-card-text" id="playOnlineText">Each on your own phone or laptop. Make a room or join one with a code.</span>
+        </button>
+        <button type="button" class="send-card start-door" id="submitOpen" aria-describedby="sendInviteText">
           <span class="washi w-dots" aria-hidden="true"></span>
+          <svg class="ico start-door-ico" aria-hidden="true"><use href="#ico-send" /></svg>
           <b class="send-card-name">Send in a clip</b>
-          <span class="send-card-text" id="sendInviteText">Got a dance or a trick on your phone? Everyone gets to play it.</span>
+          <span class="send-card-text" id="sendInviteText">Got a dance on your phone? Add it to the library.</span>
         </button>
       </div>
       <p class="problem" id="startProblem" role="alert" hidden></p>
