@@ -52,6 +52,21 @@
       </div>
       <p id="blindStatus">Pick a clip.</p>
       <button id="blindDeal" disabled>Deal secret roles</button>
+      <div id="onlineBlind">
+        <h3>Or play online, each on your own device</h3>
+        <div class="row">
+          <label>Your name <input id="onlineName" size="10" /></label>
+          <button id="onlineCreate">Create a room</button>
+          <label>or code <input id="onlineCode" size="5" maxlength="4" /></label>
+          <button id="onlineJoin">Join</button>
+        </div>
+        <div id="onlineLobby" class="hidden">
+          <p>Room <b id="onlineRoomCode"></b> <span id="onlineWhere"></span></p>
+          <ul id="onlineRoster"></ul>
+          <p id="onlineHostRow" class="hidden">You are the host. Pick Dribble or Dancer and a ball above, and a speed, then <button id="onlineDeal" disabled>Deal and start</button></p>
+          <p id="onlineGuestRow" class="hidden">Waiting for the host to deal the roles.</p>
+        </div>
+      </div>
     </div>
     <div id="blindTurn" class="hidden">
       <h2 id="turnTitle"></h2>

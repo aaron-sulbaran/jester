@@ -24,13 +24,13 @@ type RoomLike = {
   on(event: "update" | "start", fn: (arg: never) => void): () => void;
 };
 
-/** Host: pick a random role for every player in the room and start the round with the deal attached. */
-export function hostDeal(room: RoomLike, scene: Scene, sceneId: string) {
+/** Host: pick a random role for every player in the room and start the round with the deal attached. `extra` rides along (e.g. the speed). */
+export function hostDeal(room: RoomLike, scene: Scene, sceneId: string, extra: object = {}) {
   const players = room.roster();
   const seats = deal(players.map((p) => p.id), scene.guides);
   const assign: Record<string, number> = {};
   players.forEach((p, i) => { assign[p.id] = scene.guides.indexOf(seats[i]!.guide); });
-  return room.start(sceneId, 0, { assign });
+  return room.start(sceneId, 0, { ...extra, assign });
 }
 
 /** Play my own role on this device, then send my score and recording (pose only) to the room. */
