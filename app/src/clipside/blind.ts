@@ -38,6 +38,27 @@ export function traceOutline(ctx: CanvasRenderingContext2D, outline: Outline, ma
   ctx.closePath();
 }
 
+/** The pose's bones for frame `index`, if the guide has a pose there. */
+function drawBones(ctx: CanvasRenderingContext2D, guide: Guide, index: number, map: (x: number, y: number) => [number, number], color: string, width: number, alpha: number) {
+  const landmarks = guide.timeline?.frames[index]?.landmarks;
+  if (!landmarks) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  for (const [a, b] of BONES) {
+    const p = landmarks[a], q = landmarks[b];
+    if (!p || !q || p[2] < MIN_VISIBILITY || q[2] < MIN_VISIBILITY) continue;
+    const [ax, ay] = map(p[0], p[1]);
+    const [bx, by] = map(q[0], q[1]);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /**
  * Draws frame `index` of the guide as the player would see it. When the subject is missing at
  * that frame the canvas is left plain. Line widths follow the subject's drawn size.
@@ -71,23 +92,15 @@ export function drawBlind(
     ctx.strokeStyle = style.color;
     ctx.lineWidth = lineWidth;
     ctx.stroke();
+    // The mask is simplified to a few dozen points, so arms and legs melt into a blob. For a person, the bones
+    // inside the silhouette keep the limbs readable (a thing has no pose, so it stays a plain outline).
+    drawBones(ctx, guide, index, map, style.color, lineWidth * 1.4, 0.8);
     return;
   }
 
   const landmarks = guide.timeline?.frames[index]?.landmarks;
   if (!landmarks) return;
-  ctx.strokeStyle = style.color;
-  ctx.lineWidth = lineWidth * 2;
-  for (const [a, b] of BONES) {
-    const p = landmarks[a], q = landmarks[b];
-    if (!p || !q || p[2] < MIN_VISIBILITY || q[2] < MIN_VISIBILITY) continue;
-    const [ax, ay] = map(p[0], p[1]);
-    const [bx, by] = map(q[0], q[1]);
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(bx, by);
-    ctx.stroke();
-  }
+  drawBones(ctx, guide, index, map, style.color, lineWidth * 2, 1);
   const nose = landmarks[0];
   if (nose && nose[2] >= MIN_VISIBILITY) {
     const [nx, ny] = map(nose[0], nose[1]);
