@@ -1,6 +1,6 @@
 # Jester referee coach (LangChain deep agent)
 
-A `createDeepAgent` agent that investigates the round log with the real, deterministic scorer and reports to Alex. It never scores a round and never edits the engine. Plan: `docs/design/eval-deep-agent.md`.
+A `createDeepAgent` agent that investigates the round log with the real, deterministic scorer and reports to Alex. It never scores a round and never edits the engine. Plan: `jester/design/eval-deep-agent.md` in the team hub (design docs moved there in jester#81).
 
 ## Setup
 
