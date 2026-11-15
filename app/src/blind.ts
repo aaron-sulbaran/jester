@@ -1446,8 +1446,10 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
         c.drawImage(panelR, side.xR, side.y, side.w, side.h);
         c.save();
         c.font = font(CH, 0.055, 800); c.textAlign = "center"; c.textBaseline = "middle";
-        c.fillStyle = "#ffffff"; c.fillText("The original", side.xL + side.w / 2, side.y - CH * 0.055);
-        c.fillStyle = theme.accent; c.fillText("Your cast", side.xR + side.w / 2, side.y - CH * 0.055);
+        // Both labels share one style: same font, same colour.
+        c.fillStyle = theme.accent;
+        c.fillText("The original", side.xL + side.w / 2, side.y - CH * 0.055);
+        c.fillText("Your cast", side.xR + side.w / 2, side.y - CH * 0.055);
         c.restore();
       },
     },
