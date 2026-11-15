@@ -95,27 +95,30 @@ export function grabKey(linkKey: string, startMs: number, endMs: number): string
 /**
  * Frames grabbed live arrive unevenly (the tracker is busy, the tab stutters). The clip side
  * expects one frame every 1000 / sampleHz ms, so each slot from `startMs` to `endMs` takes the
- * grabbed frame nearest to it, stamped with the slot's time. `stretched` counts slots whose
- * nearest frame was more than one slot away.
+ * grabbed frame nearest to it, stamped with the slot's time. `nearest` is that grabbed frame for
+ * each slot, so anything else read from it can follow. `stretched` counts slots whose nearest
+ * frame was more than one slot away.
  */
-export function evenFrames(
-  grabbed: readonly FrameDetections[],
+export function evenFrames<T extends FrameDetections>(
+  grabbed: readonly T[],
   startMs: number,
   endMs: number,
   sampleHz: number,
-): { frames: FrameDetections[]; stretched: number } {
+): { frames: FrameDetections[]; nearest: T[]; stretched: number } {
   const sorted = [...grabbed].sort((a, b) => a.tMs - b.tMs);
   const frames: FrameDetections[] = [];
+  const nearest: T[] = [];
   let stretched = 0;
-  if (sorted.length === 0) return { frames, stretched };
+  if (sorted.length === 0) return { frames, nearest, stretched };
   const stepMs = 1000 / sampleHz;
   let j = 0;
   for (let k = 0; startMs + k * stepMs < endMs; k++) {
     const t = startMs + k * stepMs;
     while (j + 1 < sorted.length && Math.abs(sorted[j + 1]!.tMs - t) <= Math.abs(sorted[j]!.tMs - t)) j++;
-    const nearest = sorted[j]!;
-    if (Math.abs(nearest.tMs - t) > stepMs) stretched++;
-    frames.push({ tMs: Math.round(t), people: nearest.people, signature: nearest.signature });
+    const from = sorted[j]!;
+    if (Math.abs(from.tMs - t) > stepMs) stretched++;
+    frames.push({ tMs: Math.round(t), people: from.people, signature: from.signature });
+    nearest.push(from);
   }
-  return { frames, stretched };
+  return { frames, nearest, stretched };
 }

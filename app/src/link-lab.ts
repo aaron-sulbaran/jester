@@ -3,13 +3,13 @@
 // other tab. Only the people analysis is saved. URL option: ?link=<pasted link> opens it at once.
 // After each grab, window.__linkLab holds a summary.
 
-import { pointNearFrame, type Box, type Guide } from "../../clip/src/index.ts";
-import { finishClip, subjectGuides, type Prepared } from "./clipside/analyze.ts";
+import { pointNearFrame, type Box, type Guide, type ThingPoint } from "../../clip/src/index.ts";
+import { subjectGuides, type Prepared } from "./clipside/analyze.ts";
 import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
 import { canCaptureTab, captureTab, NO_TAB_CAPTURE } from "./clipside/capture.ts";
 import {
   grabFromOtherTab, grabFromPlayer, lastGrab, loadGrab, MAX_GRAB_MS, MIN_GRAB_MS, rememberGrab, TOO_SHORT,
-  type GrabResult, type GrabStats, type OtherTabGrab,
+  type GrabOptions, type GrabResult, type GrabStats, type OtherTabGrab,
 } from "./clipside/grab.ts";
 import { grabKey, parseLink, type ParsedLink } from "./clipside/link.ts";
 import { createPlayer, EMBED_OFF, STATE, type YtPlayer } from "./clipside/youtube.ts";
@@ -27,7 +27,10 @@ interface LabSummary {
   seconds: number | null;
   saved: "saved" | "fresh";
   warnings: string[];
-  roles: { guides: string[]; skipped: { number: number; reason: string }[] };
+  roles: { guides: string[]; skipped: { number: number; label?: string; reason: string }[] };
+  /** The roles ticked, and for how many players. */
+  picked: string[];
+  players: number;
   guide: { label: string; range: Guide["range"]; pace: Guide["pace"]; timelineFrames: number; outlineFrames: number } | null;
   error: string | null;
 }
@@ -59,7 +62,9 @@ const timer = $("timer");
 const live = $<HTMLCanvasElement>("live");
 const progress = $<HTMLProgressElement>("progress");
 const confirmCanvas = $<HTMLCanvasElement>("confirm");
-const people = $("people");
+const rolesList = $("roles");
+const rolesNote = $("roles-note");
+const playersSelect = $<HTMLSelectElement>("players");
 const blindCanvas = $<HTMLCanvasElement>("blind");
 const facts = $<HTMLTableElement>("facts");
 
@@ -67,6 +72,7 @@ const STEP_MS = 1000 / 15;
 const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]] as const;
 const CHOSEN = "#f5c542";
 const OTHERS = "#4fc3f7";
+const NOT_A_ROLE = "#777";
 
 let link: ParsedLink | null = null;
 let player: YtPlayer | null = null;
@@ -80,6 +86,15 @@ let view: View | null = null;
 let clockStart = 0;
 let lastSeekAt = 0;
 let look: Look = "outline";
+/** Every subject a role can be made for (people first, then things), and the ones ticked, by label. */
+let roleGuides: Guide[] = [];
+let skippedRoles: { number: number; label?: string; reason: string }[] = [];
+const picked = new Set<string>();
+
+/** What to look for while grabbing, chosen before the grab. */
+function grabOptions(): GrabOptions {
+  return { things: document.querySelector<HTMLInputElement>('input[name="follow"]:checked')?.value === "things" };
+}
 
 function setStatus(...lines: string[]) { status.textContent = lines.filter(Boolean).join(" "); }
 function show(el: HTMLElement, visible: boolean) { el.classList.toggle("hidden", !visible); }
@@ -156,29 +171,44 @@ function sizeView(canvas: HTMLCanvasElement, p: Prepared): CanvasRenderingContex
   return ctx;
 }
 
-const DASHED_NOTE = "A dashed box is someone who is not in this frame, shown where they are closest to it.";
+const DASHED_NOTE = "A dashed box is someone or something not in this frame, shown where they are closest to it.";
+
+/** Yellow for the one being watched, blue for a ticked role, grey for the rest. */
+function roleColor(label: string, watching: string | null): string {
+  if (label === watching) return CHOSEN;
+  return picked.has(label) ? OTHERS : NOT_A_ROLE;
+}
 
 /**
- * Every candidate at the confirm frame, numbered; on the player too when it is there. Someone not in
- * that frame gets a dashed box where they are closest to it. True when any box is dashed.
+ * Every person and thing at the confirm frame, labelled; on the player too when it is there. One not
+ * in that frame gets a dashed box where it is closest to it. True when any box is dashed.
  */
-function drawConfirm(p: Prepared, chosen: number): boolean {
+function drawConfirm(p: Prepared, watching: string | null): boolean {
   const ctx = sizeView(confirmCanvas, p);
   const { width: w, height: h } = confirmCanvas;
   const overlayCtx = flow === "player" && player ? overlayContext() : null;
   let anyDashed = false;
+  const mark = (box: Box, label: string, color: string, dashed: boolean) => {
+    anyDashed ||= dashed;
+    strokeBox(ctx, box, label, w, h, color, dashed);
+    if (overlayCtx) strokeBox(overlayCtx, box, label, overlay.width, overlay.height, color, dashed);
+  };
   for (const c of p.candidates) {
-    const color = c.number === chosen ? CHOSEN : OTHERS;
+    const color = roleColor(c.label, watching);
     const track = p.tracks.find((t) => t.id === c.trackId);
     const point = track?.points.find((pt) => pt.frame === p.confirmFrame);
     if (point) strokeSkeleton(ctx, point.landmarks, w, h, color);
     const near = c.boxAtConfirm ? null : track ? pointNearFrame(track, p.confirmFrame) : null;
     const box = c.boxAtConfirm ?? near?.box ?? null;
-    if (!box) continue;
-    const dashed = c.boxAtConfirm === null;
-    anyDashed ||= dashed;
-    strokeBox(ctx, box, String(c.number), w, h, color, dashed);
-    if (overlayCtx) strokeBox(overlayCtx, box, String(c.number), overlay.width, overlay.height, color, dashed);
+    if (box) mark(box, c.label, color, c.boxAtConfirm === null);
+  }
+  for (const c of p.things?.candidates ?? []) {
+    const track = p.things!.tracks.find((t) => t.id === c.trackId);
+    let near: ThingPoint | null = null;
+    for (const point of track?.points ?? []) {
+      if (!near || Math.abs(point.frame - p.confirmFrame) < Math.abs(near.frame - p.confirmFrame)) near = point;
+    }
+    if (near) mark(near.box, c.label, roleColor(c.label, watching), near.frame !== p.confirmFrame || !near.detected);
   }
   return anyDashed;
 }
@@ -241,43 +271,79 @@ function tick() {
     drawGuideFrame(ctx, guide, guideFrameAt(guide, mediaMs), confirmCanvas.width, confirmCanvas.height);
   }
   view ??= blindView(guide, blindCanvas, "fit");
-  drawBlind(blindCanvas, guide, guideFrameAt(guide, mediaMs), look, view);
+  // A thing has no joints, so it is always drawn as its outline.
+  drawBlind(blindCanvas, guide, guideFrameAt(guide, mediaMs), guide.subject.kind === "thing" ? "outline" : look, view);
 }
 
 // ---- Results ----
 
-function showPeople(p: Prepared, chosen: number) {
-  people.replaceChildren(...p.candidates.map((c) => {
-    const button = document.createElement("button");
-    button.textContent = `${c.number}: ${c.label}`;
-    button.setAttribute("aria-pressed", String(c.number === chosen));
-    button.addEventListener("click", () => choose(c.number));
-    return button;
-  }));
+/** The roles list: a tick and a Watch button for each subject, then the ones that cannot be roles and why. */
+function renderRoles(watching: string | null) {
+  const rows = roleGuides.map((guide) => {
+    const label = guide.subject.label;
+    const row = document.createElement("div");
+    row.className = `role${label === watching ? " watching" : ""}`;
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = picked.has(label);
+    tick.id = `role-${label}`;
+    tick.addEventListener("change", () => {
+      if (tick.checked) picked.add(label);
+      else picked.delete(label);
+      rolesChanged(watching);
+    });
+    const name = document.createElement("label");
+    name.htmlFor = tick.id;
+    name.textContent = label;
+    const kind = document.createElement("span");
+    kind.className = "kind";
+    kind.textContent = `${guide.subject.kind}, ${guide.pace}`;
+    const watch = document.createElement("button");
+    watch.textContent = "Watch";
+    watch.addEventListener("click", () => watchRole(guide));
+    row.append(tick, name, kind, watch);
+    return row;
+  });
+  const skipped = skippedRoles.map((s) => {
+    const row = document.createElement("div");
+    row.className = "skipped";
+    row.textContent = `${s.label ?? `Person ${s.number}`}: ${s.reason}`;
+    return row;
+  });
+  rolesList.replaceChildren(...rows, ...skipped);
 }
 
-function choose(number: number) {
+/** The note under the roles, the summary for the console, and the boxes, after a tick or a player count changes. */
+function rolesChanged(watching: string | null) {
+  const players = Number(playersSelect.value);
+  const count = picked.size;
+  const names = roleGuides.map((g) => g.subject.label).filter((l) => picked.has(l));
+  let note = count === 0 ? "No roles ticked yet." : `${count} ${count === 1 ? "role" : "roles"} for ${players} ${players === 1 ? "player" : "players"}: ${names.join(", ")}.`;
+  if (count > 0 && count < players) note += " Some players will share a role.";
+  if (count > players) note += ` Only ${players} will be played; untick the rest or add players.`;
+  rolesNote.textContent = note;
+  if (summary) { summary.picked = names; summary.players = players; }
+  if (prepared) drawConfirm(prepared, watching);
+  renderRoles(watching);
+}
+
+/** Ticks the best `players` subjects, people first, as the file path ranks them. */
+function pickTop() {
+  picked.clear();
+  for (const guide of roleGuides.slice(0, Number(playersSelect.value))) picked.add(guide.subject.label);
+}
+
+function watchRole(guide: Guide) {
   const p = prepared;
   if (!p || !summary) return;
-  const candidate = p.candidates.find((c) => c.number === number);
-  if (!candidate) return;
-  showPeople(p, number);
   stopPreview();
-  drawConfirm(p, number);
-  const result = finishClip(p, candidate.trackId);
-  if (result.error !== null) {
-    summary.guide = null;
-    summary.error = result.error;
-    setStatus(result.error, ...p.warnings);
-    return;
-  }
-  const guide = result.data;
+  rolesChanged(guide.subject.label);
   summary.error = null;
   summary.guide = {
     label: guide.subject.label, range: guide.range, pace: guide.pace,
     timelineFrames: guide.timeline?.frames.length ?? 0, outlineFrames: guide.outlines.filter((o) => o !== null).length,
   };
-  setStatus(`Following ${guide.subject.label}.`, `Outline in ${summary.guide.outlineFrames} of ${guide.outlines.length} frames.`, ...guide.warnings);
+  setStatus(`Watching ${guide.subject.label}.`, `Outline in ${summary.guide.outlineFrames} of ${guide.outlines.length} frames.`, ...guide.warnings);
   startPreview(guide);
 }
 
@@ -290,6 +356,7 @@ function statsRows(stats: GrabStats | null): [string, string][] {
     ["This page hidden while grabbing", `${stats.hiddenSeconds} s`],
     ["Slots filled from a far frame", String(stats.stretched)],
     ["Tracks before and after joining", `${stats.tracksBeforeJoining} then ${stats.tracksAfterJoining}`],
+    ["Things followed", stats.things === null ? "not looked for" : String(stats.things)],
   ];
 }
 
@@ -302,7 +369,10 @@ function showPrepared(p: Prepared, from: Flow, seconds: number | null, stats: Gr
     candidates: p.candidates.map((c) => ({ number: c.number, trackId: c.trackId, label: c.label, score: Math.round(c.score * 1000) / 1000 })),
     cuts: p.cuts, seconds, saved: p.fromSaved ? "saved" : "fresh", warnings: p.warnings,
     roles: { guides: roles.guides.map((g) => g.subject.label), skipped: roles.skipped }, guide: null, error: null,
+    picked: [], players: Number(playersSelect.value),
   };
+  roleGuides = roles.guides;
+  skippedRoles = roles.skipped;
   window.__linkLab = summary;
   showFacts([
     ["Link", summary.link ?? "none"],
@@ -310,23 +380,26 @@ function showPrepared(p: Prepared, from: Flow, seconds: number | null, stats: Gr
     ["Saved as", p.fingerprint],
     ["Frames analysed", String(p.frames.length)],
     ["People found", String(p.candidates.length)],
+    ["Things found", p.things ? String(p.things.candidates.length) : "not looked for"],
     ["Cuts", String(p.cuts.length)],
-    ["Blind mode roles", [`${roles.guides.length}`, ...roles.skipped.map((s) => `Person ${s.number} skipped: ${s.reason}`)].join("; ")],
+    ["Blind mode roles", [`${roles.guides.length}`, ...roles.skipped.map((s) => `${s.label ?? `Person ${s.number}`} skipped: ${s.reason}`)].join("; ")],
     ["Seconds taken", seconds === null ? "not timed" : String(seconds)],
     ["Result", summary.saved],
     ...statsRows(stats),
   ]);
-  const top = p.candidates[0]!.number;
   show($("choose"), true);
   if (from === "player" && player) {
     player.pauseVideo();
     player.seekTo(p.confirmTMs / 1000, true);
     show(overlay, true);
   }
-  showPeople(p, top);
-  const dashed = drawConfirm(p, top);
-  const found = p.candidates.length === 1 ? "1 person" : `${p.candidates.length} people`;
-  setStatus(`Found ${found}. Pick who to follow.`, dashed ? DASHED_NOTE : "", p.fromSaved ? "These moves were grabbed before." : "", ...p.warnings);
+  pickTop();
+  rolesChanged(null);
+  const dashed = drawConfirm(p, null);
+  const people = p.candidates.length === 1 ? "1 person" : `${p.candidates.length} people`;
+  const thingCount = p.things?.candidates.length ?? 0;
+  const things = p.things ? ` and ${thingCount === 1 ? "1 thing" : `${thingCount} things`}` : "";
+  setStatus(`Found ${people}${things}. Tick the roles, and press Watch to check one.`, dashed ? DASHED_NOTE : "", p.fromSaved ? "These moves were grabbed before." : "", ...p.warnings);
 }
 
 function handleResult(result: GrabResult, from: Flow, linkKey: string | null, began: number) {
@@ -395,7 +468,7 @@ async function openYoutube(parsed: Extract<ParsedLink, { site: "youtube" }>) {
   startInput.value = String(parsed.startSeconds);
   updateLabels();
   const { startMs, endMs } = currentRange();
-  const saved = await loadGrab(grabKey(parsed.key, startMs, endMs));
+  const saved = await loadGrab(grabKey(parsed.key, startMs, endMs), grabOptions());
   setStatus(saved
     ? "The moves for this stretch were grabbed before. Press Grab the moves to use them."
     : "Pick where to start and how long, then press Grab the moves.");
@@ -409,7 +482,7 @@ async function grabFromThisTab() {
   const key = grabKey(link.key, range.startMs, range.endMs);
   const began = performance.now();
   // Reading the saved analysis is quick, so the click still counts when the picker opens.
-  const saved = await loadGrab(key);
+  const saved = await loadGrab(key, grabOptions());
   if (saved) {
     clearResult();
     showPrepared(saved, "player", 0);
@@ -428,7 +501,7 @@ async function grabFromThisTab() {
     ? "Grabbing the moves. Keep this tab open until it finishes."
     : "Grabbing the moves (this browser could not crop to the player, so the whole tab is read).");
   progress.value = 0;
-  const result = await grabFromPlayer(capture.data, player, range, key, (share) => { progress.value = share; });
+  const result = await grabFromPlayer(capture.data, player, range, key, (share) => { progress.value = share; }, grabOptions());
   busy = false;
   handleResult(result, "player", link.key, began);
 }
@@ -470,7 +543,7 @@ async function grabWithClock(where: "other" | "embed") {
   const made = await grabFromOtherTab(capture.data, live, (lengthMs) => grabKey(baseKey, 0, lengthMs), (seconds) => {
     timer.textContent = seconds === null ? "" : `${seconds.toFixed(1)} s of ${MAX_GRAB_MS / 1000}`;
     if (seconds !== null) progress.value = seconds / (MAX_GRAB_MS / 1000);
-  });
+  }, grabOptions());
   if (made.error !== null) {
     resetOther();
     setStatus(made.error);
@@ -563,6 +636,11 @@ startOtherButton.addEventListener("click", () => {
 });
 stopOtherButton.addEventListener("click", () => other?.stop());
 useSavedButton.addEventListener("click", () => void useSaved());
+playersSelect.addEventListener("change", () => {
+  if (!prepared) return;
+  pickTop();
+  rolesChanged(playing?.subject.label ?? null);
+});
 for (const input of document.querySelectorAll<HTMLInputElement>('input[name="look"]')) {
   input.addEventListener("change", () => { if (input.checked) look = input.value as Look; });
 }

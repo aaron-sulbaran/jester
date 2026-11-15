@@ -3,12 +3,14 @@
 // Frames are read, searched for people and dropped at once: no frame or video is kept, saved or sent.
 
 import {
-  checkClip, findCuts, frameSignature, linkTracks, pickConfirmFrame, rankCandidates, rejoinTracks, withConfirmBoxes,
+  checkClip, findCuts, frameSignature, linkThings, linkTracks, pickConfirmFrame, rankCandidates, rankThings,
+  rejoinTracks, withConfirmBoxes, withoutPeople,
 } from "../../../clip/src/index.ts";
-import type { ClipSource, FrameDetections } from "../../../clip/src/index.ts";
-import type { Prepared } from "./analyze.ts";
+import type { Candidate, ClipSource, FrameDetections, ThingDetection, ThingFrame } from "../../../clip/src/index.ts";
+import type { Prepared, PreparedThings } from "./analyze.ts";
 import { drawTabFrame, type TabCapture } from "./capture.ts";
 import { createPeopleDetector, type PeopleDetector } from "./detect.ts";
+import { createThingDetector, type ThingDetector } from "./things.ts";
 import { evenFrames } from "./link.ts";
 import { loadPrepared, savePrepared } from "./store.ts";
 import { STATE, type YtPlayer } from "./youtube.ts";
@@ -22,6 +24,17 @@ const SIGNATURE_WIDTH = 32;
 const STEP_MS = 1000 / SAMPLE_HZ;
 /** A person lost for up to this long is joined back into one track; same as the file path. */
 const REJOIN_SECONDS = 3;
+/** With things on, the object detector looks at every this many grabbed frames; same as the file path. */
+const THING_EVERY = 3;
+const NO_PERSON = "No person found in this clip.";
+
+export interface GrabOptions {
+  /** Also find things (animals, balls, cars) with the object detector. The player chooses before grabbing. */
+  things?: boolean;
+}
+
+/** A grabbed frame: its people, and its things when the object detector looked at it. */
+type GrabbedFrame = FrameDetections & { things: ThingDetection[] | null };
 
 export const NOT_PLAYING = "The clip did not start playing. Press play on the video once, then try again.";
 export const NOTHING_GRABBED = "Sharing stopped before the moves were grabbed. Press the button again.";
@@ -43,6 +56,8 @@ export interface GrabStats {
   hiddenSeconds: number;
   /** Slots filled from a frame more than one slot away. */
   stretched: number;
+  /** Things followed through the grab, or null when things were off. */
+  things: number | null;
   tracksBeforeJoining: number;
   tracksAfterJoining: number;
 }
@@ -62,10 +77,10 @@ class StatsCounter {
     this.read++;
     this.trackerTotal += trackerMs;
   }
-  finish(seconds: number, stretched: number, before: number, after: number): GrabStats {
+  finish(seconds: number, stretched: number, before: number, after: number, things: number | null): GrabStats {
     return {
       read: this.read, seconds, trackerMs: this.read ? Math.round(this.trackerTotal / this.read) : 0,
-      hiddenSeconds: Math.round(this.hiddenMs / 100) / 10, stretched, tracksBeforeJoining: before, tracksAfterJoining: after,
+      hiddenSeconds: Math.round(this.hiddenMs / 100) / 10, stretched, tracksBeforeJoining: before, tracksAfterJoining: after, things,
     };
   }
 }
@@ -84,15 +99,32 @@ function followPeople(frames: readonly FrameDetections[], cuts: readonly number[
   return { piecesBeforeJoining: linked.length, tracks, candidates, confirmFrame, confirmTMs: frames[confirmFrame]?.tMs ?? 0, verdict };
 }
 
+/** Follows and ranks the things, leaving out boxes that are mostly a person; same as the file path. */
+function findThings(thingFrames: ThingFrame[], frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource): PreparedThings {
+  const aspect = source.width / source.height;
+  const kept = withoutPeople(thingFrames, frames.map((f) => f.people.map((p) => p.box)));
+  const tracks = linkThings(kept, cuts, { aspect });
+  const candidates = rankThings(tracks, { sampleHz: source.sampleHz, frameCount: frames.length, aspect });
+  return { frames: kept, tracks, candidates };
+}
+
+/** The clip's refusal, except that with no people a moving thing still makes a role; same as the file path. */
+function refusalWith(refusal: string | null, things: PreparedThings | null, source: ClipSource, cuts: readonly number[]): string | null {
+  if (refusal !== NO_PERSON || !things || !things.candidates.some((c) => c.moves)) return refusal;
+  const standIns: Candidate[] = things.candidates.map((c) => ({ trackId: c.trackId, number: c.number, label: c.label, score: c.score, boxAtConfirm: null }));
+  return checkClip({ durationMs: source.durationMs, cuts, candidates: standIns }).refuse;
+}
+
 /**
  * The saved grab under `key`, with the people followed again by the current rules (saved grabs keep
- * the frames as read). Null when there is none, or when the current rules refuse it.
+ * the frames as read). Null when there is none, when things are wanted and it was grabbed without
+ * them, or when the current rules refuse it.
  */
-export async function loadGrab(key: string): Promise<Prepared | null> {
+export async function loadGrab(key: string, options: GrabOptions = {}): Promise<Prepared | null> {
   const saved = await loadPrepared(key);
-  if (!saved) return null;
+  if (!saved || (options.things && !saved.things)) return null;
   const { verdict, piecesBeforeJoining: _pieces, ...people } = followPeople(saved.frames, saved.cuts, saved.source);
-  if (verdict.refuse !== null) return null;
+  if (refusalWith(verdict.refuse, saved.things ?? null, saved.source, saved.cuts) !== null) return null;
   const warnings = [...saved.warnings.filter((w) => w === JUMPY || w === CUT_SHORT), ...verdict.warnings];
   return { ...saved, ...people, warnings };
 }
@@ -109,47 +141,77 @@ function signatureOf(canvas: HTMLCanvasElement, scratch: HTMLCanvasElement): num
   return frameSignature(ctx.getImageData(0, 0, SIGNATURE_WIDTH, height).data, SIGNATURE_WIDTH, height);
 }
 
-/** Reads people from one captured frame. Keeps two canvases and nothing else between frames. */
+/** Reads people (and things, when on) from one captured frame. Keeps two canvases and nothing else between frames. */
 class FrameReader {
   private readonly work = document.createElement("canvas");
   private readonly scratch = document.createElement("canvas");
   readonly stats = new StatsCounter();
   width = 0;
   height = 0;
-  constructor(private readonly detector: PeopleDetector) {}
-  read(frame: VideoFrame, tMs: number): FrameDetections {
+  constructor(private readonly people: PeopleDetector, readonly thingDetector: ThingDetector | null) {}
+  read(frame: VideoFrame, tMs: number): GrabbedFrame {
     if (!this.width) { this.width = frame.displayWidth; this.height = frame.displayHeight; }
     drawTabFrame(frame, this.work, MAX_SIDE);
     const began = performance.now();
-    const people = this.detector.detect(this.work, tMs);
+    const people = this.people.detect(this.work, tMs);
+    const things = this.thingDetector && this.stats.read % THING_EVERY === 0 ? this.thingDetector.detect(this.work, tMs) : null;
     this.stats.count(performance.now() - began);
-    return { tMs, people, signature: signatureOf(this.work, this.scratch) };
+    return { tMs, people, signature: signatureOf(this.work, this.scratch), things };
   }
+  close() {
+    this.people.close();
+    this.thingDetector?.close();
+  }
+}
+
+/** The people detector, and the things detector when asked for. */
+async function makeReader(options: GrabOptions): Promise<Result<FrameReader>> {
+  const people = await createPeopleDetector();
+  if (people.error !== null) return people;
+  if (!options.things) return { data: new FrameReader(people.data, null), error: null };
+  const things = await createThingDetector();
+  if (things.error !== null) {
+    people.data.close();
+    return things;
+  }
+  return { data: new FrameReader(people.data, things.data), error: null };
 }
 
 /** Evens the grabbed frames to 15 a second and runs the clip side on them, as prepareClip does for a file. */
 async function finishGrab(
-  grabbed: FrameDetections[], startMs: number, endMs: number, reader: FrameReader,
+  grabbed: GrabbedFrame[], startMs: number, endMs: number, reader: FrameReader,
   key: string, warnings: string[],
 ): Promise<GrabResult> {
   if (endMs - startMs < MIN_GRAB_MS || grabbed.length === 0) return { data: null, error: TOO_SHORT, stats: null };
-  const { frames, stretched } = evenFrames(grabbed, startMs, endMs, SAMPLE_HZ);
+  const { frames, nearest, stretched } = evenFrames(grabbed, startMs, endMs, SAMPLE_HZ);
   const source: ClipSource = { width: reader.width, height: reader.height, durationMs: endMs - startMs, sampleHz: SAMPLE_HZ };
   const cuts = findCuts(frames.map((f) => f.signature));
   const { verdict, piecesBeforeJoining, ...people } = followPeople(frames, cuts, source);
-  const stats = reader.stats.finish(Math.round((endMs - startMs) / 100) / 10, stretched, piecesBeforeJoining, people.tracks.length);
-  if (verdict.refuse !== null) return { data: null, error: verdict.refuse, stats };
+  let things: PreparedThings | null = null;
+  if (reader.thingDetector) {
+    // A grabbed frame's things go to the first slot it fills only, so one sighting is not counted twice.
+    const used = new Set<GrabbedFrame>();
+    const thingFrames: ThingFrame[] = frames.map((f, k) => {
+      const from = nearest[k]!;
+      const first = !used.has(from);
+      used.add(from);
+      return { tMs: f.tMs, things: first ? from.things : null };
+    });
+    things = findThings(thingFrames, frames, cuts, source);
+  }
+  const stats = reader.stats.finish(
+    Math.round((endMs - startMs) / 100) / 10, stretched, piecesBeforeJoining, people.tracks.length, things ? things.candidates.length : null,
+  );
+  const refusal = refusalWith(verdict.refuse, things, source, cuts);
+  if (refusal !== null) return { data: null, error: refusal, stats };
   const prepared: Prepared = {
     fingerprint: key, source, frames, cuts, ...people,
     warnings: [...warnings, ...(stretched > frames.length / 5 ? [JUMPY] : []), ...verdict.warnings],
     decoder: TAB_CAPTURE, fromSaved: false,
+    ...(things ? { things } : {}),
   };
   await savePrepared(prepared);
   return { data: prepared, error: null, stats };
-}
-
-async function makeDetector(): Promise<Result<PeopleDetector>> {
-  return createPeopleDetector();
 }
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -161,13 +223,13 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export async function grabFromPlayer(
   capture: TabCapture, player: YtPlayer, range: { startMs: number; endMs: number }, key: string,
-  onProgress: (share: number) => void,
+  onProgress: (share: number) => void, options: GrabOptions = {},
 ): Promise<GrabResult> {
-  const detector = await makeDetector();
-  if (detector.error !== null) { capture.stop(); return { data: null, error: detector.error, stats: null }; }
-  const reader = new FrameReader(detector.data);
+  const made = await makeReader(options);
+  if (made.error !== null) { capture.stop(); return { data: null, error: made.error, stats: null }; }
+  const reader = made.data;
   const { startMs, endMs } = range;
-  const grabbed: FrameDetections[] = [];
+  const grabbed: GrabbedFrame[] = [];
   try {
     player.mute();
     player.seekTo(startMs / 1000, true);
@@ -206,7 +268,7 @@ export async function grabFromPlayer(
     return await finishGrab(grabbed, startMs, lastMs, reader, key, reachedEnd ? [] : [CUT_SHORT]);
   } finally {
     capture.stop();
-    detector.data.close();
+    reader.close();
   }
 }
 
@@ -228,12 +290,12 @@ export interface OtherTabGrab {
  */
 export async function grabFromOtherTab(
   capture: TabCapture, live: HTMLCanvasElement, keyFor: (lengthMs: number) => string,
-  onTick: (seconds: number | null) => void,
+  onTick: (seconds: number | null) => void, options: GrabOptions = {},
 ): Promise<Result<OtherTabGrab>> {
-  const detector = await makeDetector();
-  if (detector.error !== null) { capture.stop(); return { data: null, error: detector.error }; }
-  const reader = new FrameReader(detector.data);
-  const grabbed: FrameDetections[] = [];
+  const made = await makeReader(options);
+  if (made.error !== null) { capture.stop(); return { data: null, error: made.error }; }
+  const reader = made.data;
+  const grabbed: GrabbedFrame[] = [];
   let startedAt: number | null = null;
   let lastT = 0;
   let limit: ReturnType<typeof setTimeout> | null = null;
@@ -260,7 +322,7 @@ export async function grabFromOtherTab(
     } finally {
       if (limit) clearTimeout(limit);
       capture.stop();
-      detector.data.close();
+      reader.close();
     }
     if (startedAt === null || grabbed.length === 0) return { data: null, error: NOTHING_GRABBED, stats: null };
     const lengthMs = Math.min(MAX_GRAB_MS, Math.round(lastT + STEP_MS));

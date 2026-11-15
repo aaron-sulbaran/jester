@@ -60,6 +60,7 @@ test("evenFrames: one frame per slot, nearest grabbed frame, slot times", () => 
   const { frames, stretched } = evenFrames(grabbed, 1000, 1300, 15);
   assert.deepEqual(frames.map((f) => f.tMs), [1000, 1067, 1133, 1200, 1267]);
   assert.deepEqual(frames.map((f) => f.signature[0]), [1, 2, 3, 3, 4]);
+  assert.deepEqual(evenFrames(grabbed, 1000, 1300, 15).nearest, [grabbed[0], grabbed[1], grabbed[2], grabbed[2], grabbed[3]]);
   // The 1200 slot is 75 ms from its nearest frame, more than one 67 ms slot.
   assert.equal(stretched, 1);
 });
@@ -68,5 +69,5 @@ test("evenFrames: a long gap counts as stretched; nothing grabbed gives nothing"
   const { frames, stretched } = evenFrames([frame(0, 1), frame(1000, 2)], 0, 1000, 15);
   assert.equal(frames.length, 15);
   assert.ok(stretched > 0);
-  assert.deepEqual(evenFrames([], 0, 1000, 15), { frames: [], stretched: 0 });
+  assert.deepEqual(evenFrames([], 0, 1000, 15), { frames: [], nearest: [], stretched: 0 });
 });

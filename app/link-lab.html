@@ -21,8 +21,11 @@
     #embed-box iframe { width: 100%; height: 100%; border: 0; display: block; }
     #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     canvas.view { display: block; max-width: 100%; height: auto; background: #16161d; margin-top: 8px; }
-    #people { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-    #people button[aria-pressed="true"] { font-weight: bold; outline: 2px solid #f5c542; }
+    #roles { margin: 8px 0; }
+    #roles .role { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; }
+    #roles .role.watching { font-weight: 700; }
+    #roles .skipped { color: #777; padding: 2px 0; }
+    .kind { font-size: 0.8rem; color: #555; border: 1px solid #ccc; border-radius: 4px; padding: 0 4px; }
     progress { width: 100%; }
     table { border-collapse: collapse; margin-top: 12px; }
     td { border: 1px solid #ccc; padding: 4px 8px; }
@@ -38,6 +41,12 @@
     <button id="open">Open</button>
   </div>
   <p id="status">Paste a link to start.</p>
+  <div class="row" id="follow-row">
+    <span><strong>Follow:</strong></span>
+    <label><input type="radio" name="follow" value="people" checked /> People</label>
+    <label><input type="radio" name="follow" value="things" /> People and things (balls, pets, cars)</label>
+    <span class="note">Choose before grabbing. Things take the tracker a little longer.</span>
+  </div>
 
   <section id="yt" class="hidden">
     <div id="player-box"><div id="player-host"></div><canvas id="overlay" class="hidden"></canvas></div>
@@ -85,9 +94,15 @@
   <progress id="progress" value="0" max="1"></progress>
 
   <section id="choose" class="hidden">
-    <h2>Who to follow</h2>
+    <h2>Roles</h2>
     <canvas id="confirm" class="view" width="640" height="360"></canvas>
-    <div id="people"></div>
+    <div class="row">
+      <label for="players"><strong>Players:</strong></label>
+      <select id="players"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+      <span class="note">Tick who and what becomes a role. Watch shows one.</span>
+    </div>
+    <div id="roles"></div>
+    <p id="roles-note" class="note"></p>
   </section>
 
   <section id="preview" class="hidden">
