@@ -114,9 +114,24 @@ async function framesOf(g: Guide, count = 4): Promise<string[]> {
 /** Read and analysed submissions, kept so approving by hand does not read a clip twice. */
 const readied = new Map<string, { file: File; type: VideoType; found: Found }>();
 
+/** A failure that says nothing about the clip (a dropped download, a model that did not load): try again later. */
+const TRANSIENT = /did not download|did not load|Check the connection|Reload the page/;
+
+let ownUrl: string | null = null;
+/** Points the reading video back at `file`, since reading another clip moved it. Frames and posters come from it. */
+async function pointAt(file: File) {
+  if (ownUrl) URL.revokeObjectURL(ownUrl);
+  ownUrl = URL.createObjectURL(file);
+  video.src = ownUrl;
+  await whenReady(video);
+}
+
 async function readySubmission(p: Pending): Promise<Result<{ file: File; type: VideoType; found: Found }>> {
   const known = readied.get(p.id);
-  if (known) return { data: known, error: null };
+  if (known) {
+    await pointAt(known.file);
+    return { data: known, error: null };
+  }
   let blob: Blob;
   try {
     const response = await fetch(`/__review/video?path=${encodeURIComponent(p.video_path)}`, { headers: { "x-jester-review": "1" } });
@@ -210,6 +225,10 @@ async function reviewQueue() {
       setStatus(`Reviewing ${n + 1} of ${fresh.length}...`);
       showWork(p, "reading the clip...");
       const ready = await readySubmission(p);
+      if (ready.error !== null && TRANSIENT.test(ready.error)) {
+        $("workDecision").textContent = `${ready.error} It stays in the queue for next time.`;
+        continue;
+      }
       if (ready.error !== null) {
         // The game's own analysis cannot use it (or no video arrived): no need to ask the Chamberlain.
         const saved = await reject(p, "check", ready.error);

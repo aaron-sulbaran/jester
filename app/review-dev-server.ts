@@ -24,6 +24,7 @@
 // apart share one run, and a run never overlaps another.
 
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -179,6 +180,23 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     }
   };
 
+  /**
+   * This submission's own clip is the one in the bank under `bankId`: every saved guide carries the SHA-256 of
+   * the file it was read from, so it must match the submission's video, not merely any clip in the index.
+   */
+  const isItsClip = async (download: (path: string) => Promise<Blob | null>, videoPath: string, bankId: string): Promise<boolean> => {
+    if (!bankDir || !inBank(bankId)) return false;
+    try {
+      const data = await download(videoPath);
+      if (!data) return false;
+      const hash = createHash("sha256").update(Buffer.from(await data.arrayBuffer())).digest("hex");
+      const guides = JSON.parse(readFileSync(join(bankDir, bankId, "guides.json"), "utf8")) as { fingerprint?: unknown }[];
+      return Array.isArray(guides) && guides.length > 0 && guides.every((g) => g?.fingerprint === hash);
+    } catch {
+      return false;
+    }
+  };
+
   return {
     name: "jester-review-dev",
     apply: "serve",
@@ -262,13 +280,14 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             const by = body.by === "aaron" ? "aaron" : body.by === "check" ? "check" : "agent";
             if (!status) return fail(400, "A decision is approved or rejected.");
             const bankId = typeof body.bankId === "string" && BANK_ID.test(body.bankId) ? body.bankId : null;
-            if (status === "approved" && (!bankId || !inBank(bankId))) {
+            if (status === "approved" && (!bankId || !(await isItsClip(async (path) => (await db.storage.from("submissions").download(path)).data, videoPath, bankId)))) {
               return fail(409, bankDir
-                ? `The clip is not in the bank folder "${basename(bankDir)}" this dev server serves, so it stays pending. Pick that folder on the desk.`
+                ? `This submission's clip is not in the bank folder "${basename(bankDir)}" this dev server serves, so it stays pending. Pick that folder on the desk.`
                 : "This dev server was started without JESTER_BANK_DIR, so it cannot check the clip is in the bank.");
             }
-            const { error } = await db.from("submissions").update({ status }).eq("id", id).eq("status", "pending");
+            const { data: changed, error } = await db.from("submissions").update({ status }).eq("id", id).eq("status", "pending").select("id");
             if (error) return fail(502, `Saving the decision failed: ${error.message}`);
+            if (!changed || changed.length !== 1) return fail(409, "That submission was already decided, so nothing changed.");
             addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(bankId ? { bankId } : {}), ...extra });
             if (status === "approved") schedulePublish();
             return ok({ id, status });
