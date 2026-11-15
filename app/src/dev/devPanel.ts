@@ -1,5 +1,5 @@
 // The round log's corner panel, shown only with ?dev=1 (remembered for the tab). Before a round the tester
-// picks what they are about to do on purpose; after it the panel says which record was saved.
+// picks what they are about to do on purpose (it stays picked until changed); after it the panel says which record was saved.
 // It sits in its own shadow root, outside the game's screens, so no page style reaches it or is reached.
 
 import { DEV_TAGS, isDevTag, type DevTag } from "../../../eval/src/record.ts";
@@ -49,10 +49,12 @@ export function setNextTag(tag: DevTag | null, note = ""): void {
   render?.();
 }
 
-/** The tag and note for the round being scored now. A picked tag counts for one round, then resets to the address's tag. */
+/**
+ * The tag and note for the round being scored now. A picked tag stays for every round (a blind game scores each
+ * turn as its own round) until the tester picks another; the note counts for one round only.
+ */
 export function takeTag(): { tag: DevTag | null; note: string | null } {
   const taken = { tag: nextTag ?? stickyTag, note: nextNote.trim() || null };
-  nextTag = null;
   nextNote = "";
   render?.();
   return taken;
@@ -109,7 +111,7 @@ export function mountDevPanel(): void {
     select.value = nextTag ?? "";
     if (document.activeElement !== host) note.value = nextNote;
     root.querySelector(".hint")!.textContent = nextTag
-      ? TAG_HINTS[nextTag]
+      ? `${TAG_HINTS[nextTag]} (stays on for every round until you change it)`
       : stickyTag
         ? `Every round on this page counts as ${stickyTag} (from the address): ${TAG_HINTS[stickyTag]}.`
         : "Pick one before Start to make this round a test case.";
