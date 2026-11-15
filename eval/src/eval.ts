@@ -59,8 +59,16 @@ const baseline: Baseline | null = existsSync(BASELINE_FILE) ? (JSON.parse(readFi
 const regressions = caseItems.filter((it) => baseline?.cases[it.record.id]?.holds === true && verdicts.get(it)?.holds === false);
 const moved = (it: Rescored) => (it.was === null) !== (it.now.score === null) || (it.was !== null && it.now.score !== null && Math.abs(it.now.score - it.was) >= EXPECT.driftMin);
 const drifted = everything.filter(moved);
-// Same engine code as when played, no what-if: the replay must give the same score, or the recording lost something.
-const recorderMisses = whatIf.length ? [] : localItems.filter((it) => it.record.app?.engineHash === engineHash && it.record.app?.dirty !== null && it.now.score !== it.was);
+// Same engine code as when played (and no uncommitted engine change), no what-if: an exactly stored round must replay
+// to the very same result, or the recording lost something. Version 1 rounds were stored rounded, so they are left out.
+const sameResult = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => sameResult((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+};
+const checkable = whatIf.length ? [] : everything.filter((it) => it.record.player.schema === "packed-pose/2" && it.record.app?.engineHash === engineHash && it.record.app?.dirty !== true);
+const recorderMisses = checkable.filter((it) => !sameResult(it.record.result, it.now));
 
 // ---- Report ----
 
@@ -126,8 +134,9 @@ if (localItems.length) {
   out.push("", "## Local rounds not frozen yet", "");
   table(localItems);
 }
+if (checkable.length && !recorderMisses.length) out.push("", `Recorder check: all ${checkable.length} rounds scored by this same engine code replay to the identical result.`);
 if (recorderMisses.length) {
-  out.push("", "## Recorder check failed", "", `These rounds were scored by this same engine code but replay to a different score, so the recording lost something: ${recorderMisses.map((it) => `${it.record.id} (${score(it.was)} -> ${score(it.now.score)})`).join(", ")}.`);
+  out.push("", "## Recorder check failed", "", `These rounds were scored by this same engine code but replay to a different result, so the recording lost something: ${recorderMisses.map((it) => `${it.record.id} (score ${score(it.was)} -> ${score(it.now.score)})`).join(", ")}.`);
 }
 
 out.push("", "## Verdict", "");
