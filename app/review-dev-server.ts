@@ -140,13 +140,21 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
     if (!precedentsPath || !existsSync(precedentsPath)) return [];
     try { return parsePrecedents(readFileSync(precedentsPath, "utf8")); } catch { return []; }
   };
-  /** A person decided a clip: if the Chamberlain had asked about it, keep what they did as a precedent. */
+  /**
+   * A person decided a clip: if the Chamberlain had asked about it, keep what they did as a precedent. Runs
+   * after the decision is saved, logged and published, and never throws: a precedent that cannot be written
+   * is lost, never the decision.
+   */
   const addPrecedent = (id: string, status: "approved" | "rejected", title: string | null) => {
     if (!precedentsPath) return;
-    const flagged = [...log].reverse().find((e) => e.id === id && e.verdict === "ask_a_person" && e.by === "agent");
-    if (!flagged) return;
-    const made = precedentFrom(flagged, { status, title }, new Date().toISOString());
-    if (made) writeFileSync(precedentsPath, JSON.stringify([...readPrecedents(), made].slice(-PRECEDENTS_KEPT), null, 2) + "\n");
+    try {
+      const flagged = [...log].reverse().find((e) => e.id === id && e.verdict === "ask_a_person" && e.by === "agent");
+      if (!flagged) return;
+      const made = precedentFrom(flagged, { status, title }, new Date().toISOString());
+      if (made) writeFileSync(precedentsPath, JSON.stringify([...readPrecedents(), made].slice(-PRECEDENTS_KEPT), null, 2) + "\n");
+    } catch (err) {
+      console.warn(`The Chamberlain's precedent for ${id} was not saved: ${(err as Error).message}`);
+    }
   };
   // ---- Publishing the bank ----
   const publishScript = bankDir ? join(dirname(bankDir), "deploy-bank.sh") : undefined;
@@ -335,9 +343,9 @@ export function reviewDevServer(options: { envFile: string | undefined; supabase
             const { data: changed, error } = await db.from("submissions").update({ status }).eq("id", id).eq("status", "pending").select("id");
             if (error) return fail(502, `Saving the decision failed: ${error.message}`);
             if (!changed || changed.length !== 1) return fail(409, "That submission was already decided, so nothing changed.");
-            if (by === "aaron") addPrecedent(id, status, title);
             addLog({ id, video_path: videoPath, title, verdict: status, by, reason, ...(bankId ? { bankId } : {}), ...extra });
             if (status === "approved") schedulePublish();
+            if (by === "aaron") addPrecedent(id, status, title);
             return ok({ id, status });
           }
 
