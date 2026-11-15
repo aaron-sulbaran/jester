@@ -1,6 +1,7 @@
 // Clip lab: run the clip side on one video and check the result by eye.
 // URL options: ?clip=<file in /_clips/> runs that file as if picked, ?pick=<number> chooses that
-// person, ?fresh=1 ignores the saved analysis, ?model=lite|heavy times another pose model (not saved),
+// person, ?fresh=1 ignores the saved analysis, ?model=lite|heavy times another pose model and
+// ?search=tracking looks for people the old way (MediaPipe VIDEO mode), neither saved,
 // ?overlay=skeleton|outline|both, ?look=outline|stick and ?place=fit|exact set the switches.
 // After each run, window.__clipLab holds a summary.
 
@@ -8,7 +9,7 @@ import { linkTracks, pointNearFrame, type Box, type Guide, type Placement, type 
 import type { LandmarkObject } from "../../engine/src/index.ts";
 import { finishClip, prepareClip, subjectGuides, type Prepared, type PrepareResult } from "./clipside/analyze.ts";
 import { blindView, drawBlind, guideFrameAt, traceOutline, type Look } from "./clipside/blind.ts";
-import type { PoseModel } from "./clipside/detect.ts";
+import type { PersonSearch, PoseModel } from "./clipside/detect.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 
 interface LabSummary {
@@ -17,6 +18,7 @@ interface LabSummary {
   frames: number;
   candidates: { number: number; trackId: number; label: string; score: number }[];
   model: PoseModel;
+  search: PersonSearch;
   /** Tracks from linking alone, before people split into pieces were joined back. */
   piecesBeforeJoining: number;
   tracks: number;
@@ -66,6 +68,7 @@ const look = radioGroup<Look>("look", ["outline", "stick"], "outline", () => {})
 const place = radioGroup<Placement>("place", ["fit", "exact"], "fit", resetView);
 const askedModel = params.get("model");
 const poseModel: PoseModel = askedModel === "lite" || askedModel === "heavy" ? askedModel : "full";
+const personSearch: PersonSearch = params.get("search") === "tracking" ? "tracking" : "every-frame";
 
 let prepared: Prepared | null = null;
 let summary: LabSummary | null = null;
@@ -238,7 +241,7 @@ async function run(file: File) {
   const began = performance.now();
   let result: PrepareResult;
   try {
-    result = await prepareClip(file, video, (share) => { progress.value = share; }, { ignoreSaved: params.get("fresh") === "1", model: poseModel });
+    result = await prepareClip(file, video, (share) => { progress.value = share; }, { ignoreSaved: params.get("fresh") === "1", model: poseModel, search: personSearch });
   } catch (error) {
     result = { data: null, error: `Something went wrong reading the clip: ${(error as Error).message}`, facts: { decoder: null, frames: 0 } };
   }
@@ -250,6 +253,7 @@ async function run(file: File) {
     frames: result.data ? result.data.frames.length : result.facts.frames,
     candidates: result.data?.candidates.map((c) => ({ number: c.number, trackId: c.trackId, label: c.label, score: Math.round(c.score * 1000) / 1000 })) ?? [],
     model: poseModel,
+    search: personSearch,
     piecesBeforeJoining: result.data ? linkTracks(result.data.frames, result.data.cuts, { maxGap: result.data.source.sampleHz }).length : 0,
     tracks: result.data?.tracks.length ?? 0,
     cuts: result.data?.cuts ?? [],
@@ -273,6 +277,7 @@ async function run(file: File) {
     ["Decoder", summary.decoder ?? "not known"],
     ["Frames analysed", String(summary.frames)],
     ["Pose model", summary.model],
+    ["Looking for people", summary.search === "tracking" ? "only when someone is lost (old way)" : "on every frame"],
     ["People found", String(summary.candidates.length)],
     ["Tracks", `${summary.piecesBeforeJoining} pieces joined into ${summary.tracks}`],
     ["Cuts", String(summary.cuts.length)],

@@ -22,15 +22,17 @@
     .switch label { cursor: pointer; }
     h2 { font-size: 1.05rem; margin: 16px 0 4px; }
     #blind { max-width: 480px; background: #16161d; }
+    #link-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    #link-form input { flex: 1 1 260px; min-width: 0; padding: 4px 6px; }
   </style>
 </head>
 <body>
   <h1>Clip lab</h1>
   <p class="sub">Pick a video, choose a person, and check the skeleton and outline sit on them.</p>
   <input id="file" type="file" accept="video/*" />
-  <form class="switch" action="./link-lab.html" method="get">
-    <label for="paste-link">Or paste a link:</label>
-    <input id="paste-link" name="link" type="text" placeholder="YouTube, Shorts, TikTok or Reels" style="flex: 1; min-width: 200px;" />
+  <form id="link-form" action="/link-lab.html" method="get">
+    <label for="link">Or paste a link (YouTube, Shorts, TikTok, Reels):</label>
+    <input id="link" name="link" type="text" required placeholder="https://www.youtube.com/shorts/..." autocomplete="off" />
     <button type="submit">Open in the link lab</button>
   </form>
   <progress id="progress" value="0" max="1"></progress>
