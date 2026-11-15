@@ -23,6 +23,7 @@ import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { collectFrames, simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
+import { stance, displayedHeight, scaleView, SizeMatcher } from "../../spikes/pose-match/fit.mjs";
 import { cutFrame, drawLayers, recordSegments, type Box, type Cutout, type RevealLayer, type Segment, type SegmentClock } from "./cutout.ts";
 import { drawFrame, fitCanvas } from "./draw.ts";
 import { cropFace } from "./ui/faceBadge.ts";
@@ -467,8 +468,28 @@ async function playTurn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, u
   const scratch = document.createElement("canvas");
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
+  // The shape to copy follows how big you look: closer to the camera makes it bigger, further makes it smaller.
+  const matcher = new SizeMatcher();
+  const sizeToPlayer = !followsBox(s) && !isThing(g);
+  const shownHeight = (c: HTMLCanvasElement) => {
+    const r = c.getBoundingClientRect();
+    return displayedHeight(r.width, r.height, c.width, c.height, getComputedStyle(c).objectFit === "cover" ? "cover" : "contain");
+  };
+  const sizedView = (): typeof view => {
+    if (!sizeToPlayer || clipMs < 0 || !pose) return view;
+    const mine = stance(pose, aspect, 1); // torso in image heights
+    const frame = guideAt(g, clipMs).timeline?.frames[0]?.landmarks;
+    const ref = frame ? stance(frame, g.source.width, g.source.height) : null;
+    if (!mine || !ref) return view;
+    const gc = stage.guideCanvas, pc = stage.playerCanvas;
+    const playerPx = mine.torso * shownHeight(pc);
+    const guidePx = ref.torso * view.view.scale * (shownHeight(gc) / gc.height); // on screen at the base scale
+    const k = matcher.update(playerPx, guidePx);
+    const ax = ref.hipX * view.view.scale + view.view.offsetX, ay = ref.hipY * view.view.scale + view.view.offsetY;
+    return { ...view, view: scaleView(view.view, k, ax, ay) };
+  };
   const paint = () => {
-    paintRole(stage.guideCanvas, s, view, Math.max(0, clipMs), clipMs >= 0 ? leadMs : 0, scratch);
+    paintRole(stage.guideCanvas, s, sizedView(), Math.max(0, clipMs), clipMs >= 0 ? leadMs : 0, scratch);
     fitCanvas(stage.playerCanvas, aspect);
     drawFrame(stage.playerCanvas, deps.simMode() ? null : stage.cam, pose, { mirror: true, color: s.color });
   };
@@ -636,6 +657,9 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
  */
 async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene, speed: number, canvas: HTMLCanvasElement, onProgress: (share: number) => void): Promise<string | null> {
   const scene = played;
+  // Keep the longest side near 1280 px: a tall clip no longer becomes 960 x 1700, which blew each 256 px cutout up
+  // about 7 times. Wide clips stay 960 wide.
+  canvas.width = scene.width >= scene.height ? 960 : Math.round((1280 * scene.width) / scene.height);
   canvas.height = Math.round(canvas.width * (scene.height / scene.width));
   const W = canvas.width, H = canvas.height;
   const toPlay = (ms: number) => ms / speed;
