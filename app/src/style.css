@@ -221,13 +221,27 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .clip.surprise .clip-pic { background: var(--stamp) repeating-linear-gradient(-35deg, transparent 0 9px, rgba(255, 255, 255, .1) 9px 11px); }
 .bank-note { max-width: 46ch; }
 
-/* Submit your own: quiet, folded away under the bank. */
-.submit { width: min(560px, 100%); text-align: left; }
-.submit summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font: 400 17px var(--type); text-decoration: underline; text-underline-offset: 4px; }
-.submit summary::-webkit-details-marker { display: none; }
-.submit summary::before { content: "+"; display: grid; place-items: center; width: 26px; height: 26px; background: var(--photo); box-shadow: 2px 3px 0 var(--shade); font-weight: 700; }
-.submit[open] summary::before { content: "-"; }
-.submit-body { margin-top: 12px; padding: 18px 20px 20px; background: var(--photo); box-shadow: var(--lift); display: grid; gap: 14px; rotate: -.4deg; }
+/* Send in a clip. On the start screen: an invite under the Play ticket, a paper strip in the Jester's pen with a
+   tag that opens its own screen; Play stays the one ticket. */
+.send-invite {
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px;
+  width: min(680px, 100%); padding: 16px 20px 16px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
+}
+.send-invite .washi { top: -13px; left: 26px; width: 84px; height: 24px; rotate: -4deg; }
+.send-invite-text { margin: 0; flex: 1 1 280px; text-align: left; font: 700 23px/1.25 var(--hand); letter-spacing: -.03em; color: var(--pen); }
+/* Its own screen: what happens next, then what you can and can't send beside the form. */
+#screen-submit { justify-content: flex-start; gap: 18px; }
+.send-when { font-size: 16px; }
+.send-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 34px; width: min(100%, 1040px); align-items: start; text-align: left; }
+.send-rules { display: grid; gap: 26px; }
+.rule-card { position: relative; padding: 24px 22px 18px; background: var(--photo); box-shadow: var(--lift); rotate: -.8deg; }
+.rule-card.cannot { rotate: .7deg; }
+.rule-card .washi { top: -13px; left: 28px; width: 88px; height: 24px; rotate: -3deg; }
+.rule-card h3 { margin: 0 0 10px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
+.rule-card.can li::marker { color: var(--p4); }
+.rule-card.cannot li::marker { color: var(--stamp); }
+.send-form { padding: 22px 24px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .4deg; }
+.send-privacy { display: block; font-size: 13px; line-height: 1.45; color: #6B5A48; text-align: left; }
 .how { margin: 0; padding-left: 20px; font-size: 16px; line-height: 1.5; }
 #submitForm { display: grid; gap: 12px; }
 .field { display: grid; gap: 4px; font-size: 15px; }
