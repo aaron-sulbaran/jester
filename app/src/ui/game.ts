@@ -3,7 +3,6 @@
 // rules, the camera, scoring and the reveal recording, and makes no DOM of its own.
 
 import type { BodyPart } from "../../../engine/src/index.ts";
-import { installLinkGrab, linkResults } from "../linkReveal.ts"; // LINK REVEAL (remove with linkReveal.ts)
 import { demoScene, drawDemoScene, dribbleScene, revealRemoteGame, runBlindGame, SPEEDS, videoScene, type BlindDeps, type BlindUi, type RemoteResult, type ResultRow, type Scene } from "../blind.ts";
 import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
@@ -282,8 +281,6 @@ export function initGame(deps: GameDeps) {
       startProblem(`I could not read that clip: ${(err as Error).message}`);
     }
   });
-
-  installLinkGrab((s) => { scene = s; openCast(); }, startProblem); // LINK REVEAL (remove with linkReveal.ts)
 
   function startProblem(text: string) {
     $("startProblem").textContent = text;
@@ -638,7 +635,6 @@ export function initGame(deps: GameDeps) {
       rows = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
       // Load every player's jester while the reveal plays, so the crowning starts without a pop.
       preloadJesters(r.map((row) => variantOf(row)));
-      linkResults(r, scene); // LINK REVEAL (remove with linkReveal.ts)
       show("reveal");
     },
 
