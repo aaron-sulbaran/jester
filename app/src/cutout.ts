@@ -234,6 +234,10 @@ export interface RevealLayer {
   /** Name tag drawn above the cutout, e.g. "Alex 87". */
   tag?: string;
   color?: string;
+  /** Glow around the cutout in its colour, in px (default 12; 0 for none). */
+  glow?: number;
+  /** Font family for the name tag (default system-ui). */
+  tagFont?: string;
 }
 
 export interface RevealOptions {
@@ -266,12 +270,12 @@ export function drawLayers(ctx: CanvasRenderingContext2D, W: number, H: number, 
     const cx = b.cx * W + (layer.spread ?? 0) * side;
     const x = cx - side / 2, y = b.cy * H - side / 2;
     ctx.save();
-    ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = 12;
+    ctx.shadowColor = layer.color ?? "#f5c542"; ctx.shadowBlur = layer.glow ?? 12;
     ctx.drawImage(c.image, x, y, side, side);
     ctx.restore();
     if (layer.tag) {
       ctx.save();
-      ctx.font = `600 ${Math.round(H / 24)}px system-ui, sans-serif`;
+      ctx.font = `600 ${Math.round(H / 24)}px ${layer.tagFont ?? "system-ui, sans-serif"}`;
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
       const ty = Math.max(H / 20, y + side * 0.06);
       ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.strokeText(layer.tag, cx, ty);

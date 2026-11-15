@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester, glue stick</title>
+<style>
+  @font-face { font-family: "Gaegu"; src: url("fonts/gaegu-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Gaegu"; src: url("fonts/gaegu-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+  @font-face { font-family: "Special Elite"; src: url("fonts/special-elite.woff2") format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Titan One"; src: url("fonts/titan-one.woff2") format("woff2"); font-weight: 400; font-display: block; }
+
+  :root {
+    --kraft: #CDA882;
+    --photo: #FFFFFF;
+    --ink: #1E1B18;
+    --pen: #2848C8;
+    --stamp: #D93A2B;
+    --lisa: #F47FA6;
+    --alex: #4F7BF0;
+    --aaron: #FFC93C;
+    --gold: #F4BE1A;
+    --shade: rgba(30, 27, 24, 0.34);
+    --lift: 5px 6px 0 var(--shade);
+    --hand: "Gaegu", "Comic Sans MS", cursive;
+    --type: "Special Elite", "Courier New", serif;
+    --sticker: "Titan One", "Arial Black", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--kraft); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font: 400 18px/1.4 var(--type);
+    /* Kraft paper: fine speck plus long pale fibres, both very faint. Inline, nothing fetched. */
+    background: var(--kraft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32 0 0 0 0 .22 0 0 0 0 .12 0 0 0 .5 -.2'/%3E%3C/filter%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.06 .5' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .97 0 0 0 0 .9 0 0 0 0 .78 0 0 0 .5 -.25'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23a)'/%3E%3Crect width='320' height='320' filter='url(%23b)'/%3E%3C/svg%3E");
+  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px dashed var(--pen); outline-offset: 6px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  .screen { position: relative; min-height: 100vh; min-height: 100svh; padding: 36px 56px; overflow-x: clip; }
+  .screen[hidden] { display: none !important; }
+
+  /* ---------- Shared scrapbook bits ---------- */
+
+  /* Washi tape: translucent, torn ends. */
+  .washi {
+    position: absolute; z-index: 4; width: 110px; height: 30px; pointer-events: none; opacity: 0.9;
+    clip-path: polygon(2% 0, 98% 0, 100% 14%, 97% 30%, 100% 47%, 97% 64%, 100% 82%, 98% 100%, 2% 100%, 0 86%, 3% 70%, 0 52%, 3% 35%, 0 18%);
+  }
+  .w-pink { background: repeating-linear-gradient(-45deg, #F47FA6 0 6px, #FCD5E2 6px 13px); }
+  .w-mint {
+    background-color: #BFE6D3;
+    background-image: linear-gradient(rgba(36, 120, 88, 0.38) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(36, 120, 88, 0.38) 1.5px, transparent 1.5px);
+    background-size: 9px 9px;
+  }
+  .w-dots { background: #FFE69A radial-gradient(circle, #E9A800 2.4px, transparent 2.9px) 0 0 / 11px 11px; }
+  .w-mask {
+    background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 3px, transparent 3px 9px);
+    opacity: 0.94;
+  }
+
+  /* The Jester writes in blue ballpoint on scraps torn from a notebook. */
+  .note-wrap { filter: drop-shadow(4px 5px 0 var(--shade)); }
+  .note {
+    --lh: 38px;
+    margin: 0; position: relative;
+    font: 700 30px/var(--lh) var(--hand); letter-spacing: -0.045em; color: var(--pen);
+    padding: calc(var(--lh) * 0.6) 26px calc(var(--lh) * 0.45) 58px;
+    background-color: #FFFEFA;
+    background-image:
+      linear-gradient(90deg, transparent 40px, #EE9C9C 40px 42px, transparent 42px),
+      repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh));
+    background-position: 0 0, 0 calc(var(--lh) * 0.6 + 6px);
+    clip-path: polygon(0 7px, 5% 1px, 10% 6px, 16% 0, 23% 5px, 29% 1px, 36% 7px, 42% 2px, 49% 5px, 56% 0, 62% 6px, 69% 2px, 75% 6px, 82% 0, 88% 5px, 94% 1px, 100% 6px, 100% 100%, 0 100%);
+  }
+
+  /* Rubber stamp, red, a little patchy. */
+  .stamp {
+    display: inline-block; padding: 4px 10px 3px; color: var(--stamp);
+    font: 400 17px/1.1 var(--type); white-space: nowrap;
+    border: 2.5px solid var(--stamp); border-radius: 5px; rotate: -7deg; opacity: 0.92;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.6 2.05'/%3E%3C/filter%3E%3Crect width='120' height='60' filter='url(%23s)'/%3E%3C/svg%3E");
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.6 2.05'/%3E%3C/filter%3E%3Crect width='120' height='60' filter='url(%23s)'/%3E%3C/svg%3E");
+  }
+
+  /* Main action: a ticket stub with a perforated tear-off. */
+  .ticket {
+    display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
+    filter: drop-shadow(5px 6px 0 var(--shade)); rotate: -1.5deg;
+  }
+  .ticket-shape {
+    display: flex; align-items: stretch; min-height: 92px; background: var(--aaron);
+    -webkit-mask: radial-gradient(circle 13px at 0 50%, transparent 12.5px, #000 13px) left / 51% 100% no-repeat, radial-gradient(circle 13px at 100% 50%, transparent 12.5px, #000 13px) right / 51% 100% no-repeat;
+    mask: radial-gradient(circle 13px at 0 50%, transparent 12.5px, #000 13px) left / 51% 100% no-repeat, radial-gradient(circle 13px at 100% 50%, transparent 12.5px, #000 13px) right / 51% 100% no-repeat;
+  }
+  .ticket-main {
+    display: flex; align-items: center; padding: 14px 30px 14px 36px;
+    font: 400 34px/1.05 var(--type); letter-spacing: -0.01em;
+    box-shadow: inset 0 0 0 5px var(--aaron), inset 0 0 0 7px var(--ink);
+  }
+  .ticket-stub {
+    display: grid; place-items: center; padding: 10px 24px 10px 22px;
+    border-left: 4px dotted var(--kraft); background: #FFD866;
+  }
+
+  /* Secondary actions: punched paper tags. */
+  .tag-btn {
+    position: relative; display: inline-flex; align-items: center; gap: 12px;
+    min-height: 56px; padding: 12px 22px 12px 44px; cursor: pointer;
+    font: 400 20px/1.15 var(--type); background: var(--photo); border: 0; border-radius: 3px;
+    box-shadow: var(--lift);
+  }
+  .tag-btn::before {
+    content: ""; position: absolute; left: 16px; top: 50%; width: 13px; height: 13px; translate: 0 -50%;
+    border-radius: 50%; background: var(--kraft); box-shadow: inset 0 0 0 2.5px #B48C61;
+  }
+
+  /* Photos: white border prints. */
+  .print { background: var(--photo); box-shadow: var(--lift); }
+
+  /* ---------- Start ---------- */
+  .start { display: grid; grid-template-columns: minmax(0, 500px) minmax(0, 1fr); gap: 64px; align-content: center; }
+  .start-left { display: flex; flex-direction: column; gap: 30px; }
+  .start-right { display: flex; flex-direction: column; gap: 34px; padding-top: 18px; }
+
+  .wordmark { margin: 0; align-self: flex-start; font: 400 146px/1 var(--sticker); filter: url(#die-cut); padding: 14px 22px 26px 16px; }
+  .wordmark .wm { display: inline-flex; }
+  .wordmark .wm span {
+    display: inline-block; color: var(--c); rotate: var(--r); translate: 0 var(--y); margin-right: -0.025em;
+    -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill;
+  }
+
+  .start .note-wrap { rotate: -1.2deg; max-width: 440px; }
+
+  .go { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 30px; }
+  .seated { display: flex; align-items: center; gap: 20px; }
+  .seated-label { display: block; font-size: 21px; cursor: pointer; }
+  .seated-help { margin: 2px 0 0; font-size: 16px; }
+  .switch {
+    position: relative; flex: none; width: 76px; height: 44px; padding: 0; cursor: pointer;
+    background: var(--photo); border: 3px solid var(--ink); border-radius: 22px; box-shadow: 3px 4px 0 var(--shade);
+  }
+  .switch .knob { position: absolute; top: 5px; left: 5px; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); }
+  .switch[aria-checked="true"] { background: var(--pen); }
+  .switch[aria-checked="true"] .knob { translate: 32px 0; background: var(--photo); }
+
+  .clips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 40px; }
+  .clip {
+    position: relative; display: flex; flex-direction: column; text-align: left; cursor: pointer;
+    padding: 12px 12px 14px; background: var(--photo); border: 0; border-radius: 0;
+    box-shadow: var(--lift); rotate: var(--r);
+  }
+  .clip .pic { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .clip .name { margin-top: 8px; font: 700 31px/1 var(--hand); letter-spacing: -0.045em; }
+  .clip .parts { margin-top: 2px; font-size: 15px; line-height: 1.3; }
+  .clip[aria-pressed="true"] { box-shadow: 9px 11px 0 var(--shade); translate: -2px -3px; }
+  .clip .star { display: none; position: absolute; z-index: 5; top: -26px; right: -24px; width: 74px; height: 74px; rotate: 12deg; filter: drop-shadow(3px 4px 0 var(--shade)); }
+  .clip[aria-pressed="true"] .star { display: block; }
+
+  .own { display: flex; gap: 22px; }
+  .own .tag-btn:first-child { rotate: -1deg; }
+  .own .tag-btn:last-child { rotate: 0.8deg; }
+
+  /* ---------- Blind play ---------- */
+  .play { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 60px; align-content: center; }
+  .cam-wrap { position: relative; grid-column: 1; grid-row: 1; width: min(100%, calc((100vh - 230px) * 4 / 3 + 28px)); rotate: -0.9deg; align-self: center; justify-self: end; }
+  .turn { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 26px; align-self: center; }
+
+  .cam-print { margin: 0; padding: 14px 14px 0; }
+  .cam { position: relative; overflow: hidden; aspect-ratio: 4 / 3; background: #2E4F8C; }
+  .cam > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .room { scale: -1 1; } /* the camera is mirrored */
+  .cam-print figcaption { padding: 12px 8px 14px; font: 700 30px/1.15 var(--hand); letter-spacing: -0.045em; color: var(--pen); }
+  .cam-wrap .washi.t1 { top: -13px; left: -34px; rotate: -36deg; width: 120px; }
+  .cam-wrap .washi.t2 { top: -11px; right: -36px; rotate: 38deg; width: 120px; }
+
+  .masking { position: relative; align-self: flex-start; rotate: -2deg; }
+  .masking p {
+    margin: 0; display: flex; align-items: baseline; gap: 22px; padding: 10px 30px 10px 24px;
+    font: 700 36px/1 var(--hand); letter-spacing: -0.045em; color: var(--ink);
+    background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0 3px, transparent 3px 10px);
+    clip-path: polygon(1% 4%, 99% 0, 100% 20%, 98% 40%, 100% 62%, 98% 82%, 99% 100%, 1% 96%, 0 76%, 2% 56%, 0 34%, 2% 16%);
+  }
+  .masking .of { font: 400 19px/1 var(--type); }
+
+  .you { display: flex; align-items: center; gap: 0; }
+  .dogpic { position: relative; z-index: 2; flex: none; width: 168px; margin: 0; padding: 8px 8px 10px; rotate: -5deg; }
+  .dogpic svg { display: block; width: 100%; height: auto; }
+  .you .note-wrap { margin-left: -16px; rotate: 1.5deg; }
+  .you .note { --lh: 50px; font-size: 46px; padding: 30px 22px 16px 54px; white-space: nowrap; }
+
+  .count { margin: 0; align-self: flex-start; padding-left: 8px; }
+  .count span { display: inline-block; font: 400 240px/0.86 var(--sticker); color: var(--stamp); -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; filter: url(#die-cut-big); padding: 18px 30px 30px 18px; rotate: -6deg; }
+
+  .away { align-self: flex-end; rotate: -1.5deg; max-width: 340px; margin-top: -40px; }
+  .away .note { font-size: 32px; }
+
+  /* ---------- Reveal ---------- */
+  .reveal { display: grid; grid-template-columns: minmax(0, 1fr) 390px; grid-template-rows: auto 1fr; gap: 22px 56px; align-content: center; }
+  .reveal-head { grid-column: 1 / -1; margin: 0; font: 700 48px/1.1 var(--hand); letter-spacing: -0.045em; color: var(--pen); }
+  .reveal-head span { display: inline-block; padding: 10px 28px 12px 22px; background: #FFFEFA; rotate: -1deg; box-shadow: 4px 5px 0 var(--shade);
+    clip-path: polygon(0 4%, 3% 0, 97% 3%, 100% 0, 99% 50%, 100% 100%, 50% 97%, 2% 100%, 1% 55%); }
+
+  .film { position: relative; grid-column: 1; rotate: 0.5deg; align-self: start; }
+  .film-print { margin: 0; padding: 14px 14px 0; }
+  .frame > svg { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .corner { position: absolute; z-index: 3; width: 44px; height: 44px; pointer-events: none; }
+  .corner.tl { top: -7px; left: -7px; background: linear-gradient(135deg, var(--ink) 50%, transparent 50%); }
+  .corner.tr { top: -7px; right: -7px; background: linear-gradient(225deg, var(--ink) 50%, transparent 50%); }
+  .corner.bl { bottom: -7px; left: -7px; background: linear-gradient(45deg, var(--ink) 50%, transparent 50%); }
+  .corner.br { bottom: -7px; right: -7px; background: linear-gradient(315deg, var(--ink) 50%, transparent 50%); }
+  .cap { font: 700 76px var(--hand); letter-spacing: -0.045em; fill: var(--pen); }
+  .cap-arrow { fill: none; stroke: var(--pen); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+  .cut { transform-box: fill-box; transform-origin: 50% 50%; }
+
+  .controls { display: flex; align-items: center; gap: 18px; padding: 14px 4px 16px; }
+  .pp { flex: none; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; cursor: pointer; background: var(--photo); border: 3px solid var(--ink); border-radius: 50%; box-shadow: 3px 4px 0 var(--shade); }
+  .pp svg { width: 20px; height: 20px; }
+  .scrub { flex: 1; padding: 12px 0; cursor: pointer; }
+  .bar { position: relative; height: 22px; background: #EADDB9 repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0 3px, transparent 3px 10px);
+    clip-path: polygon(0 8%, 100% 0, 99% 50%, 100% 100%, 0 94%, 1% 50%); }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; width: 66%; background: repeating-linear-gradient(-45deg, #F47FA6 0 6px, #FCD5E2 6px 13px); }
+  .scrub-wrap { position: relative; flex: 1; }
+  .scrub-wrap .dot { position: absolute; left: 66%; top: 50%; width: 30px; height: 30px; translate: -50% -50%; border-radius: 50%; background: var(--stamp); box-shadow: 0 0 0 4px var(--photo), 3px 4px 0 4px var(--shade); pointer-events: none; }
+  .time { flex: none; font-size: 17px; font-variant-numeric: tabular-nums; }
+
+  .results { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; gap: 26px; }
+  .results .note-wrap { rotate: 1.2deg; }
+  .scores { list-style: none; margin: 0; padding: 8px 22px 8px 20px; display: flex; flex-direction: column; rotate: -0.8deg; }
+  .score { position: relative; display: grid; grid-template-columns: 30px 38px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 0; }
+  .score + .score { border-top: 2px dashed #CDBFA6; }
+  .score .rank { font: 700 30px/1 var(--hand); letter-spacing: -0.045em; }
+  .score .dot { width: 34px; height: 34px; border-radius: 50%; background: var(--who); box-shadow: 0 0 0 3px var(--photo), 0 0 0 5px var(--ink); }
+  .score b { display: block; font: 700 32px/0.95 var(--hand); letter-spacing: -0.045em; }
+  .score .part { font-size: 15px; }
+  .score .pts { font: 400 46px/1 var(--sticker); }
+  .score.first .pts { font-size: 60px; }
+  .score .star { position: absolute; right: -62px; top: -24px; width: 62px; height: 62px; rotate: 14deg; filter: drop-shadow(3px 4px 0 var(--shade)); }
+
+  .actions { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 22px; }
+  .actions .ticket-main { font-size: 28px; }
+  .actions .ticket-shape { min-height: 82px; }
+  .actions .tag-btn { rotate: 1deg; }
+
+  /* ---------- Motion: one moment per screen ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .tag-btn, .clip, .ticket, .pp, .switch .knob { transition: translate 0.14s ease-out, box-shadow 0.14s ease-out, filter 0.14s ease-out; }
+    .tag-btn:hover, .clip:hover, .ticket:hover { translate: -1px -3px; }
+    .tag-btn:active, .clip:active { translate: 2px 3px; box-shadow: 1px 1px 0 var(--shade); }
+    .ticket:active { translate: 2px 3px; filter: drop-shadow(1px 1px 0 var(--shade)); }
+
+    /* Start: the gold star gets slapped on. */
+    .clip[aria-pressed="true"] .star { animation: slap 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.3) 0.35s backwards; }
+    @keyframes slap { from { opacity: 0; scale: 1.9; rotate: -30deg; } }
+
+    /* Blind play: the numeral is pressed on. */
+    .count span { animation: press 0.55s cubic-bezier(0.25, 1, 0.4, 1) 0.15s backwards; }
+    @keyframes press { 0% { opacity: 0; scale: 1.8; translate: 30px -40px; } 60% { opacity: 1; scale: 0.94; translate: 0 0; } 100% { scale: 1; } }
+
+    /* Reveal: each cutout gets glued into the photo, one after another. */
+    .cut { animation: glue 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards; animation-delay: calc(0.25s + var(--i) * 0.3s); }
+    @keyframes glue { from { opacity: 0; scale: 1.3; translate: 0 -46px; } }
+  }
+
+  /* ---------- Phone ---------- */
+  @media (max-width: 760px) {
+    body { font-size: 16px; }
+    .screen { padding: 20px 16px 30px; }
+    .note { --lh: 30px; font-size: 23px; padding: 20px 16px 12px 44px; background-image: linear-gradient(90deg, transparent 30px, #EE9C9C 30px 32px, transparent 32px), repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh)); background-position: 0 0, 0 26px; }
+
+    .start { grid-template-columns: minmax(0, 1fr); gap: 20px; align-content: start; }
+    .start-left, .start-right, .go { display: contents; }
+    .wordmark { order: 1; font-size: 80px; padding: 8px 14px 16px 8px; }
+    .wordmark .wm span { -webkit-text-stroke-width: 4px; }
+    .start .note-wrap { order: 2; max-width: none; }
+    .clips { order: 3; gap: 22px 16px; margin-top: 4px; }
+    .clip { padding: 7px 7px 9px; }
+    .clip .name { margin-top: 5px; font-size: 23px; }
+    .clip .parts { font-size: 12.5px; }
+    .clip .star { width: 52px; height: 52px; top: -18px; right: -12px; }
+    .clip .washi { width: 70px !important; height: 22px; top: -11px !important; left: 50% !important; right: auto !important; translate: -50% 0; rotate: -4deg !important; }
+    .clip:nth-child(even) .washi { rotate: 5deg !important; }
+    .ticket { width: 100%; rotate: -1deg; }
+    .start .ticket { order: 4; margin-top: 4px; }
+    .ticket-shape { width: 100%; min-height: 76px; }
+    .ticket-main { flex: 1; font-size: 27px; padding: 12px 16px 12px 28px; }
+    .ticket-stub { padding: 8px 16px 8px 14px; }
+    .stamp { font-size: 14px; }
+    .own { order: 5; flex-direction: column; gap: 14px; }
+    .own .tag-btn { width: 100%; }
+    .seated { order: 6; justify-content: space-between; gap: 16px; margin-top: 4px; }
+    .seated-label { font-size: 19px; }
+    .seated-help { font-size: 14px; }
+
+    .play { grid-template-columns: minmax(0, 1fr); gap: 18px; align-content: start; }
+    .turn { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "tape count" "you count"; gap: 14px 4px; align-items: start; }
+    .masking { grid-area: tape; }
+    .masking p { font-size: 25px; gap: 14px; padding: 8px 20px 8px 14px; }
+    .masking .of { font-size: 15px; }
+    .you { grid-area: you; }
+    .dogpic { width: 96px; padding: 5px 5px 6px; }
+    .you .note-wrap { margin-left: -10px; }
+    .you .note { --lh: 32px; font-size: 29px; padding: 18px 12px 10px 30px; background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--lh) - 2px), #C3D2F1 calc(var(--lh) - 2px) var(--lh)); background-position: 0 16px; }
+    .count { grid-area: count; padding: 0; align-self: center; }
+    .count span { font-size: 120px; -webkit-text-stroke-width: 5px; padding: 10px 16px 18px 10px; }
+    .cam-wrap { grid-column: 1; grid-row: 2; width: 100%; rotate: -0.6deg; }
+    .cam-print { padding: 8px 8px 0; }
+    .cam { aspect-ratio: 1 / 1; }
+    .cam-print figcaption { font-size: 22px; padding: 8px 4px 10px; }
+    .cam-wrap .washi.t1, .cam-wrap .washi.t2 { width: 84px; height: 24px; }
+    .cam-wrap .washi.t1 { left: -24px; }
+    .cam-wrap .washi.t2 { right: -24px; }
+    .away { grid-row: 3; grid-column: 1 / -1; align-self: start; margin: 4px 0 0; max-width: none; }
+    .away .note { font-size: 25px; }
+
+    .reveal { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 20px; align-content: start; }
+    .reveal-head { font-size: 30px; }
+    .reveal-head span { padding: 8px 16px 10px 14px; }
+    .film, .results { grid-column: 1; grid-row: auto; }
+    .film-print { padding: 8px 8px 0; }
+    .corner { width: 30px; height: 30px; }
+    .cap { font-size: 92px; }
+    .controls { gap: 12px; padding: 10px 2px 12px; }
+    .pp { width: 44px; height: 44px; }
+    .pp svg { width: 16px; height: 16px; }
+    .scrub-wrap .dot { width: 24px; height: 24px; }
+    .time { font-size: 14px; }
+    .results { gap: 22px; }
+    .scores { padding: 4px 14px 4px 18px; }
+    .score { grid-template-columns: 22px 30px minmax(0, 1fr) auto; gap: 10px; padding: 10px 0; }
+    .score .rank { font-size: 25px; }
+    .score .dot { width: 26px; height: 26px; }
+    .score b { font-size: 26px; }
+    .score .part { font-size: 13px; }
+    .score .pts { font-size: 36px; }
+    .score.first .pts { font-size: 46px; }
+    .score .star { left: auto; right: 64px; width: 44px; height: 44px; translate: 0 -60%; }
+    .actions { align-items: stretch; }
+    .actions .ticket { width: 100%; }
+    .actions .ticket-main { font-size: 23px; }
+    .actions .tag-btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- Die-cut sticker: grow the letters into one white backing, then a hard offset shadow under it. -->
+    <filter id="die-cut" x="-8%" y="-20%" width="120%" height="150%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="9" result="grown" />
+      <feOffset in="grown" dx="6" dy="7" result="dropped" />
+      <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+      <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+      <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="die-cut-big" x="-30%" y="-20%" width="170%" height="150%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="10" result="grown" />
+      <feOffset in="grown" dx="7" dy="8" result="dropped" />
+      <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+      <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+      <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <!-- Gold star sticker. -->
+    <symbol id="star" viewBox="0 0 100 100">
+      <path d="M50 4 L62 36 L96 37 L69 58 L79 92 L50 72 L21 92 L31 58 L4 37 L38 36 Z" fill="#F4BE1A" stroke="#B9850A" stroke-width="3" stroke-linejoin="round" />
+      <path d="M50 16 L58 38 L50 34 L42 38 Z" fill="#FFE27A" />
+      <path d="M50 26 L56 40 L72 41 L60 51 L64 66" fill="none" stroke="#FFE27A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".7" />
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============ Screen 1: start ============ -->
+<section class="screen start" id="start" aria-label="Start">
+  <div class="start-left">
+    <h1 class="wordmark">
+      <span class="wm" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J</span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span>
+      <span class="sr-only">Jester</span>
+    </h1>
+
+    <div class="note-wrap"><p class="note">Pick a clip. I'll give each of you a part from it, in secret.</p></div>
+
+    <div class="go">
+      <div class="seated">
+        <div>
+          <label class="seated-label" id="seated-label" for="seated">Playing seated</label>
+          <p class="seated-help" id="seated-help">Only your upper body is scored.</p>
+        </div>
+        <button class="switch" id="seated" type="button" role="switch" aria-checked="false" aria-labelledby="seated-label" aria-describedby="seated-help"><span class="knob"></span></button>
+      </div>
+      <button class="ticket" id="play-btn" type="button">
+        <span class="ticket-shape">
+          <span class="ticket-main" id="play-label">Play Fetch</span>
+          <span class="ticket-stub" aria-hidden="true"><span class="stamp">Sat, Nov 14</span></span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="start-right">
+    <div class="clips" role="group" aria-label="Starter clips">
+
+      <button class="clip" type="button" aria-pressed="true" data-name="Fetch" style="--r:-1.8deg">
+        <span class="washi w-pink" style="top:-15px;left:36%;rotate:-3deg;width:104px" aria-hidden="true"></span>
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#CFE4F3" />
+          <path d="M0 116 C70 100 140 104 200 112 C250 118 290 106 320 108 V180 H0 Z" fill="#A9D08E" />
+          <path d="M0 132 C90 126 200 130 320 126 V180 H0 Z" fill="#8CC46F" />
+          <use href="art.svg#throw" x="34" y="42" width="66" height="99" style="color:#1E1B18" />
+          <use href="art.svg#ball" x="150" y="40" width="24" height="24" style="color:#D93A2B;--seam:#fff" />
+          <use href="art.svg#dog" x="192" y="104" width="100" height="60" style="color:#1E1B18" />
+        </svg>
+        <span class="name">Fetch</span>
+        <span class="parts">3 parts: a thrower, a dog, a ball</span>
+        <svg class="star" aria-hidden="true"><use href="#star" /></svg>
+      </button>
+
+      <button class="clip" type="button" aria-pressed="false" data-name="Handshake" style="--r:1.4deg">
+        <span class="washi w-mint" style="top:-14px;left:8%;rotate:4deg;width:96px" aria-hidden="true"></span>
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#EFD3A8" />
+          <rect x="226" y="26" width="64" height="48" fill="#FFF7E6" /><rect x="232" y="32" width="52" height="36" fill="#9CC4E0" />
+          <rect y="146" width="320" height="34" fill="#B98A5E" />
+          <use href="art.svg#player" x="66" y="20" width="120" height="160" style="color:#1E1B18" />
+          <use href="art.svg#player" x="134" y="20" width="120" height="160" style="color:#7A4E2D" />
+        </svg>
+        <span class="name">Handshake</span>
+        <span class="parts">2 parts: two people</span>
+        <svg class="star" aria-hidden="true"><use href="#star" /></svg>
+      </button>
+
+      <button class="clip" type="button" aria-pressed="false" data-name="Bounce" style="--r:0.8deg">
+        <span class="washi w-dots" style="top:-12px;left:-28px;rotate:-36deg;width:86px" aria-hidden="true"></span>
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#D9E8D2" />
+          <rect y="140" width="320" height="40" fill="#E2B279" />
+          <path d="M0 152 H320" stroke="#C99559" stroke-width="3" />
+          <path d="M28 142 Q78 26 128 142 Q152 98 176 92" fill="none" stroke="#1E1B18" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" />
+          <ellipse cx="176" cy="146" rx="15" ry="3.5" fill="#1E1B18" opacity=".5" />
+          <use href="art.svg#ball" x="158" y="74" width="36" height="36" style="color:#D93A2B;--seam:#fff" />
+        </svg>
+        <span class="name">Bounce</span>
+        <span class="parts">1 part: a ball</span>
+        <svg class="star" aria-hidden="true"><use href="#star" /></svg>
+      </button>
+
+      <button class="clip" type="button" aria-pressed="false" data-name="Wave" style="--r:-2.2deg">
+        <span class="washi w-pink" style="top:-12px;right:-28px;rotate:36deg;width:86px" aria-hidden="true"></span>
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#CFE4F3" />
+          <rect y="98" width="320" height="34" fill="#79AEDB" />
+          <path d="M0 98 Q20 92 40 98 T80 98 T120 98 T160 98 T200 98 T240 98 T280 98 T320 98" fill="none" stroke="#fff" stroke-width="3" />
+          <rect y="128" width="320" height="52" fill="#EBD3A0" />
+          <use href="art.svg#throw" x="122" y="28" width="82" height="123" style="color:#1E1B18" />
+        </svg>
+        <span class="name">Wave</span>
+        <span class="parts">1 part: a person</span>
+        <svg class="star" aria-hidden="true"><use href="#star" /></svg>
+      </button>
+    </div>
+
+    <div class="own">
+      <button class="tag-btn" type="button">Upload a video</button>
+      <button class="tag-btn" type="button">Record one now</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Screen 2: blind play, Aaron's turn ============ -->
+<section class="screen play" id="play" aria-label="Blind play">
+  <div class="turn">
+    <div class="masking"><p><span>Aaron's turn</span><span class="of">3 of 3</span></p></div>
+
+    <div class="you">
+      <figure class="dogpic print" aria-hidden="true">
+        <svg viewBox="0 0 160 120">
+          <rect width="160" height="120" fill="#FFE29A" />
+          <use href="art.svg#dog" x="8" y="22" width="146" height="88" style="color:#1E1B18" />
+          <!-- googly eyes -->
+          <g stroke="#1E1B18" stroke-width="1.6">
+            <circle cx="125" cy="40" r="7.5" fill="#fff" /><circle cx="137" cy="38" r="7.5" fill="#fff" />
+          </g>
+          <circle cx="126.5" cy="43.5" r="3.6" fill="#1E1B18" /><circle cx="139" cy="41" r="3.6" fill="#1E1B18" />
+        </svg>
+      </figure>
+      <div class="note-wrap"><h1 class="note">You are<br> the dog.</h1></div>
+    </div>
+
+    <p class="count" aria-label="Starting in 3"><span aria-hidden="true">3</span></p>
+
+    <div class="away note-wrap"><p class="note">Everyone else, look away.</p></div>
+  </div>
+
+  <div class="cam-wrap">
+    <span class="washi w-mint t1" aria-hidden="true"></span>
+    <span class="washi w-pink t2" aria-hidden="true"></span>
+    <figure class="cam-print print">
+      <div class="cam">
+        <svg class="room" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Aaron's camera">
+          <rect width="1200" height="620" fill="#3F64A8" />
+          <!-- window -->
+          <rect x="800" y="110" width="290" height="290" fill="#F5EBD6" />
+          <rect x="818" y="128" width="118" height="118" fill="#FFE29A" /><rect x="954" y="128" width="118" height="118" fill="#FFE29A" />
+          <rect x="818" y="264" width="118" height="118" fill="#FFE29A" /><rect x="954" y="264" width="118" height="118" fill="#FFE29A" />
+          <rect x="780" y="396" width="330" height="20" fill="#F5EBD6" />
+          <!-- picture on the wall -->
+          <rect x="400" y="130" width="150" height="110" fill="#F5EBD6" /><rect x="414" y="144" width="122" height="82" fill="#8CC46F" />
+          <!-- dresser and lamp -->
+          <rect x="20" y="452" width="250" height="168" fill="#F5EBD6" />
+          <rect x="40" y="474" width="210" height="56" fill="none" stroke="#1E1B18" stroke-width="6" />
+          <rect x="40" y="544" width="210" height="56" fill="none" stroke="#1E1B18" stroke-width="6" />
+          <rect x="120" y="424" width="50" height="28" fill="#1E1B18" /><rect x="140" y="330" width="10" height="96" fill="#1E1B18" />
+          <path d="M88 250 H202 L230 340 H60 Z" fill="#F47FA6" />
+          <!-- floor -->
+          <rect y="604" width="1200" height="18" fill="#F5EBD6" />
+          <rect y="620" width="1200" height="280" fill="#B98A5E" />
+          <!-- Aaron, standing, before the count ends -->
+          <use href="art.svg#player" x="360" y="250" width="480" height="640" style="color:#FFC93C" />
+        </svg>
+
+        <!-- A sheet of paper laid over the camera, with the dog's shape cut out of it. -->
+        <svg class="sheet" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <mask id="dog-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="900">
+              <rect width="1200" height="900" fill="#fff" />
+              <use href="art.svg#dog" x="250" y="410" width="700" height="420" style="color:#000" />
+            </mask>
+            <filter id="hole-edge" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="900" color-interpolation-filters="sRGB">
+              <!-- the paper's edge throws a hard shadow down into the hole -->
+              <feOffset in="SourceAlpha" dx="10" dy="12" result="shifted" />
+              <feComposite in="SourceAlpha" in2="shifted" operator="out" result="crescent" />
+              <feFlood flood-color="#1E1B18" flood-opacity="0.45" /><feComposite in2="crescent" operator="in" result="shadow" />
+              <!-- and the cut itself is a clean ink line -->
+              <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="grown" />
+              <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+              <feFlood flood-color="#1E1B18" /><feComposite in2="ring" operator="in" result="edge" />
+              <feMerge><feMergeNode in="shadow" /><feMergeNode in="edge" /></feMerge>
+            </filter>
+          </defs>
+          <rect width="1200" height="900" fill="#FFFEFA" opacity="0.88" mask="url(#dog-hole)" />
+          <use href="art.svg#dog" x="250" y="410" width="700" height="420" style="color:#000" filter="url(#hole-edge)" />
+        </svg>
+      </div>
+      <figcaption>Get inside the outline. Move when it moves.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ Screen 3: reveal and results ============ -->
+<section class="screen reveal" id="reveal" aria-label="Reveal and results">
+  <h1 class="reveal-head"><span>Now see what you actually did.</span></h1>
+
+  <div class="film">
+    <figure class="film-print print">
+      <span class="corner tl" aria-hidden="true"></span><span class="corner tr" aria-hidden="true"></span>
+      <div class="frame">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="The Fetch clip, with Lisa cut out where the thrower was, Alex where the ball was, and Aaron where the dog was">
+          <defs>
+            <filter id="cutout" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900" color-interpolation-filters="sRGB">
+              <feMorphology in="SourceAlpha" operator="dilate" radius="12" result="grown" />
+              <feOffset in="grown" dx="11" dy="13" result="dropped" />
+              <feFlood flood-color="#1E1B18" flood-opacity="0.5" /><feComposite in2="dropped" operator="in" result="shadow" />
+              <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+              <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <rect width="1600" height="900" fill="#CFE4F3" />
+          <circle cx="1450" cy="96" r="56" fill="#FBE3A0" />
+          <g fill="#ffffff">
+            <circle cx="560" cy="120" r="40" /><circle cx="616" cy="98" r="54" /><circle cx="676" cy="120" r="38" /><rect x="524" y="120" width="190" height="40" />
+          </g>
+          <path d="M0 590 C200 530 420 520 640 560 C820 592 980 534 1180 524 C1360 516 1480 552 1600 570 V900 H0 Z" fill="#A9D08E" />
+          <path d="M0 668 C300 646 700 656 1000 646 C1250 638 1450 656 1600 650 V900 H0 Z" fill="#8CC46F" />
+          <path d="M1494 700 L1500 420 L1530 420 L1536 700 Z" fill="#7A5233" />
+          <g fill="#5E9E52"><circle cx="1514" cy="330" r="104" /><circle cx="1446" cy="392" r="66" /><circle cx="1584" cy="392" r="74" /></g>
+          <g stroke="#6FAA57" stroke-width="5" stroke-linecap="round" fill="none">
+            <path d="M120 820 l-8 -22 M128 820 l4 -24 M136 820 l12 -18" /><path d="M700 860 l-8 -22 M708 860 l4 -24 M716 860 l12 -18" /><path d="M1440 800 l-8 -22 M1448 800 l4 -24 M1456 800 l12 -18" />
+          </g>
+
+          <!-- The players, cut out and glued where their parts were. -->
+          <g class="cut" filter="url(#cutout)" style="--i:0;color:#F47FA6"><use href="art.svg#throw" x="230" y="350" width="280" height="420" /></g>
+          <g class="cut" filter="url(#cutout)" style="--i:1;color:#4F7BF0"><use href="art.svg#tuck" x="840" y="210" width="150" height="150" /></g>
+          <g class="cut" filter="url(#cutout)" style="--i:2;color:#FFC93C"><use href="art.svg#crawl" x="1050" y="540" width="330" height="198" /></g>
+
+          <!-- The Jester's pen notes on the photo. -->
+          <text class="cap" x="96" y="250">Lisa, 91</text>
+          <path class="cap-arrow" d="M262 270 C250 300 262 326 292 344 M292 344 L264 342 M292 344 L282 318" />
+          <text class="cap" x="1056" y="170">Alex, 64</text>
+          <path class="cap-arrow" d="M1046 160 C1010 170 994 196 990 228 M990 228 L978 204 M990 228 L1006 208" />
+          <text class="cap" x="1010" y="470">Aaron, 82</text>
+          <path class="cap-arrow" d="M1136 492 C1146 526 1160 552 1180 578 M1180 578 L1154 568 M1180 578 L1178 550" />
+        </svg>
+      </div>
+
+      <div class="controls">
+        <button class="pp" type="button" aria-label="Pause">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="2" width="5" height="16" rx="1" fill="#1E1B18" /><rect x="12" y="2" width="5" height="16" rx="1" fill="#1E1B18" /></svg>
+        </button>
+        <div class="scrub-wrap">
+          <div class="scrub" role="slider" tabindex="0" aria-label="Reveal video" aria-valuemin="0" aria-valuemax="12" aria-valuenow="8" aria-valuetext="0:08 of 0:12">
+            <div class="bar"><span class="fill"></span></div>
+          </div>
+          <span class="dot" aria-hidden="true"></span>
+        </div>
+        <span class="time">0:08 / 0:12</span>
+      </div>
+      <span class="corner bl" aria-hidden="true"></span><span class="corner br" aria-hidden="true"></span>
+    </figure>
+  </div>
+
+  <div class="results">
+    <div class="note-wrap"><p class="note">Lisa wins. Alex, that was a brave ball.</p></div>
+    <ol class="scores print">
+      <li class="score first" style="--who:#F47FA6"><svg class="star" aria-hidden="true"><use href="#star" /></svg><span class="rank">1</span><span class="dot" aria-hidden="true"></span><span class="who"><b>Lisa</b><span class="part">the thrower</span></span><span class="pts">91</span></li>
+      <li class="score" style="--who:#FFC93C"><span class="rank">2</span><span class="dot" aria-hidden="true"></span><span class="who"><b>Aaron</b><span class="part">the dog</span></span><span class="pts">82</span></li>
+      <li class="score" style="--who:#4F7BF0"><span class="rank">3</span><span class="dot" aria-hidden="true"></span><span class="who"><b>Alex</b><span class="part">the ball</span></span><span class="pts">64</span></li>
+    </ol>
+    <div class="actions">
+      <button class="ticket" type="button">
+        <span class="ticket-shape">
+          <span class="ticket-main">Send this to someone</span>
+          <span class="ticket-stub" aria-hidden="true"><span class="stamp">Sat, Nov 14</span></span>
+        </span>
+      </button>
+      <button class="tag-btn" type="button">Play again</button>
+    </div>
+  </div>
+</section>
+
+<script>
+  const which = new URLSearchParams(location.search).get("s");
+  if (["start", "play", "reveal"].includes(which)) {
+    for (const screen of document.querySelectorAll(".screen")) screen.hidden = screen.id !== which;
+  }
+  const seatedSwitch = document.getElementById("seated");
+  seatedSwitch.addEventListener("click", () => {
+    seatedSwitch.setAttribute("aria-checked", String(seatedSwitch.getAttribute("aria-checked") !== "true"));
+  });
+  const playLabel = document.getElementById("play-label");
+  const clipButtons = document.querySelectorAll(".clip");
+  for (const clip of clipButtons) {
+    clip.addEventListener("click", () => {
+      for (const other of clipButtons) other.setAttribute("aria-pressed", String(other === clip));
+      playLabel.textContent = "Play " + clip.dataset.name;
+    });
+  }
+</script>
+</body>
+</html>

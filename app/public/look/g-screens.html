@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jester, velvet stage</title>
+<style>
+  @font-face { font-family: "Limelight"; src: url("fonts/limelight.woff2") format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Archivo"; src: url("fonts/archivo.woff2") format("woff2"); font-weight: 100 900; font-stretch: 62% 125%; font-display: block; }
+
+  :root {
+    --velvet: #8E1B2B;
+    --velvet-dark: #5A0F1C;
+    --velvet-lite: #AC283C;
+    --gold: #E8B54A;
+    --gold-dark: #A9781C;
+    --wood: #7A4E2D;
+    --wood-dark: #5E3B21;
+    --lip: #3A2214;
+    --house: #24121A;
+    --pit: #12070B;
+    --spot: #FFF3C9;
+    --paper: #F7EBD0;
+    --lisa: #4F7BFF;
+    --alex: #3CCB8D;
+    --aaron: #FFD23F;
+    --side: 150px;
+    --valance: 84px;
+    --lamp: 120px;
+    --display: "Limelight", Georgia, serif;
+    --text: "Archivo", system-ui, sans-serif;
+    /* Velvet folds: three reds in flat bands with soft turns. */
+    --folds: repeating-linear-gradient(90deg, #5A0F1C 0, #5A0F1C 6px, #8E1B2B 13px, #8E1B2B 30px, #AC283C 37px, #AC283C 42px, #8E1B2B 49px, #8E1B2B 56px, #5A0F1C 64px);
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--house); -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--house); color: var(--spot); font: 400 18px/1.4 var(--text); }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--spot); outline-offset: 5px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  .screen {
+    position: relative; min-height: 100vh; min-height: 100svh; isolation: isolate; overflow-x: clip;
+    display: grid; grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
+  }
+  .screen[hidden] { display: none !important; }
+
+  /* ---------- The theatre: back wall, drapes, valance, floor, footlights ---------- */
+  .back {
+    grid-column: 1 / -1; z-index: 0;
+    background:
+      radial-gradient(ellipse 46% 52% at 50% 0, rgba(255, 243, 201, 0.13), rgba(255, 243, 201, 0) 100%),
+      repeating-linear-gradient(90deg, #290B14 0, #290B14 20px, #33101B 36px, #33101B 52px, #290B14 70px);
+  }
+  .drape {
+    grid-column: 1 / -1; z-index: 4; position: relative; width: var(--side); pointer-events: none;
+    filter: drop-shadow(5px 0 0 var(--gold)) drop-shadow(5px 0 0 var(--pit));
+  }
+  .drape.l { justify-self: start; }
+  .drape.r { justify-self: end; transform: scaleX(-1); }
+  .cloth {
+    position: absolute; inset: 0; background: var(--folds);
+    /* Tied back: wide at the top, pinched at the rope, flaring to the floor. */
+    clip-path: polygon(0 0, 100% 0, 100% 13%, 96% 21%, 86% 30%, 69% 39%, 50% 47%, 35% 54%, 30% 57%, 33% 62%, 42% 70%, 52% 80%, 60% 90%, 65% 100%, 0 100%);
+  }
+  .rope {
+    position: absolute; left: 0; top: 55%; width: 60px; height: 16px; border-radius: 0 8px 8px 0;
+    background: repeating-linear-gradient(115deg, var(--gold) 0 6px, var(--gold-dark) 6px 9px);
+  }
+  .rope::after {
+    content: ""; position: absolute; right: 2px; top: 12px; width: 16px; height: 30px;
+    background: linear-gradient(var(--gold), var(--gold-dark)); clip-path: polygon(32% 0, 68% 0, 100% 100%, 0 100%);
+  }
+  .valance {
+    grid-column: 1 / -1; grid-row: 1; z-index: 6; height: var(--valance); pointer-events: none;
+    filter: drop-shadow(0 4px 0 rgba(18, 7, 11, 0.55));
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='84' viewBox='0 0 160 84'%3E%3Cpath d='M0 0H160V36C128 86 32 86 0 36Z' fill='%23E8B54A'/%3E%3Cpath d='M0 0H160V28C128 76 32 76 0 28Z' fill='%238E1B2B'/%3E%3Cpath d='M4 25C40 61 120 61 156 25' fill='none' stroke='%23AC283C' stroke-width='7'/%3E%3Cpath d='M2 15C40 46 120 46 158 15' fill='none' stroke='%235A0F1C' stroke-width='6'/%3E%3Crect width='160' height='14' fill='%235A0F1C'/%3E%3Crect y='14' width='160' height='3' fill='%23E8B54A'/%3E%3Cpath d='M-6 30H6L8 52H-8Z M154 30H166L168 52H152Z' fill='%23A9781C'/%3E%3Ccircle cx='0' cy='29' r='9' fill='%23E8B54A'/%3E%3Ccircle cx='160' cy='29' r='9' fill='%23E8B54A'/%3E%3C/svg%3E") 0 0 / 160px 100% round no-repeat;
+  }
+  .floor {
+    grid-column: 1 / -1; z-index: 1;
+    background:
+      radial-gradient(ellipse 84px 70px at 50% 100%, rgba(255, 233, 160, 0.36), rgba(255, 233, 160, 0) 100%) center bottom / var(--lamp) 100% repeat-x,
+      linear-gradient(var(--pit), var(--pit)) top / 100% 5px no-repeat,
+      repeating-linear-gradient(180deg, var(--wood) 0 22px, var(--wood-dark) 22px 24px);
+  }
+  .lip {
+    grid-column: 1 / -1; z-index: 2; position: relative;
+    background: linear-gradient(var(--gold), var(--gold)) top / 100% 3px no-repeat, var(--lip);
+  }
+  .lip::before {
+    content: ""; position: absolute; left: 0; right: 0; top: -10px; height: 13px;
+    background: radial-gradient(ellipse 15px 12px at 50% 100%, #FFFDF2 0 42%, #FFE08C 68%, rgba(255, 224, 140, 0) 74%) center top / var(--lamp) 100% repeat-x;
+  }
+
+  /* ---------- Shared controls ---------- */
+  /* Marquee sign: a red board, a dark frame studded with bulbs. */
+  .marquee {
+    --bw: 20px; --bt: 27px; --r1: 3.6px; --r2: 5.2px; --r3: 6px; --r4: 7.2px; --r5: 7.8px;
+    position: relative; margin: 0; display: inline-flex; align-items: center;
+    border: var(--bw) solid #3E0A14; border-radius: 6px; background: var(--velvet);
+    box-shadow: inset 0 0 0 3px var(--gold), 0 0 0 3px var(--gold), 0 9px 0 3px var(--pit);
+  }
+  .marquee::before, .marquee::after {
+    content: ""; position: absolute; pointer-events: none;
+    --bulb: radial-gradient(circle, #FFFDF2 0 var(--r1), #FFE39A var(--r2), var(--gold-dark) var(--r3) var(--r4), rgba(169, 120, 28, 0) var(--r5));
+  }
+  .marquee::before {
+    inset: calc(var(--bw) * -1);
+    background: var(--bulb) 0 0 / var(--bt) var(--bw) space no-repeat, var(--bulb) 0 100% / var(--bt) var(--bw) space no-repeat;
+  }
+  .marquee::after {
+    top: 0; bottom: 0; left: calc(var(--bw) * -1); right: calc(var(--bw) * -1);
+    background: var(--bulb) 0 0 / var(--bw) var(--bt) no-repeat space, var(--bulb) 100% 0 / var(--bw) var(--bt) no-repeat space;
+  }
+
+  /* Main action: an admit-one ticket, gold, notched at both ends. */
+  .ticket { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; filter: drop-shadow(0 7px 0 var(--pit)); }
+  .t-body {
+    display: flex; align-items: stretch; min-height: 92px; background: var(--gold);
+    -webkit-mask: radial-gradient(circle 14px at 0 50%, transparent 13.5px, #000 14px) left / 51% 100% no-repeat, radial-gradient(circle 14px at 100% 50%, transparent 13.5px, #000 14px) right / 51% 100% no-repeat;
+    mask: radial-gradient(circle 14px at 0 50%, transparent 13.5px, #000 14px) left / 51% 100% no-repeat, radial-gradient(circle 14px at 100% 50%, transparent 13.5px, #000 14px) right / 51% 100% no-repeat;
+  }
+  .t-main {
+    display: flex; align-items: center; padding: 12px 34px 12px 42px;
+    font: 800 36px/1.05 var(--text); letter-spacing: -0.01em; color: var(--velvet-dark);
+    box-shadow: inset 0 0 0 7px var(--gold), inset 0 0 0 9px var(--velvet-dark);
+  }
+  .t-stub { display: grid; place-items: center; padding: 10px 24px 10px 22px; border-left: 3px dashed var(--velvet-dark); background: #F2C865; }
+  .t-stub svg { width: 52px; height: 39px; color: var(--velvet-dark); --p1: var(--velvet); --p2: var(--velvet-dark); --p3: var(--velvet); --band: var(--velvet-dark); --bell: var(--velvet-dark); }
+
+  /* Secondary actions: velvet with a gold edge. */
+  .vbtn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 54px; padding: 10px 22px;
+    font: 700 18px/1.15 var(--text); color: var(--spot); background: var(--velvet); cursor: pointer;
+    border: 2px solid var(--gold); border-radius: 10px; box-shadow: 0 5px 0 var(--pit);
+  }
+  .vbtn svg { flex: none; width: 22px; height: 22px; }
+
+  /* ---------- Start ---------- */
+  .start { grid-template-rows: var(--valance) minmax(10px, 1fr) auto auto auto minmax(14px, 1fr) auto 30px; }
+  .start .back, .start .drape { grid-row: 1 / 7; }
+  .start .floor { grid-row: 7; }
+  .start .lip { grid-row: 8; }
+
+  .sign { grid-column: 2; grid-row: 3; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  .sign .marquee { gap: 18px; padding: 10px 40px 14px 28px; }
+  .mq-cap { width: 104px; height: 78px; color: var(--gold); --p1: var(--gold); --p2: var(--spot); --p3: var(--gold); --band: var(--gold); --bell: var(--spot); }
+  .mq-word { font: 400 112px/1 var(--display); color: var(--spot); text-shadow: 0 0 22px rgba(255, 214, 120, 0.55), 0 5px 0 var(--velvet-dark); }
+  .lede { margin: 0; text-align: center; font: 600 22px/1.35 var(--text); color: var(--spot); max-width: 62ch; text-wrap: balance; }
+
+  .bills { grid-column: 2; grid-row: 4; z-index: 3; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; margin-top: 30px; }
+  .bill { position: relative; }
+  .cone {
+    display: none; position: absolute; left: -16%; right: -16%; bottom: 35%; height: 560px; pointer-events: none;
+    background: linear-gradient(to top, rgba(255, 243, 201, 0.24), rgba(255, 243, 201, 0) 92%);
+    clip-path: polygon(41% 0, 59% 0, 100% 100%, 0 100%);
+  }
+  .bill:has(.clip[aria-pressed="true"]) .cone { display: block; }
+  .clip {
+    position: relative; z-index: 1; display: flex; flex-direction: column; width: 100%; text-align: left; cursor: pointer;
+    padding: 10px 10px 14px; color: #2A1218; background: var(--paper); border: 0; border-radius: 4px;
+    box-shadow: 0 7px 0 var(--pit); filter: brightness(0.84);
+  }
+  .clip::before { content: ""; position: absolute; inset: 5px; border: 1.5px solid rgba(142, 27, 43, 0.5); border-radius: 2px; pointer-events: none; }
+  .clip .pic { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border: 2px solid #2A1218; }
+  .clip .name { margin-top: 10px; padding: 0 4px; font: 400 30px/1.05 var(--display); color: var(--velvet); }
+  .clip .parts { margin-top: 3px; padding: 0 4px; font: 500 14.5px/1.3 var(--text); color: #4A2E26; }
+  .clip[aria-pressed="true"] { filter: none; translate: 0 -4px; box-shadow: 0 0 0 4px var(--gold), 0 11px 0 4px var(--pit); }
+  .clip:hover { filter: none; }
+
+  .extras { grid-column: 2; grid-row: 5; z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 30px; }
+  .own { display: flex; gap: 14px; }
+  .seated { display: flex; align-items: center; gap: 16px; }
+  .seated-label { display: block; font: 700 19px/1.2 var(--text); cursor: pointer; }
+  .seated-help { margin: 2px 0 0; font: 500 15px/1.3 var(--text); color: #E9D3B2; }
+  .switch {
+    position: relative; flex: none; width: 74px; height: 44px; padding: 0; cursor: pointer;
+    background: var(--pit); border: 2px solid var(--gold); border-radius: 22px; box-shadow: 0 4px 0 #0A0306;
+  }
+  .switch .knob { position: absolute; top: 5px; left: 5px; width: 30px; height: 30px; border-radius: 50%; background: var(--spot); }
+  .switch[aria-checked="true"] { background: var(--gold); }
+  .switch[aria-checked="true"] .knob { translate: 30px 0; background: var(--velvet-dark); }
+
+  .start .ticket { grid-column: 2; grid-row: 7; z-index: 3; justify-self: center; margin: 22px 0 26px; }
+
+  /* ---------- Blind play ---------- */
+  .play { height: 100vh; height: 100svh; min-height: 600px; grid-template-rows: var(--valance) minmax(0, 1fr) auto 30px; }
+  .play .drape { grid-row: 1 / 3; }
+  .play .floor { grid-row: 3; }
+  .play .lip { grid-row: 4; }
+  .cam { grid-column: 1 / -1; grid-row: 1 / 3; z-index: 0; position: relative; overflow: hidden; background: var(--pit); }
+  .cam > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .room { transform: scaleX(-1); } /* the camera is mirrored */
+
+  .hud-l, .hud-r { grid-row: 2; grid-column: 2; z-index: 5; display: flex; flex-direction: column; gap: 22px; margin: 26px 16px 0; }
+  .hud-l { justify-self: start; align-self: start; align-items: flex-start; }
+  .hud-r { justify-self: end; align-self: start; align-items: flex-end; }
+
+  .namecard { --bw: 12px; --bt: 18px; --r1: 2.4px; --r2: 3.4px; --r3: 4px; --r4: 4.8px; --r5: 5.3px; gap: 16px; padding: 8px 20px 10px; }
+  .namecard .who { font: 400 32px/1 var(--display); color: var(--spot); }
+  .namecard .of { font: 700 17px/1 var(--text); color: var(--gold); white-space: nowrap; }
+  .away { margin: 0; font: 700 22px/1.25 var(--text); color: var(--spot); }
+
+  .you { display: flex; align-items: center; gap: 18px; }
+  .you h1 { margin: 0; font: 400 46px/1.05 var(--display); color: var(--spot); text-shadow: 0 4px 0 var(--pit); }
+  .disc { flex: none; width: 156px; height: 108px; border-radius: 50%; background: var(--spot); box-shadow: 0 0 0 4px var(--gold), 0 7px 0 4px var(--pit); }
+  .disc svg { display: block; width: 100%; height: 100%; }
+  .count { margin: -6px 18px 0 0; }
+  .count span { display: block; font: 400 236px/0.9 var(--display); color: var(--gold); text-shadow: 0 10px 0 var(--velvet-dark), 0 0 40px rgba(232, 181, 74, 0.35); }
+
+  .play .floor { display: grid; place-items: center; padding: 18px 0 16px; }
+  .cue { grid-column: 2; grid-row: 3; z-index: 3; align-self: center; justify-self: center; margin: 18px 0 16px; text-align: center; font: 700 24px/1.25 var(--text); color: var(--spot); text-shadow: 0 2px 0 rgba(18, 7, 11, 0.6); }
+
+  /* ---------- Reveal ---------- */
+  .reveal { grid-template-rows: 72px auto auto minmax(0, 1fr) auto 24px auto; }
+  .reveal .back, .reveal .drape { grid-row: 1 / 5; }
+  .reveal .valance { height: 72px; }
+  .reveal .floor { grid-row: 5; }
+  .reveal .lip { grid-row: 6; }
+  .dimmer { grid-column: 1 / -1; grid-row: 1 / -1; z-index: 7; background: #0A0306; opacity: 0; pointer-events: none; }
+
+  .headline { grid-column: 2; grid-row: 2; z-index: 8; margin: 6px 0 14px; text-align: center; font: 400 52px/1.08 var(--display); color: var(--spot); text-shadow: 0 0 26px rgba(255, 214, 120, 0.5), 0 4px 0 var(--pit); }
+
+  .drum { grid-column: 2; grid-row: 2 / 5; z-index: 9; align-self: center; justify-self: center; display: flex; flex-direction: column; align-items: center; gap: 10px; visibility: hidden; opacity: 0; pointer-events: none; }
+  .drum svg { width: 230px; height: auto; overflow: visible; }
+  .drum p { margin: 0; font: 400 58px/1.1 var(--display); color: var(--spot); text-shadow: 0 0 24px rgba(255, 214, 120, 0.45); }
+  .stick-a { transform-origin: 30px 18px; }
+  .stick-b { transform-origin: 190px 18px; }
+
+  .backdrop { grid-column: 2; grid-row: 3; z-index: 8; justify-self: center; margin: 0; width: min(100%, calc((100svh - 432px) * 16 / 9)); min-width: min(100%, 560px); border: 5px solid var(--pit); outline: 3px solid var(--gold-dark); }
+  .backdrop svg { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .beam { transform: rotate(27.7deg); }
+  .spot-dark { opacity: 0.45; }
+
+  .bow { grid-column: 2; grid-row: 5; z-index: 8; list-style: none; margin: 0; padding: 16px 0 12px; display: flex; justify-content: center; align-items: flex-end; gap: 22px; }
+  .take {
+    order: var(--o); position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 14px;
+    width: 230px; padding: 10px 16px 12px; color: #2A1218; background: var(--paper);
+    border-top: 9px solid var(--who); border-radius: 6px; box-shadow: 0 6px 0 var(--pit);
+  }
+  .take .rank { grid-column: 1; font: 700 14px/1.2 var(--text); color: #6B4A3E; }
+  .take b { grid-column: 1; display: block; font: 800 24px/1.05 var(--text); }
+  .take .part { grid-column: 1; font: 500 14px/1.3 var(--text); color: #4A2E26; }
+  .take .pts { grid-column: 2; grid-row: 1 / 4; font: 400 50px/1 var(--display); color: var(--velvet); }
+  .take.first { width: 280px; padding: 14px 20px 16px; box-shadow: 0 0 0 4px var(--gold), 0 10px 0 4px var(--pit), 0 0 60px 16px rgba(255, 243, 201, 0.28); }
+  .take.first b { font-size: 30px; }
+  .take.first .pts { font-size: 68px; }
+
+  .after { grid-column: 2; grid-row: 7; z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 0 16px; }
+  .jline { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; align-items: center; gap: 14px; font: 600 20px/1.3 var(--text); color: var(--spot); }
+  .jline svg { flex: none; width: 52px; height: 39px; --p1: var(--gold); --p2: var(--spot); --p3: var(--gold); --band: var(--gold); --bell: var(--spot); }
+  .actions { flex: none; display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+  .actions .t-body { min-height: 64px; }
+  .actions .t-main { font-size: 23px; padding: 8px 22px 8px 30px; }
+  .actions .t-stub { padding: 6px 14px 6px 12px; }
+  .actions .t-stub svg { width: 42px; height: 32px; }
+  .small-btn {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; cursor: pointer;
+    font: 600 16px/1.1 var(--text); color: #E9D3B2; background: none; border: 0; border-radius: 8px;
+  }
+  .small-btn svg { width: 20px; height: 20px; }
+
+  /* ---------- Motion ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .vbtn, .ticket, .clip, .small-btn, .switch .knob { transition: translate 0.14s ease-out, filter 0.14s ease-out, box-shadow 0.14s ease-out; }
+    .vbtn:hover, .ticket:hover { translate: 0 -3px; }
+    .vbtn:active { translate: 0 3px; box-shadow: 0 2px 0 var(--pit); }
+    .ticket:active { translate: 0 4px; filter: drop-shadow(0 3px 0 var(--pit)); }
+    .small-btn:hover { color: var(--spot); }
+
+    /* Start: the marquee lights flicker on once. */
+    .sign .marquee::before, .sign .marquee::after { animation: bulbs-on 1.1s linear 0.25s backwards; }
+    @keyframes bulbs-on { 0%, 18% { opacity: 0.12; } 19%, 30% { opacity: 1; } 31%, 44% { opacity: 0.2; } 45%, 100% { opacity: 1; } }
+
+    /* Blind play: the count drops in. */
+    .count span { animation: drop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.25) 0.2s backwards; }
+    @keyframes drop { from { opacity: 0; scale: 1.5; } }
+
+    /* Reveal: the show. About four seconds, then it rests. */
+    .reveal.run .dimmer { animation: lights 3.9s linear backwards; }
+    @keyframes lights { 0%, 80% { opacity: 0.72; } 100% { opacity: 0; } }
+    .reveal.run .drum { animation: drumroll 2s linear; }
+    @keyframes drumroll { 0% { visibility: visible; opacity: 0; } 6%, 85% { visibility: visible; opacity: 1; } 100% { visibility: hidden; opacity: 0; } }
+    .reveal.run .drum .kit { animation: shake 0.08s linear 24 alternate; }
+    @keyframes shake { from { translate: -3px 1px; rotate: -1.5deg; } to { translate: 3px -1px; rotate: 1.5deg; } }
+    .reveal.run .stick-a { animation: tap-a 0.1s linear 18 alternate; }
+    .reveal.run .stick-b { animation: tap-b 0.1s linear 0.05s 18 alternate; }
+    @keyframes tap-a { to { rotate: -16deg; } }
+    @keyframes tap-b { to { rotate: 16deg; } }
+    .reveal.run .backdrop { animation: fade-in 0.4s ease-out 1.75s backwards; }
+    .reveal.run .beam { animation: sweep 1.35s cubic-bezier(0.45, 0, 0.3, 1) 1.85s backwards; }
+    @keyframes sweep {
+      0% { transform: rotate(-42deg) scale(1.05); }
+      20% { transform: rotate(-24.8deg) scale(1.07); }
+      28% { transform: rotate(-23deg) scale(1.05); }
+      46% { transform: rotate(-11.9deg) scale(0.62); }
+      54% { transform: rotate(-10deg) scale(0.64); }
+      82% { transform: rotate(33deg) scale(1); }
+      100% { transform: rotate(27.7deg) scale(1); }
+    }
+    .reveal.run .spot-dark { animation: house 2.1s linear 1.7s backwards; }
+    @keyframes house { 0%, 70% { opacity: 0.88; } 100% { opacity: 0.45; } }
+    .reveal.run .headline { animation: line-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 3.15s backwards; }
+    @keyframes line-in { from { opacity: 0; scale: 0.88; } }
+    .reveal.run .take { animation: take-bow 0.6s cubic-bezier(0.3, 0.8, 0.3, 1) backwards; animation-delay: calc(3.3s + var(--d)); }
+    @keyframes take-bow { 0% { opacity: 0; translate: 0 40px; } 55% { opacity: 1; translate: 0 -6px; } 78% { translate: 0 5px; } 100% { translate: 0 0; } }
+    .reveal.run .after { animation: fade-in 0.35s ease-out 3.75s backwards; }
+    @keyframes fade-in { from { opacity: 0; } }
+  }
+
+  /* ---------- Phone ---------- */
+  @media (max-width: 760px) {
+    :root { --side: 16px; --valance: 52px; --lamp: 80px; }
+    body { font-size: 16px; }
+    .valance { background-size: 100px 100%; }
+    .drape { width: 40px; height: 118px; align-self: start; filter: drop-shadow(3px 0 0 var(--gold)) drop-shadow(3px 0 0 var(--pit)); }
+    .cloth { clip-path: polygon(0 0, 100% 0, 100% 30%, 76% 50%, 46% 70%, 18% 88%, 0 100%); }
+    .rope { display: none; }
+
+    .start { grid-template-rows: var(--valance) auto auto auto 24px auto; }
+    .start .back { grid-row: 1 / 4; }
+    .start .drape { grid-row: 1 / 4; }
+    .start .floor { grid-row: 4; }
+    .start .lip { grid-row: 5; }
+    .sign { grid-row: 2; gap: 14px; padding-top: 10px; }
+    .sign .marquee { --bw: 13px; --bt: 19px; --r1: 2.6px; --r2: 3.6px; --r3: 4.2px; --r4: 5px; --r5: 5.6px; gap: 10px; padding: 6px 20px 9px 14px; }
+    .mq-cap { width: 60px; height: 45px; }
+    .mq-word { font-size: 60px; }
+    .lede { font-size: 18px; }
+    .bills { grid-row: 3; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin: 22px 0 22px; }
+    .cone { height: 300px; }
+    .clip { padding: 7px 7px 10px; }
+    .clip::before { inset: 3px; }
+    .clip .name { margin-top: 7px; font-size: 22px; padding: 0 2px; }
+    .clip .parts { font-size: 12.5px; padding: 0 2px; }
+    .start .ticket { grid-row: 4; justify-self: stretch; margin: 18px 0 20px; }
+    .ticket .t-body { width: 100%; }
+    .start .t-main { flex: 1; font-size: 30px; padding: 10px 16px 10px 32px; }
+    .t-body { min-height: 78px; }
+    .t-stub { padding: 8px 16px 8px 14px; }
+    .t-stub svg { width: 40px; height: 30px; }
+    .extras { grid-row: 6; flex-direction: column; align-items: stretch; gap: 22px; margin: 22px 0 28px; }
+    .own { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .vbtn { font-size: 15px; gap: 8px; padding: 10px 8px; white-space: nowrap; }
+    .vbtn svg { width: 20px; height: 20px; }
+    .seated { justify-content: space-between; }
+    .seated-label { font-size: 18px; }
+    .seated-help { font-size: 14px; }
+
+    .play { height: auto; min-height: 100svh; grid-template-rows: var(--valance) auto auto 24px auto auto; }
+    .cam { grid-row: 1 / 3; aspect-ratio: 3 / 4; }
+    .play .drape { grid-row: 1 / 3; }
+    .hud-l, .hud-r { display: contents; }
+    .namecard { grid-column: 2; grid-row: 2; z-index: 5; align-self: start; justify-self: start; margin-top: 14px; --bw: 9px; --bt: 14px; --r1: 1.8px; --r2: 2.6px; --r3: 3px; --r4: 3.7px; --r5: 4.1px; gap: 10px; padding: 5px 12px 7px; }
+    .namecard .who { font-size: 22px; }
+    .namecard .of { font-size: 14px; }
+    .count { grid-column: 2; grid-row: 2; z-index: 5; align-self: start; justify-self: end; margin: 2px 2px 0 0; }
+    .count span { font-size: 116px; text-shadow: 0 6px 0 var(--velvet-dark); }
+    .cue { grid-row: 3; font-size: 17px; margin: 16px 0 14px; text-wrap: balance; }
+    .you { grid-column: 2; grid-row: 5; z-index: 3; margin-top: 22px; gap: 14px; }
+    .disc { width: 84px; height: 84px; }
+    .you h1 { font-size: 34px; text-wrap: balance; }
+    .away { grid-column: 2; grid-row: 6; margin: 16px 0 28px; font-size: 18px; }
+
+    .reveal { grid-template-rows: var(--valance) auto auto 0 auto 24px auto; }
+    .reveal .valance { height: var(--valance); }
+    .headline { font-size: 28px; margin: 16px 0 12px; }
+    .drum svg { width: 150px; }
+    .drum p { font-size: 34px; }
+    .backdrop { width: 100%; min-width: 0; }
+    .backdrop { border-width: 3px; outline-width: 2px; }
+    .bow { gap: 8px; padding: 18px 0 14px; display: grid; grid-template-columns: 1fr 1.18fr 1fr; align-items: end; }
+    .take { width: auto; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 9px 10px; border-top-width: 7px; text-align: center; }
+    .take .rank { font-size: 12px; }
+    .take b { font-size: 18px; }
+    .take .part { font-size: 12px; }
+    .take .pts { grid-column: 1; grid-row: auto; font-size: 34px; margin-top: 2px; }
+    .take.first { width: auto; padding: 10px 10px 12px; box-shadow: 0 0 0 3px var(--gold), 0 8px 0 3px var(--pit), 0 0 40px 10px rgba(255, 243, 201, 0.26); }
+    .take.first b { font-size: 22px; }
+    .take.first .pts { font-size: 46px; }
+    .after { flex-direction: column; align-items: stretch; gap: 20px; padding: 18px 0 28px; }
+    .jline { font-size: 18px; }
+    .actions { flex-direction: column-reverse; align-items: stretch; gap: 12px; }
+    .actions .ticket .t-main { flex: 1; font-size: 22px; padding: 10px 14px 10px 30px; }
+    .actions .t-body { min-height: 70px; }
+    .small-btn { align-self: center; }
+  }
+</style>
+</head>
+<body>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- The flat black part, with two eyes. -->
+    <symbol id="dog-eyes" viewBox="0 0 160 120">
+      <use href="art.svg#dog" x="6" y="18" width="148" height="88.8" style="color:#12070B" />
+      <ellipse cx="123.5" cy="36" rx="7.4" ry="5.6" fill="#fff" transform="rotate(-14 123.5 36)" />
+      <ellipse cx="139" cy="33" rx="7.4" ry="5.6" fill="#fff" transform="rotate(-14 139 33)" />
+      <circle cx="126.2" cy="36.4" r="3" fill="#12070B" />
+      <circle cx="141.6" cy="33.4" r="3" fill="#12070B" />
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============ Screen 1: start ============ -->
+<section class="screen start" id="start" aria-label="Start">
+  <div class="back" aria-hidden="true"></div>
+  <div class="drape l" aria-hidden="true"><div class="cloth"></div><span class="rope"></span></div>
+  <div class="drape r" aria-hidden="true"><div class="cloth"></div><span class="rope"></span></div>
+  <div class="valance" aria-hidden="true"></div>
+  <div class="floor" aria-hidden="true"></div>
+  <div class="lip" aria-hidden="true"></div>
+
+  <div class="sign">
+    <h1 class="marquee">
+      <svg class="mq-cap" viewBox="0 0 200 150" aria-hidden="true"><use href="art.svg#cap" /></svg>
+      <span class="mq-word">Jester</span>
+    </h1>
+    <p class="lede">Pick a clip. I'll give each of you a part from it, in secret.</p>
+  </div>
+
+  <div class="bills" role="group" aria-label="Starter clips">
+    <div class="bill">
+      <span class="cone" aria-hidden="true"></span>
+      <button class="clip" type="button" aria-pressed="true" data-name="Fetch">
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#CFE4F3" />
+          <path d="M0 116 C70 100 140 104 200 112 C250 118 290 106 320 108 V180 H0 Z" fill="#A9D08E" />
+          <path d="M0 132 C90 126 200 130 320 126 V180 H0 Z" fill="#8CC46F" />
+          <use href="art.svg#throw" x="34" y="42" width="66" height="99" style="color:#24121A" />
+          <use href="art.svg#ball" x="150" y="40" width="24" height="24" style="color:#8E1B2B;--seam:#fff" />
+          <use href="art.svg#dog" x="192" y="104" width="100" height="60" style="color:#24121A" />
+        </svg>
+        <span class="name">Fetch</span>
+        <span class="parts">3 parts: a thrower, a dog, a ball</span>
+      </button>
+    </div>
+    <div class="bill">
+      <span class="cone" aria-hidden="true"></span>
+      <button class="clip" type="button" aria-pressed="false" data-name="Handshake">
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#EFD3A8" />
+          <rect x="226" y="26" width="64" height="48" fill="#FFF7E6" /><rect x="232" y="32" width="52" height="36" fill="#9CC4E0" />
+          <rect y="146" width="320" height="34" fill="#B98A5E" />
+          <use href="art.svg#player" x="66" y="20" width="120" height="160" style="color:#24121A" />
+          <use href="art.svg#player" x="134" y="20" width="120" height="160" style="color:#7A4E2D" />
+        </svg>
+        <span class="name">Handshake</span>
+        <span class="parts">2 parts: two people</span>
+      </button>
+    </div>
+    <div class="bill">
+      <span class="cone" aria-hidden="true"></span>
+      <button class="clip" type="button" aria-pressed="false" data-name="Bounce">
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#D9E8D2" />
+          <rect y="140" width="320" height="40" fill="#E2B279" />
+          <path d="M0 152 H320" stroke="#C99559" stroke-width="3" />
+          <path d="M28 142 Q78 26 128 142 Q152 98 176 92" fill="none" stroke="#24121A" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" />
+          <ellipse cx="176" cy="146" rx="15" ry="3.5" fill="#24121A" opacity=".5" />
+          <use href="art.svg#ball" x="158" y="74" width="36" height="36" style="color:#8E1B2B;--seam:#fff" />
+        </svg>
+        <span class="name">Bounce</span>
+        <span class="parts">1 part: a ball</span>
+      </button>
+    </div>
+    <div class="bill">
+      <span class="cone" aria-hidden="true"></span>
+      <button class="clip" type="button" aria-pressed="false" data-name="Wave">
+        <svg class="pic" viewBox="0 0 320 180" aria-hidden="true">
+          <rect width="320" height="180" fill="#CFE4F3" />
+          <rect y="98" width="320" height="34" fill="#79AEDB" />
+          <path d="M0 98 Q20 92 40 98 T80 98 T120 98 T160 98 T200 98 T240 98 T280 98 T320 98" fill="none" stroke="#fff" stroke-width="3" />
+          <rect y="128" width="320" height="52" fill="#EBD3A0" />
+          <use href="art.svg#throw" x="122" y="28" width="82" height="123" style="color:#24121A" />
+        </svg>
+        <span class="name">Wave</span>
+        <span class="parts">1 part: a person</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="extras">
+    <div class="own">
+      <button class="vbtn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" stroke="currentColor" stroke-width="2" /></svg>
+        Upload a video
+      </button>
+      <button class="vbtn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="12" r="5" fill="#FF5A5F" /></svg>
+        Record one now
+      </button>
+    </div>
+    <div class="seated">
+      <div>
+        <label class="seated-label" id="seated-label" for="seated">Playing seated</label>
+        <p class="seated-help" id="seated-help">Only your upper body is scored.</p>
+      </div>
+      <button class="switch" id="seated" type="button" role="switch" aria-checked="false" aria-labelledby="seated-label" aria-describedby="seated-help"><span class="knob"></span></button>
+    </div>
+  </div>
+
+  <button class="ticket" id="play-btn" type="button">
+    <span class="t-body">
+      <span class="t-main" id="play-label">Play Fetch</span>
+      <span class="t-stub" aria-hidden="true"><svg viewBox="0 0 200 150"><use href="art.svg#cap" /></svg></span>
+    </span>
+  </button>
+</section>
+
+<!-- ============ Screen 2: blind play, Aaron's turn ============ -->
+<section class="screen play" id="play" aria-label="Blind play">
+  <div class="cam">
+    <svg class="room" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Aaron's camera">
+      <rect width="1600" height="900" fill="#3E6A86" />
+      <rect x="1130" y="110" width="300" height="300" fill="#F3E6CC" />
+      <rect x="1148" y="128" width="124" height="124" fill="#FFE29A" /><rect x="1288" y="128" width="124" height="124" fill="#FFE29A" />
+      <rect x="1148" y="268" width="124" height="124" fill="#FFE29A" /><rect x="1288" y="268" width="124" height="124" fill="#FFE29A" />
+      <rect x="1110" y="404" width="340" height="20" fill="#F3E6CC" />
+      <rect x="240" y="150" width="170" height="124" fill="#F3E6CC" /><rect x="254" y="164" width="142" height="96" fill="#8CC46F" />
+      <rect x="90" y="470" width="260" height="170" fill="#F3E6CC" />
+      <rect x="110" y="492" width="220" height="58" fill="none" stroke="#24121A" stroke-width="6" />
+      <rect x="110" y="562" width="220" height="58" fill="none" stroke="#24121A" stroke-width="6" />
+      <rect x="196" y="440" width="50" height="30" fill="#24121A" /><rect x="216" y="350" width="10" height="92" fill="#24121A" />
+      <path d="M164 270 H278 L306 360 H136 Z" fill="#E8B54A" />
+      <rect y="622" width="1600" height="20" fill="#F3E6CC" />
+      <rect y="640" width="1600" height="260" fill="#A0703F" />
+      <use href="art.svg#player" x="560" y="210" width="480" height="640" style="color:#FFD23F" />
+    </svg>
+
+    <!-- The stage goes dark. One spotlight with a dog-shaped gobo lights only where Aaron should be. -->
+    <svg class="gobo" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <filter id="gobo-soft" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900">
+          <feGaussianBlur stdDeviation="6" />
+        </filter>
+        <mask id="gobo-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900">
+          <rect width="1600" height="900" fill="#fff" />
+          <use href="art.svg#dog" x="480" y="440" width="640" height="384" style="color:#000" filter="url(#gobo-soft)" />
+        </mask>
+        <filter id="gobo-rim" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900" color-interpolation-filters="sRGB">
+          <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="grown" />
+          <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+          <feGaussianBlur in="ring" stdDeviation="1.4" result="ring-soft" />
+          <feFlood flood-color="#FFF3C9" flood-opacity="0.95" /><feComposite in2="ring-soft" operator="in" result="edge" />
+          <feMorphology in="SourceAlpha" operator="dilate" radius="10" result="wide" />
+          <feGaussianBlur in="wide" stdDeviation="18" result="wide-soft" />
+          <feFlood flood-color="#FFE7A6" flood-opacity="0.3" /><feComposite in2="wide-soft" operator="in" result="halo" />
+          <feMerge><feMergeNode in="halo" /><feMergeNode in="edge" /></feMerge>
+        </filter>
+      </defs>
+      <rect width="1600" height="900" fill="#14070C" opacity="0.86" mask="url(#gobo-mask)" />
+      <use href="art.svg#dog" x="480" y="440" width="640" height="384" style="color:#FFF3C9" opacity="0.1" />
+      <use href="art.svg#dog" x="480" y="440" width="640" height="384" style="color:#000" filter="url(#gobo-rim)" />
+    </svg>
+  </div>
+
+  <div class="drape l" aria-hidden="true"><div class="cloth"></div><span class="rope"></span></div>
+  <div class="drape r" aria-hidden="true"><div class="cloth"></div><span class="rope"></span></div>
+  <div class="valance" aria-hidden="true"></div>
+  <div class="floor" aria-hidden="true"></div>
+  <div class="lip" aria-hidden="true"></div>
+
+  <div class="hud-l">
+    <p class="marquee namecard"><span class="who">Aaron's turn</span><span class="of">3 of 3</span></p>
+    <p class="away">Everyone else, look away.</p>
+  </div>
+  <div class="hud-r">
+    <div class="you">
+      <span class="disc" aria-hidden="true"><svg viewBox="0 0 160 110"><use href="#dog-eyes" x="14" y="4" width="136" height="102" /></svg></span>
+      <h1>You are the dog.</h1>
+    </div>
+    <p class="count" aria-label="Starting in 3"><span aria-hidden="true">3</span></p>
+  </div>
+
+  <p class="cue">Get inside the outline. Move when it moves.</p>
+</section>
+
+<!-- ============ Screen 3: reveal and results ============ -->
+<section class="screen reveal run" id="reveal" aria-label="Reveal and results">
+  <div class="back" aria-hidden="true"></div>
+  <div class="drape l" aria-hidden="true"><div class="cloth"></div><span class="rope"></span></div>
+  <div class="drape r" aria-hidden="true"><div class="cloth"></div><span class="rope"></span></div>
+  <div class="valance" aria-hidden="true"></div>
+  <div class="floor" aria-hidden="true"></div>
+  <div class="lip" aria-hidden="true"></div>
+  <div class="dimmer" aria-hidden="true"></div>
+
+  <div class="drum">
+    <svg viewBox="0 0 220 170" aria-hidden="true">
+      <g class="kit">
+        <path d="M38 84 V140 A72 18 0 0 0 182 140 V84 Z" fill="#8E1B2B" />
+        <rect x="52" y="90" width="14" height="66" fill="#AC283C" />
+        <path d="M44 94 L66 138 L88 96 L110 140 L132 96 L154 138 L176 96" fill="none" stroke="#E8B54A" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
+        <path d="M38 140 A72 18 0 0 0 182 140" fill="none" stroke="#E8B54A" stroke-width="8" />
+        <ellipse cx="110" cy="84" rx="72" ry="18" fill="#FFF3C9" stroke="#E8B54A" stroke-width="8" />
+        <g class="stick-a"><path d="M30 18 L100 76" stroke="#E9D3A6" stroke-width="8" stroke-linecap="round" /><circle cx="100" cy="76" r="6.5" fill="#E9D3A6" /></g>
+        <g class="stick-b"><path d="M190 18 L122 78" stroke="#E9D3A6" stroke-width="8" stroke-linecap="round" /><circle cx="122" cy="78" r="6.5" fill="#E9D3A6" /></g>
+      </g>
+    </svg>
+    <p>Drum roll, please.</p>
+  </div>
+
+  <h1 class="headline">Lisa steals the show.</h1>
+
+  <figure class="backdrop">
+    <svg viewBox="0 0 1600 900" role="img" aria-label="The Fetch clip, with Lisa cut out where the thrower was, Alex where the ball was, and Aaron where the dog was. The spotlight is on Lisa.">
+      <defs>
+        <filter id="cutout" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900" color-interpolation-filters="sRGB">
+          <feMorphology in="SourceAlpha" operator="dilate" radius="12" result="grown" />
+          <feOffset in="grown" dx="12" dy="14" result="dropped" />
+          <feFlood flood-color="#12070B" flood-opacity="0.6" /><feComposite in2="dropped" operator="in" result="shadow" />
+          <feFlood flood-color="#FFF3C9" /><feComposite in2="grown" operator="in" result="rim" />
+          <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <radialGradient id="pool-fade">
+          <stop offset="0" stop-color="#000" /><stop offset="0.6" stop-color="#000" /><stop offset="1" stop-color="#fff" />
+        </radialGradient>
+        <radialGradient id="pool-glow">
+          <stop offset="0" stop-color="#FFF3C9" stop-opacity="0.2" /><stop offset="0.65" stop-color="#FFF3C9" stop-opacity="0.12" /><stop offset="1" stop-color="#FFF3C9" stop-opacity="0" />
+        </radialGradient>
+        <linearGradient id="cone-fade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#FFF3C9" stop-opacity="0" /><stop offset="1" stop-color="#FFF3C9" stop-opacity="0.2" />
+        </linearGradient>
+        <mask id="spot-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900">
+          <rect width="1600" height="900" fill="#fff" />
+          <g transform="translate(800 -260)"><g class="beam"><ellipse cx="0" cy="926" rx="240" ry="300" fill="url(#pool-fade)" /></g></g>
+        </mask>
+      </defs>
+      <rect width="1600" height="900" fill="#CFE4F3" />
+      <circle cx="1450" cy="96" r="56" fill="#FBE3A0" />
+      <g fill="#ffffff"><circle cx="560" cy="120" r="40" /><circle cx="616" cy="98" r="54" /><circle cx="676" cy="120" r="38" /><rect x="524" y="120" width="190" height="40" /></g>
+      <path d="M0 590 C200 530 420 520 640 560 C820 592 980 534 1180 524 C1360 516 1480 552 1600 570 V900 H0 Z" fill="#A9D08E" />
+      <path d="M0 668 C300 646 700 656 1000 646 C1250 638 1450 656 1600 650 V900 H0 Z" fill="#8CC46F" />
+      <path d="M1494 700 L1500 420 L1530 420 L1536 700 Z" fill="#7A5233" />
+      <g fill="#5E9E52"><circle cx="1514" cy="330" r="104" /><circle cx="1446" cy="392" r="66" /><circle cx="1584" cy="392" r="74" /></g>
+
+      <!-- The players, standing where their parts were. -->
+      <g filter="url(#cutout)" style="color:#4F7BFF"><use href="art.svg#throw" x="230" y="350" width="280" height="420" /></g>
+      <g filter="url(#cutout)" style="color:#3CCB8D"><use href="art.svg#tuck" x="840" y="210" width="150" height="150" /></g>
+      <g filter="url(#cutout)" style="color:#FFD23F"><use href="art.svg#crawl" x="1050" y="540" width="330" height="198" /></g>
+
+      <!-- The spotlight: the stage is dark except its pool, and the beam shows in the haze. -->
+      <rect class="spot-dark" width="1600" height="900" fill="#0E0508" mask="url(#spot-mask)" />
+      <g transform="translate(800 -260)"><g class="beam">
+        <path d="M-34 0 L-240 926 L240 926 L34 0 Z" fill="url(#cone-fade)" />
+        <ellipse cx="0" cy="926" rx="240" ry="300" fill="url(#pool-glow)" />
+      </g></g>
+    </svg>
+  </figure>
+
+  <ol class="bow" aria-label="Scores">
+    <li class="take first" style="--who:#4F7BFF;--o:2;--d:0s"><span class="rank">1st</span><b>Lisa</b><span class="part">the thrower</span><span class="pts">91</span></li>
+    <li class="take" style="--who:#FFD23F;--o:1;--d:0.12s"><span class="rank">2nd</span><b>Aaron</b><span class="part">the dog</span><span class="pts">82</span></li>
+    <li class="take" style="--who:#3CCB8D;--o:3;--d:0.24s"><span class="rank">3rd</span><b>Alex</b><span class="part">the ball</span><span class="pts">64</span></li>
+  </ol>
+
+  <div class="after">
+    <p class="jline"><svg viewBox="0 0 200 150" aria-hidden="true"><use href="art.svg#cap" /></svg><span>Lisa wins. Alex, that was a brave ball.</span></p>
+    <div class="actions">
+      <button class="small-btn" id="watch-again" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10a5.5 5.5 0 1 0 1.8-4.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /><path d="M5.6 2.4 L6.3 6.2 L2.6 6.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        Watch again
+      </button>
+      <button class="vbtn" type="button">Play again</button>
+      <button class="ticket" type="button">
+        <span class="t-body">
+          <span class="t-main">Send this to someone</span>
+          <span class="t-stub" aria-hidden="true"><svg viewBox="0 0 200 150"><use href="art.svg#cap" /></svg></span>
+        </span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+  const which = new URLSearchParams(location.search).get("s");
+  if (["start", "play", "reveal"].includes(which)) {
+    for (const screen of document.querySelectorAll(".screen")) screen.hidden = screen.id !== which;
+  }
+  const seatedSwitch = document.getElementById("seated");
+  seatedSwitch.addEventListener("click", () => {
+    seatedSwitch.setAttribute("aria-checked", String(seatedSwitch.getAttribute("aria-checked") !== "true"));
+  });
+  const playLabel = document.getElementById("play-label");
+  const clipButtons = document.querySelectorAll(".clip");
+  for (const clip of clipButtons) {
+    clip.addEventListener("click", () => {
+      for (const other of clipButtons) other.setAttribute("aria-pressed", String(other === clip));
+      playLabel.textContent = "Play " + clip.dataset.name;
+    });
+  }
+  const reveal = document.getElementById("reveal");
+  document.getElementById("watch-again").addEventListener("click", () => {
+    reveal.classList.remove("run");
+    void reveal.offsetWidth;
+    reveal.classList.add("run");
+  });
+</script>
+</body>
+</html>
