@@ -34,6 +34,16 @@
         <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
         <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
       </filter>
+      <!-- The same round white edge for the small paper stickers (the props drifting beside the title), with room
+           around them so a 38 px star keeps its whole rim. #die-cut's square growth left them with boxy corners. -->
+      <filter id="die-cut-prop" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="4.6" result="soft" />
+        <feComponentTransfer in="soft" result="grown"><feFuncA type="linear" slope="80" intercept="-2.8" /></feComponentTransfer>
+        <feOffset in="grown" dx="5" dy="6" result="dropped" />
+        <feFlood flood-color="#1E1B18" flood-opacity="0.34" /><feComposite in2="dropped" operator="in" result="shadow" />
+        <feFlood flood-color="#ffffff" /><feComposite in2="grown" operator="in" result="rim" />
+        <feMerge><feMergeNode in="shadow" /><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
       <filter id="sticker" x="-12%" y="-12%" width="130%" height="130%" color-interpolation-filters="sRGB">
         <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="grown" />
         <feOffset in="grown" dx="4" dy="5" result="dropped" />
@@ -253,6 +263,23 @@
   </svg>
 
   <main id="game">
+    <!-- Surprise me's merry-go-round (ui/ride.ts): plays when Play starts a surprise, while the clip's moves load. Outside
+         the start screen, so it can fade out over the cast screen as that one appears. -->
+    <div class="ride" id="ride" hidden>
+      <div class="ride-stage" aria-hidden="true">
+        <svg class="ride-canopy" viewBox="0 0 400 140" focusable="false">
+          <path d="M200 6 V30" stroke="#1E1B18" stroke-width="5" stroke-linecap="round" />
+          <path d="M200 6 L232 14 L200 22 Z" fill="#D93A2B" stroke="#1E1B18" stroke-width="3.5" stroke-linejoin="round" />
+          <path d="M200 26 L14 98 H386 Z" fill="#FFFEFA" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round" />
+          <path d="M200 26 L38 98 H86 Z M200 26 L134 98 H174 Z M200 26 L226 98 H266 Z M200 26 L314 98 H362 Z" fill="#D93A2B" />
+          <path d="M14 98 H386 V112 H14 Z" fill="#2848C8" stroke="#1E1B18" stroke-width="5" stroke-linejoin="round" />
+          <path d="M14 112 Q30 134 46 112 Q62 134 78 112 Q94 134 110 112 Q126 134 142 112 Q158 134 174 112 Q190 134 206 112 Q222 134 238 112 Q254 134 270 112 Q286 134 302 112 Q318 134 334 112 Q350 134 366 112 Q376 128 386 112 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="4.5" stroke-linejoin="round" />
+        </svg>
+        <span class="ride-floor"></span>
+        <div class="ride-ring" id="rideRing"></div>
+      </div>
+      <div class="note-wrap ride-note-wrap"><p class="note" id="rideNote" role="status"></p></div>
+    </div>
     <!-- Your clip is in (submissionWatch.ts): on any screen, once a clip sent from this tab joins the bank. Plain markup; the look comes from the frontend agent. -->
     <div class="note-wrap" id="clipReady" role="status" hidden>
       <p class="note" id="clipReadyText"></p>
@@ -331,7 +358,7 @@
           <span class="washi w-dots" aria-hidden="true"></span>
           <h3 id="setHeadSaved"><svg class="ico" aria-hidden="true"><use href="#ico-save" /></svg>What Jester saves</h3>
           <ul class="how">
-            <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's name and size, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
+            <li>Each round's moves are saved as points on a body over time, with the score and timing. Never video, never a picture of you. With each round we also save a random id for this browser, the browser and graphics chip it runs on, your camera's size and frame rate, and which clip you played, so we can tell a slow machine from unfair scoring. The team uses all this to test and tune the scoring.</li>
             <li>A clip you send in is kept private until it's reviewed. To check it, a few frames, what the game measured, its name and your name go to Anthropic, the company that makes the AI.</li>
             <li>In an online room, your face picture and a short cut-out of you go to the others in the room for the recap and the crowning. They aren't stored.</li>
             <li>Your settings and how many of you play stay in this browser.</li>
@@ -379,9 +406,30 @@
         <svg class="drift-prop" style="left:7%;top:4%;--s:84px;--r:-14deg;--d:8.5s;--t:-2s"><use href="#jester-hat" /></svg>
         <svg class="drift-prop" style="left:13%;top:14%;--s:44px;--r:10deg;--d:11s;--t:-6s"><use href="#star" /></svg>
         <svg class="drift-prop" style="left:3%;top:18%;--s:50px;--r:8deg;--d:9.5s;--t:-4s"><use href="#ico-clapper" /></svg>
-        <svg class="drift-prop" style="right:8%;top:10%;--s:56px;--r:12deg;--d:10s;--t:-1s"><use href="#ico-watch" /></svg>
-        <svg class="drift-prop" style="right:4%;top:19%;--s:46px;--r:-10deg;--d:12s;--t:-7s"><use href="#ico-sound-on" /></svg>
-        <svg class="drift-prop" style="right:20%;top:7%;--s:38px;--r:-18deg;--d:7.5s;--t:-3s"><use href="#star" /></svg>
+      </div>
+      <!-- A jester giving it everything for an audience of one: our own homage to the jester and queen loop, cut
+           from paper in our colours. Decoration only; still under reduced motion and Calm motion. -->
+      <div class="royal" id="royalAudience" aria-hidden="true">
+        <span class="royal-floor"></span>
+        <svg class="royal-throne" viewBox="0 0 120 150">
+          <g stroke="#1E1B18" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M18 122 V32 Q18 10 60 10 Q102 10 102 32 V122 Z" fill="#D93A2B" stroke-width="4" />
+            <path d="M30 118 V36 Q30 22 60 22 Q90 22 90 36 V118" fill="none" stroke="#F4BE1A" stroke-width="3" />
+            <circle cx="18" cy="30" r="6" fill="#F4BE1A" stroke-width="3" /><circle cx="102" cy="30" r="6" fill="#F4BE1A" stroke-width="3" />
+            <rect x="14" y="120" width="10" height="26" fill="#93613A" stroke-width="3" /><rect x="96" y="120" width="10" height="26" fill="#93613A" stroke-width="3" />
+            <path d="M38 108 Q36 66 60 60 Q84 66 82 108 Z" fill="#6B2FB3" stroke-width="4" />
+            <rect x="8" y="104" width="104" height="18" fill="#93613A" stroke-width="4" />
+            <ellipse cx="60" cy="60" rx="16" ry="6" fill="#FFFEFA" stroke-width="3" />
+            <circle cx="53" cy="88" r="5" fill="#EDCB8E" stroke-width="3" /><circle cx="67" cy="88" r="5" fill="#EDCB8E" stroke-width="3" />
+            <circle cx="60" cy="43" r="15" fill="#EDCB8E" stroke-width="4" />
+            <path d="M46 31 L48 18 L54 25 L60 13 L66 25 L72 18 L74 31 Z" fill="#F4BE1A" stroke-width="3" />
+            <path d="M51 42 h7 M62 42 h7" fill="none" stroke-width="2.5" />
+            <circle cx="55" cy="44.5" r="1.8" fill="#1E1B18" stroke="none" /><circle cx="66" cy="44.5" r="1.8" fill="#1E1B18" stroke="none" />
+            <path class="royal-brow" d="M62 36.5 l7 -0.5" fill="none" stroke-width="2.5" />
+            <path d="M56 51.5 h8" fill="none" stroke-width="2.5" />
+          </g>
+        </svg>
+        <span class="royal-jester"></span>
       </div>
       <header class="masthead">
         <h1 class="wordmark" aria-label="Jester"><span class="letters" aria-hidden="true"><span style="--c:#D93A2B;--r:-4deg;--y:4px">J<svg class="wordmark-hat" aria-hidden="true" focusable="false"><use href="#jester-hat" /></svg></span><span style="--c:#4F7BF0;--r:3deg;--y:-4px">e</span><span style="--c:#F47FA6;--r:-2deg;--y:2px">s</span><span style="--c:#FFC93C;--r:4deg;--y:-3px">t</span><span style="--c:#D93A2B;--r:-3deg;--y:3px">e</span><span style="--c:#4F7BF0;--r:2deg;--y:-2px">r</span></span></h1>

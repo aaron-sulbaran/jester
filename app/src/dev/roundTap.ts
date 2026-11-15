@@ -12,6 +12,7 @@ import {
   type Channel, type PackedBoxes, type PackedPose, type RoundRecord,
 } from "../../../eval/src/record.ts";
 import { mountDevPanel, showProblem, showSaved, takeTag } from "./devPanel.ts";
+import { cameraFacts } from "./cameraFacts.ts";
 
 type Result<T> = { data: T; error: null } | { data: null; error: string };
 
@@ -111,7 +112,8 @@ function buildRecord(c: Captured): RoundRecord {
     player: packPose(c.player),
     result: c.result,
     scorerVersion: c.result.scorerVersion,
-    device: deviceFacts(c.player),
+    // The live site (a build) never keeps the camera's name; see cameraFacts.ts.
+    device: deviceFacts(c.player, c.build !== null),
     // A dev server stamps this when it saves the round; a build knows it already.
     app: c.build ? { commit: c.build.commit, dirty: null, engineHash: c.build.engineHash } : null,
   };
@@ -225,7 +227,7 @@ function browserId(): string {
 
 let gpu: string | null | undefined;
 
-function deviceFacts(player: PoseTimeline): RoundRecord["device"] {
+function deviceFacts(player: PoseTimeline, live: boolean): RoundRecord["device"] {
   if (gpu === undefined) {
     try {
       const gl = document.createElement("canvas").getContext("webgl");
@@ -239,8 +241,7 @@ function deviceFacts(player: PoseTimeline): RoundRecord["device"] {
   for (const v of document.querySelectorAll("video")) {
     const track = v.srcObject instanceof MediaStream ? v.srcObject.getVideoTracks()[0] : undefined;
     if (!track) continue;
-    const s = track.getSettings();
-    camera = { label: track.label, width: s.width ?? null, height: s.height ?? null, frameRate: s.frameRate ?? null };
+    camera = cameraFacts(track, live);
     break;
   }
   const seen = player.frames.filter((f) => f.landmarks);
