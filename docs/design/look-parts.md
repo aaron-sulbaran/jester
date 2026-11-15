@@ -25,6 +25,8 @@ The scrapbook theatre look, as listed by Aaron's frontend agent and checked agai
 
 - **A photo print:** `.print` (white border, hard shadow).
 - **A clip card:** `.clip` with `.clip-pic`, `.clip-name`, `.clip-credit`, `.clip-hint`, `.clip-star`, `.clip-q`.
+- **The bank:** `.bank` is one row that scrolls sideways, each `.clip` snapping into place, so the Play ticket stays on screen however many clips there are. On phones a `.clip` is 68vw wide so the next card peeks in at the edge.
+- **Your clip is in:** `#clipReady`, a note taped bottom left on laptops and at the top under the corner tags on phones; hidden during a turn.
 - **An illustrated step:** `.step` with `.step-pic`, as on How to play.
 - **Tape strips:** `.washi.w-pink`, `.w-mint`, `.w-dots`.
 - **The stage:** `.box`, the shoebox around any canvas or video. Copy the block from `screen-turn` or `screen-crown`.
