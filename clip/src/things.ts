@@ -9,6 +9,7 @@ import { constants } from "../../engine/src/index.ts";
 import type { BoxFrame, BoxTrack } from "../../engine/src/index.ts";
 import { iou } from "./boxes.ts";
 import { shotEndMs } from "./guide.ts";
+import { MIN_SHARE_OF_SHOT } from "./rules.ts";
 import type { Box, ClipSource, Guide, Outline, Pace } from "./types.ts";
 
 /** One thing the object detector found in one frame. `category` is the model's name, such as "dog". */
@@ -163,8 +164,126 @@ export function linkThings(
   return all.map((track) => fillGaps(track, frames));
 }
 
+export interface ThingRejoinOptions {
+  /** Image width over height, so sideways and up-down distances compare fairly. Default 1. */
+  aspect?: number;
+  /** Overlap that always counts as the same place, as in linking. Default 0.2. */
+  minIou?: number;
+  /** A thing lost for up to this many analysed frames is joined back. Default 45 (3 s at 15 per second, as for people). */
+  maxGap?: number;
+  /** A piece that comes back within this many box sizes of where the earlier one ended joins it. Default 1.5. */
+  maxJump?: number;
+}
+
+/** The smaller box lies at least this much inside the larger: one thing seen whole and in part. */
+const NESTED = 0.5;
+/** A piece that comes back may be at most this many times larger or smaller than the one it joins. */
+const MAX_SIZE_RATIO = 2;
+
+/** Share of the smaller box that lies inside the larger one. */
+function insideShare(a: Box, b: Box): number {
+  const across = Math.min(a.cx + a.w / 2, b.cx + b.w / 2) - Math.max(a.cx - a.w / 2, b.cx - b.w / 2);
+  const down = Math.min(a.cy + a.h / 2, b.cy + b.h / 2) - Math.max(a.cy - a.h / 2, b.cy - b.h / 2);
+  const smaller = Math.min(a.w * a.h, b.w * b.h);
+  return across <= 0 || down <= 0 || smaller <= 0 ? 0 : (across * down) / smaller;
+}
+
+/** Two boxes in the same place: they overlap as linking requires, or one sits mostly inside the other. */
+function samePlace(a: Box, b: Box, minIou: number): boolean {
+  return iou(a, b) >= minIou || insideShare(a, b) >= NESTED;
+}
+
+/**
+ * How well `later` continues `earlier` as one thing, or null when it does not. Pieces that overlap
+ * in time must be in the same place on most of the frames they share; they rank first, best match
+ * first. A piece that starts after the other ended must start in the same place or within `maxJump`
+ * box sizes of where it ended, at a similar size, within `maxGap` frames; the shorter gap ranks first.
+ */
+function rejoinFit(earlier: ThingTrack, later: ThingTrack, aspect: number, minIou: number, maxGap: number, maxJump: number): number | null {
+  if (earlier.category !== later.category || earlier.shot !== later.shot) return null;
+  const end = earlier.points[earlier.points.length - 1]!;
+  const start = later.points[0]!;
+  if (start.frame > end.frame) {
+    const gap = start.frame - end.frame - 1;
+    if (gap > maxGap) return null;
+    const sizes = [sizeOf(end.box, aspect), sizeOf(start.box, aspect)];
+    const size = Math.max(...sizes, 1e-6);
+    const jump = Math.hypot((start.box.cx - end.box.cx) * aspect, start.box.cy - end.box.cy) / size;
+    const similar = Math.max(...sizes) <= MAX_SIZE_RATIO * Math.min(...sizes);
+    if (!samePlace(end.box, start.box, minIou) && !(jump <= maxJump && similar)) return null;
+    return 1 - gap / (maxGap + 1);
+  }
+  const laterBoxes = new Map(later.points.map((p) => [p.frame, p.box]));
+  let shared = 0;
+  let same = 0;
+  for (const point of earlier.points) {
+    const other = laterBoxes.get(point.frame);
+    if (!other) continue;
+    shared++;
+    if (samePlace(point.box, other, minIou)) same++;
+  }
+  if (shared === 0 || same / shared < 0.5) return null;
+  return 1 + same / shared;
+}
+
+/** The point to keep where two pieces share a frame: a sighting over a filled-in box, then the larger box. */
+function keptPoint(a: ThingPoint, b: ThingPoint): ThingPoint {
+  if (a.detected !== b.detected) return a.detected ? a : b;
+  return b.box.w * b.box.h > a.box.w * a.box.h ? b : a;
+}
+
+function mergeThings(earlier: ThingTrack, later: ThingTrack, frames: readonly { tMs: number }[]): ThingTrack {
+  const byFrame = new Map(earlier.points.map((p) => [p.frame, p]));
+  for (const point of later.points) {
+    const other = byFrame.get(point.frame);
+    byFrame.set(point.frame, other ? keptPoint(other, point) : point);
+  }
+  const points = [...byFrame.values()].sort((a, b) => a.frame - b.frame);
+  return fillGaps({ id: Math.min(earlier.id, later.id), category: earlier.category, shot: earlier.shot, points }, frames);
+}
+
+/**
+ * Joins the pieces of one thing that linking split apart, as `rejoinTracks` does for people. A
+ * parked car with a dancer in front of it is seen whole, then only as the part she leaves uncovered,
+ * sometimes both at once, and linking can make a new track each time. Pieces of the same category in
+ * the same shot join when they overlap in time in the same place (one box kept per frame: a sighting
+ * over a filled-in box, then the larger), or when one starts where the other ended, within `maxGap`
+ * frames. The best join goes first, again and again, so a long chain of pieces becomes one track.
+ * A joined track keeps the lowest id and covers every frame from first to last sighting. Tracks come
+ * back ordered by id.
+ */
+export function rejoinThings(
+  tracks: readonly ThingTrack[],
+  frames: readonly { tMs: number }[],
+  options: ThingRejoinOptions = {},
+): ThingTrack[] {
+  const aspect = options.aspect ?? 1;
+  const minIou = options.minIou ?? 0.2;
+  const maxGap = options.maxGap ?? 45;
+  const maxJump = options.maxJump ?? 1.5;
+  let pieces = tracks.filter((t) => t.points.length > 0).sort((a, b) => a.id - b.id);
+  for (;;) {
+    let best: { earlier: ThingTrack; later: ThingTrack; fit: number } | null = null;
+    for (const a of pieces) {
+      for (const b of pieces) {
+        if (a === b) continue;
+        const aFirst = a.points[0]!.frame;
+        const bFirst = b.points[0]!.frame;
+        if (aFirst > bFirst || (aFirst === bFirst && a.id > b.id)) continue;
+        const fit = rejoinFit(a, b, aspect, minIou, maxGap, maxJump);
+        if (fit !== null && (!best || fit > best.fit)) best = { earlier: a, later: b, fit };
+      }
+    }
+    if (!best) break;
+    const { earlier, later } = best;
+    const merged = mergeThings(earlier, later, frames);
+    pieces = [...pieces.filter((t) => t !== earlier && t !== later), merged].sort((a, b) => a.id - b.id);
+  }
+  return pieces;
+}
+
 /** Adds an interpolated point for every analysed frame between two sightings. */
-function fillGaps(track: ThingTrack, frames: readonly ThingFrame[]): ThingTrack {
+function fillGaps(track: ThingTrack, frames: readonly { tMs: number }[]): ThingTrack {
   const points: ThingPoint[] = [];
   track.points.forEach((point, i) => {
     const previous = track.points[i - 1];
@@ -216,9 +335,39 @@ function movingAxes(boxes: readonly Box[], aspect: number): { x: boolean; y: boo
   };
 }
 
-/** True when the box moves enough for the engine to have something to score. */
+/** A region inside nearly every box at least this share of the smaller boxes' width and height... */
+const CORE_SHARE = 0.5;
+/** ...while the box's width over height swings by at least this factor: a cover, not a move. */
+const COVER_SHAPE_CHANGE = 1.5;
+
+/**
+ * True when the boxes keep a part in common the whole time while their shape keeps changing: a
+ * parked thing that someone keeps covering (the dancer in front of the car), seen whole, then only
+ * as the part left uncovered. The common part is the region between the 95th percentile of the left
+ * and top edges and the 5th percentile of the right and bottom edges. A thing that moves by more than
+ * half its own size leaves no such region; one that only grows or shrinks (coming at the camera)
+ * keeps its shape.
+ */
+function coveredInPlace(boxes: readonly Box[]): boolean {
+  if (boxes.length === 0) return false;
+  const coreW = percentile(boxes.map((b) => b.cx + b.w / 2), 0.05) - percentile(boxes.map((b) => b.cx - b.w / 2), 0.95);
+  const coreH = percentile(boxes.map((b) => b.cy + b.h / 2), 0.05) - percentile(boxes.map((b) => b.cy - b.h / 2), 0.95);
+  const smallW = percentile(boxes.map((b) => b.w), 0.05);
+  const smallH = percentile(boxes.map((b) => b.h), 0.05);
+  if (coreW < CORE_SHARE * smallW || coreH < CORE_SHARE * smallH) return false;
+  const shapes = boxes.filter((b) => b.h > 0).map((b) => b.w / b.h);
+  const thinnest = percentile(shapes, 0.05);
+  return thinnest > 0 && percentile(shapes, 0.95) >= COVER_SHAPE_CHANGE * thinnest;
+}
+
+/**
+ * True when the box moves enough for the engine to have something to score. A box that only
+ * changes shape in place, because someone keeps covering part of the thing, does not count.
+ */
 export function thingMoves(track: ThingTrack, aspect = 1): boolean {
-  const axes = movingAxes(track.points.map((p) => p.box), aspect);
+  const boxes = track.points.map((p) => p.box);
+  if (coveredInPlace(boxes)) return false;
+  const axes = movingAxes(boxes, aspect);
   return axes.x || axes.y || axes.h;
 }
 
@@ -234,15 +383,24 @@ export function thingName(category: string): string {
 
 /**
  * Ranks things worth offering as a subject, best first, by size, how central, how much the box
- * centre moves, and time on screen. A track needs at least one second of frames (`sampleHz`).
+ * centre moves, and time on screen. A track needs at least one second of frames (`sampleHz`) and,
+ * like a person (`checkSubject`), must be on screen for at least half of its shot: blind mode plays
+ * every role over the whole shot, so a thing seen for a moment leaves its player nothing to copy.
+ * `cuts` gives the shots; without them the clip is one shot.
  */
 export function rankThings(
   tracks: readonly ThingTrack[],
-  info: { sampleHz: number; frameCount: number; aspect?: number },
+  info: { sampleHz: number; frameCount: number; aspect?: number; cuts?: readonly number[] },
 ): ThingCandidate[] {
   const aspect = info.aspect ?? 1;
+  const cuts = info.cuts ?? [];
+  const shotLength = (shot: number): number => {
+    const range = shotRange(info.frameCount, cuts, shot);
+    return range ? Math.max(1, range.end - range.start) : Math.max(1, info.frameCount);
+  };
   const scored = tracks
     .filter((track) => track.points.length >= info.sampleHz)
+    .filter((track) => track.points.length >= MIN_SHARE_OF_SHOT * shotLength(track.shot))
     .map((track) => {
       const size = clamp01(median(track.points.map((p) => sizeOf(p.box, aspect))));
       const central = clamp01(1 - 2 * Math.abs(median(track.points.map((p) => p.box.cx)) - 0.5));

@@ -18,10 +18,14 @@ export { hideUnsureJoints, UNSURE_BELOW, UNSURE_RADIUS } from "./steady.ts";
 export { largestBlobInBox } from "./outline.ts";
 export type { BinaryMask } from "./outline.ts";
 export { placeSubject } from "./view.ts";
+export { bodySpread, bodyTurns, frameTurn, widestSpread, NO_TURN } from "./turn.ts";
+export type { Turn } from "./turn.ts";
+export { boneLengths, facingOf, liftPose } from "./lift.ts";
+export type { BoneLengths, Lifted, Vec3 } from "./lift.ts";
 export type { Placement, View } from "./view.ts";
 export {
-  linkThings, withoutPeople, rankThings, thingMotionPerFrame, thingMoves, thingName, thingPace,
+  linkThings, rejoinThings, withoutPeople, rankThings, thingMotionPerFrame, thingMoves, thingName, thingPace,
   boxPolygon, boxEllipse, buildThingGuide, thingGuides, THING_STILL, THING_OTHER_SHOT, thingObjectName, thingHint, boxTrackAt,
 } from "./things.ts";
-export type { ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingLinkOptions } from "./things.ts";
+export type { ThingDetection, ThingFrame, ThingPoint, ThingTrack, ThingCandidate, ThingLinkOptions, ThingRejoinOptions } from "./things.ts";
 export { meanCentreX, medianCentreX, nameByPosition, partName, positionNames } from "./positions.ts";

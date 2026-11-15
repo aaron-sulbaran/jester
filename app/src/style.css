@@ -109,10 +109,12 @@ body:not(.solo) #solo { display: none; }
 /* A word of letters stays on one line; the line breaks only between words. */
 .letters .word { display: inline-flex; color: inherit; rotate: none; translate: none; margin-right: 0; }
 .wordmark { margin: 0; font: 400 clamp(72px, 10vw, 128px)/1 var(--sticker); padding: 6px 14px 16px; }
-/* The crown on the J, tipped like a hat: the doodled crown from the scrapbook mockups, also the favicon. It sits
-   inside the letter stickers, so it shares their white die-cut edge. */
+/* The crown on the J, tipped like a hat: the doodled crown from the scrapbook mockups. It sits inside the letter
+   stickers, so it shares their white edge, grown round (#die-cut-round) so its points get a smooth rim like the
+   letters. It rests on the corner of the J. */
+.wordmark .letters { filter: url(#die-cut-round); }
 .wordmark .letters > span:first-child { position: relative; }
-.wordmark-crown { position: absolute; left: var(--crown-x, -.16em); top: var(--crown-y, -.2em); width: var(--crown-w, .66em); height: calc(var(--crown-w, .66em) * .72); overflow: visible; rotate: var(--crown-r, -38deg); }
+.wordmark-crown { position: absolute; left: var(--crown-x, -.19em); top: var(--crown-y, -.15em); width: var(--crown-w, .66em); height: calc(var(--crown-w, .66em) * .72); overflow: visible; rotate: var(--crown-r, -38deg); }
 
 /* ---------- Buttons ---------- */
 /* The main action: a ticket stub, notched at both ends, with a perforated tear-off. */
@@ -237,7 +239,7 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
    tag that opens its own screen; Play stays the one ticket. */
 .send-invite {
   position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px;
-  width: min(680px, 100%); padding: 16px 20px 16px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
+  width: min(680px, 100%); margin-top: 12px; padding: 16px 20px 16px 24px; background: var(--photo); box-shadow: var(--lift); rotate: .6deg;
 }
 .send-invite .washi { top: -13px; left: 26px; width: 84px; height: 24px; rotate: -4deg; }
 .send-invite-text { margin: 0; flex: 1 1 280px; text-align: left; font: 700 23px/1.25 var(--hand); letter-spacing: -.03em; color: var(--pen); }
@@ -305,6 +307,10 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 .cast { display: grid; gap: 14px; width: min(480px, 100%); }
 .who { display: grid; grid-template-columns: 30px auto minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; }
 .who-dot { width: 30px; height: 30px; border-radius: 50%; background: var(--who); filter: url(#sticker); }
+.who { grid-template-columns: 44px auto minmax(0, 1fr); }
+button.who-dot { width: 44px; height: 44px; border: 0; padding: 0; cursor: pointer; transition: transform .15s var(--ease); }
+button.who-dot:hover { transform: rotate(-10deg) scale(1.08); }
+button.who-dot:focus-visible { outline: 3px solid var(--pen); outline-offset: 3px; }
 .who-label { font-size: 15px; white-space: nowrap; }
 .who input { min-width: 0; width: 100%; min-height: 52px; padding: 8px 14px; background: var(--photo); border: 0; box-shadow: 3px 4px 0 var(--shade); font: 700 26px var(--hand); letter-spacing: -.03em; color: var(--pen); }
 .who input::placeholder { color: #9A8B7A; }

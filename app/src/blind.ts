@@ -2,8 +2,8 @@
 //
 // 1. A clip goes in: the demo scene (a dancer and a ball, works offline) or a video, read by the clip side
 //    (`prepareVideo` and `subjectGuides`, one guide per subject, all over the same stretch of the clip).
-// 2. Each player gets a secret role (a person or a thing) and a look: only the outline or only the stick
-//    figure, never the clip. The player is never told what the role is: before the turn they see only its
+// 2. Each player gets a secret role (a person or a thing) and a look: the 3D jester for a person (?guide=a or b
+//    for the flat ones, ?guide=stick for the old stick figure) or the outline of a thing, never the clip. The player is never told what the role is: before the turn they see only its
 //    first frame, and they pick which body part copies it (a person with the whole body is scored limb by
 //    limb; any role with a hand or the head is scored as that part following the role's movement). The role is named only at the reveal.
 // 3. Players take turns on the same laptop. Each turn is scored by the engine: the pose channel for a person,
@@ -16,11 +16,13 @@
 
 import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject, type WebcamFrame } from "../../engine/src/index.ts";
 import { boxFromLandmarks, hideUnsureJoints, partName, type Guide, type GuideHands, type HandPoints, type Outline } from "../../clip/src/index.ts";
+import { partsWorthOffering } from "./partChoices.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
 import { PerformanceRecorder } from "../../spikes/pose-match/recorder.mjs";
-import { blindView, drawBlind, guideFrameAt, type Look } from "./clipside/blind.ts";
+import { blindView, drawBlind, drawBlindBackground, drawBlindSubject, guideFrameAt, guidePoseAt, guideSliceAt, preload3d, stageSpot, startGuideTurn, type BlindStyle, type GuidePose, type Look } from "./clipside/blind.ts";
 import { addHands } from "./clipside/hands.ts";
+import { stageImage, type Construction, type StageLook } from "./clipside/puppet.ts";
 import { prepareVideo, subjectGuides } from "./clip.ts";
 import { simulatedPlayer, type Player } from "./round.ts";
 import { simulatedObjectPlayer, type ObjectClip } from "./objectClips.ts";
@@ -83,7 +85,7 @@ export interface RoleInfo {
   look: Look;
   /** One or two sentences on how to play, never what the role is. */
   text: string;
-  /** The body parts the player can copy it with (first is the whole body). Offered for every role, so it gives nothing away. */
+  /** The body parts the player can copy it with (first is the whole body, always offered); a hand, the head or a foot only when the role travels enough to score (partChoices.ts). */
   parts: { key: BodyPart; label: string }[];
   /** Plays the role once on `playStage().guideCanvas`, unscored, at the game's speed, then shows the first frame again. */
   preview(): Promise<void>;
@@ -606,14 +608,27 @@ function guideAt(g: Guide, ms: number): Guide {
   const outline = o0 && o1 && o0.length === o1.length ? o0.map(([x, y], k) => [lerp(x, o1[k]![0]), lerp(y, o1[k]![1])] as [number, number]) : u < 0.5 ? o0 : o1 ?? o0;
   const l0 = g.timeline?.frames[i]?.landmarks ?? null, l1 = g.timeline?.frames[j]?.landmarks ?? null;
   const landmarks = l0 && l1 ? l0.map(([x, y, v], k) => [lerp(x, l1[k]![0]), lerp(y, l1[k]![1]), Math.min(v, l1[k]![2])] as const) : l0;
+  const d0 = g.depths?.[i] ?? null, d1 = g.depths?.[j] ?? null;
+  const depth = d0 && d1 && d0.length === d1.length ? d0.map((z, k) => lerp(z, d1[k]!)) : d0;
   return {
     ...g,
     boxTrack: { ...g.boxTrack, frames: [{ tMs: ms, box }] },
     outlines: [outline],
     timeline: g.timeline && { ...g.timeline, frames: [{ tMs: ms, landmarks }] },
+    depths: g.depths ? [depth] : undefined,
     // Fingers blend between the two samples like the body, so they move smoothly even when the clip is slowed.
     ...(g.hands ? { hands: [blendHands(g.hands[i] ?? null, g.hands[j] ?? null, u)] } : {}),
   };
+}
+
+/** The role at play time `ms` as a one-frame guide: the puppet smoothed and curved between samples, else blended. */
+function roleAt(s: Seat, ms: number): Guide {
+  return s.look === "puppet" ? guideSliceAt(s.guide, ms / (1000 / s.guide.source.sampleHz)) : guideAt(s.guide, ms);
+}
+
+/** The puppet's turn at play time `ms`, from the whole guide (a one-frame slice cannot know its turn). */
+function poseAt(g: Guide, ms: number): GuidePose {
+  return guidePoseAt(g, ms / (1000 / g.source.sampleHz));
 }
 
 const DEMO_W = 1280, DEMO_H = 720, DEMO_HZ = 15, DEMO_ASPECT = DEMO_W / DEMO_H;
@@ -754,14 +769,31 @@ function shuffle<T>(xs: T[]): T[] {
   return a;
 }
 
+/**
+ * How people are drawn in blind mode. Null is the stick figure on the plain background (the default until Aaron
+ * has played a Blind round with a real camera on the 3D jester and seen a normal score); "d" is the 3D jester
+ * Aaron picked (app/src/clipside/puppet3d.ts); a and b are the flat sticker and flat cut paper (puppet.ts).
+ * ?guide=d|a|b|stick picks one for a session, ?stage=plain|spot the stage.
+ */
+const DEFAULT_GUIDE: Construction | null = null;
+
+const GUIDE: { puppet: Construction | null; stage: StageLook } = (() => {
+  const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
+  const asked = params.get("guide");
+  const puppet = asked === "a" || asked === "b" || asked === "d" ? asked : asked === "3d" ? "d" : asked === "stick" ? null : DEFAULT_GUIDE;
+  return { puppet, stage: params.get("stage") === "spot" ? "spot" : "plain" };
+})();
+// The 3D jester's three.js loads in the background from the start, so it is ready by the first turn.
+if (GUIDE.puppet === "d" && typeof document !== "undefined") void preload3d();
+
 /** Every player gets a role; roles repeat only when there are more players than subjects. */
 export function deal(names: string[], guides: Guide[], colors: readonly string[] = PLAYER_COLORS): Seat[] {
   let pool: Guide[] = [];
   return names.map((name, i) => {
     if (pool.length === 0) pool = shuffle(guides);
     const guide = pool.pop()!;
-    // People are always a stick figure (a moving outline is too hard to read); things are their outline.
-    const look: Look = isThing(guide) ? "outline" : "stick";
+    // People are a jester puppet (a moving outline is too hard to read); things are their outline.
+    const look: Look = isThing(guide) ? "outline" : GUIDE.puppet ? "puppet" : "stick";
     return { name, color: colors[i % colors.length]!, guide, original: guide, look, part: "body", cutouts: [], face: null, result: null, recording: null };
   });
 }
@@ -796,13 +828,18 @@ function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
   const video = s.withClip ? scene.video : null;
   if (video) {
     fitCanvas(canvas, scene.width / scene.height);
-    return { view: blindView(s.guide, canvas, "exact"), style: { background: "transparent", color: s.color }, video };
+    const view = blindView(s.guide, canvas, "exact");
+    const style: BlindStyle = { background: "transparent", color: s.color };
+    return { view, stageView: view, style, video };
   }
   // A person fills whatever space the screen gives the role (half the stage while playing); a thing keeps
   // the clip's shape, so where it travels stays true.
   const shown = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 0;
   fitCanvas(canvas, !isThing(s.guide) && shown ? shown : scene.width / scene.height);
-  return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color }, video: null };
+  const view = blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit", s.look);
+  // `stageView` stays the base view when `view` is resized to the player, so the stage does not move.
+  const style: BlindStyle = { background: "#16161d", color: s.color, ...(GUIDE.puppet ? { stage: GUIDE.stage, puppet: GUIDE.puppet } : {}) };
+  return { view, stageView: view, style, video: null };
 }
 
 /**
@@ -869,6 +906,7 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
   const first = Math.max(0, g.boxTrack.frames.findIndex((f) => f.box !== null));
   const draw = () => {
     if (video) paintClip(guideCanvas, video, shown, guideAt(g, g.boxTrack.frames[first]?.tMs ?? 0), s.color, s.name);
+    else if (s.look === "puppet") drawBlind(guideCanvas, guideSliceAt(g, first), 0, s.look, view, style, guidePoseAt(g, first));
     else drawBlind(guideCanvas, g, first, s.look, view, style);
   };
   draw();
@@ -881,16 +919,29 @@ function drawFirstFrame(s: Seat, scene: Scene, ui: BlindUi) {
 
 /**
  * Draws the role at play time `ms` on `canvas`, with a faint copy `leadMs` ahead so the next move shows
- * coming (it hides behind the role when nothing changes).
+ * coming (it hides behind the role when nothing changes). On the stage the copy goes between the stage
+ * and the role; the old plain look adds it on top.
  */
 function paintRole(canvas: HTMLCanvasElement, s: Seat, view: ReturnType<typeof roleView>, ms: number, leadMs: number, scratch: HTMLCanvasElement) {
   // Normal mode: the clip with the role marked on it, no figure over the person.
   if (view.video) { paintClip(canvas, view.video, view, guideAt(s.guide, ms), s.color, s.name); return; }
+  if (view.style.stage) {
+    const now = poseAt(s.guide, ms);
+    drawBlindBackground(canvas, s.guide, view.stageView, view.style, now);
+    if (leadMs > 0) {
+      scratch.width = canvas.width; scratch.height = canvas.height;
+      drawBlindSubject(scratch, roleAt(s, ms + leadMs), 0, s.look, view.view, { ...view.style, faint: true }, poseAt(s.guide, ms + leadMs));
+      const ctx = canvas.getContext("2d")!;
+      ctx.save(); ctx.globalAlpha = 0.3; ctx.drawImage(scratch, 0, 0); ctx.restore();
+    }
+    drawBlindSubject(canvas, roleAt(s, ms), 0, s.look, view.view, view.style, now);
+    return;
+  }
   if (leadMs > 0) {
     scratch.width = canvas.width; scratch.height = canvas.height;
-    drawBlind(scratch, guideAt(s.guide, ms + leadMs), 0, s.look, view.view, view.style);
+    drawBlind(scratch, roleAt(s, ms + leadMs), 0, s.look, view.view, view.style, s.look === "puppet" ? poseAt(s.guide, ms + leadMs) : undefined);
   }
-  drawBlind(canvas, guideAt(s.guide, ms), 0, s.look, view.view, view.style);
+  drawBlind(canvas, roleAt(s, ms), 0, s.look, view.view, view.style, s.look === "puppet" ? poseAt(s.guide, ms) : undefined);
   if (leadMs > 0) {
     const ctx = canvas.getContext("2d")!;
     ctx.save(); ctx.globalAlpha = 0.3; ctx.globalCompositeOperation = "lighter"; ctx.drawImage(scratch, 0, 0); ctx.restore();
@@ -1116,6 +1167,8 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   const g = s.guide;
   const stage = ui.playStage();
   const view = roleView(s, stage.guideCanvas, scene);
+  // A puppet guide only while the page keeps up (frame rate, and the 3D jester's draw time); else the stick figure.
+  startGuideTurn(s.look === "puppet" ? view.style.puppet ?? null : null);
   const scratch = document.createElement("canvas");
   let clipMs = -1;
   let pose: LandmarkObject[] | null = null, aspect = 4 / 3;
@@ -1126,6 +1179,12 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
   const shownHeight = (c: HTMLCanvasElement) => {
     const r = c.getBoundingClientRect();
     return displayedHeight(r.width, r.height, c.width, c.height, getComputedStyle(c).objectFit === "cover" ? "cover" : "contain");
+  };
+  // With no camera picture, the player's half stands on the same stage as the role, its floor at the same height.
+  const playerStage = (pc: HTMLCanvasElement, gc: HTMLCanvasElement) => {
+    if (!view.style.stage) return null;
+    const spot = stageSpot(gc, g, view.stageView);
+    return stageImage(pc.width, pc.height, { floorY: (spot.floorY / gc.height) * pc.height, spotX: pc.width / 2 }, view.style.stage);
   };
   const sizedView = (): typeof view => {
     if (!sizeToPlayer || clipMs < 0 || !pose) return view;
@@ -1144,7 +1203,8 @@ async function turn(s: Seat, scene: Scene, speed: number, deps: BlindDeps, ui: B
     // The clip's clock right now, so the figure moves with the sound between camera frames.
     paintRole(stage.guideCanvas, s, sizedView(), clipMs >= 0 ? Math.min(scene.durationMs, sound.now()) : 0, clipMs >= 0 ? leadMs : 0, scratch);
     fitCanvas(stage.playerCanvas, aspect);
-    drawFrame(stage.playerCanvas, deps.simMode() ? null : stage.cam, pose, { mirror: true, color: s.color });
+    const cam = deps.simMode() ? null : stage.cam;
+    drawFrame(stage.playerCanvas, cam, pose, { mirror: true, color: s.color, backdrop: cam ? null : playerStage(stage.playerCanvas, stage.guideCanvas) });
   };
   // A timer, not requestAnimationFrame, so it keeps drawing in a background tab.
   const painter = window.setInterval(paint, 1000 / 30);
@@ -1390,7 +1450,7 @@ function mediaTimeline(s: Seat, scene: Scene, speed: number): ResultRow["timelin
 function roleOf(s: Seat, scene: Scene, speed: number, ui: BlindUi, leadMs: number): RoleInfo {
   return {
     look: s.look, text: roleText(),
-    parts: Object.entries(BODY_PARTS).map(([key, p]) => ({ key: key as BodyPart, label: p.label.toLowerCase() })),
+    parts: partsWorthOffering(s.original.boxTrack).map((key) => ({ key, label: BODY_PARTS[key].label.toLowerCase() })),
     preview: () => previewRole(s, scene, speed, ui, leadMs),
   };
 }
@@ -1404,7 +1464,13 @@ export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, de
   const scene = slowScene({ ...clip, guides: clip.guides.map((g) => steadyMarker(fullFigure(g))) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
-  for (const s of seats) { s.original = clip.guides[scene.guides.indexOf(s.guide)]!; s.withClip = !!options.showClip; }
+  for (const s of seats) {
+    s.original = clip.guides[scene.guides.indexOf(s.guide)]!;
+    s.withClip = !!options.showClip;
+    // The 3D jester is Blind mode's guide. In Normal mode the real clip plays and the person is marked on it,
+    // so a jester standing over the real dancer would hide them: those seats keep the plain figure.
+    if (s.withClip && scene.video && s.look === "puppet") s.look = "stick";
+  }
   (window as any).__jesterBlind = { seats, scene, speed };
   for (let i = 0; i < seats.length; i++) {
     const s = seats[i]!;
@@ -1444,6 +1510,8 @@ async function finishGame(seats: Seat[], scene: Scene, speed: number, ui: BlindU
     lagMs: s.result?.lagMs ?? 0,
   }));
   revealLayers(seats, speed).forEach((layer, i) => { rows[i]!.layer = layer; });
+  // For checking in the console: each turn's score and how many of the player's frames it was scored on.
+  (globalThis as { __jesterTurns?: unknown }).__jesterTurns = rows.map((r) => ({ name: r.name, score: r.score, frames: r.timeline?.frames.length ?? 0 }));
   ui.results(rows);
   if (options.reveal === false) return rows;
   if (ui.revealControl) ui.revealControl.speed = 1;
