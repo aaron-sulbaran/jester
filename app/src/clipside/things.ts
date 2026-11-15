@@ -6,7 +6,7 @@ import {
   findCuts, frameSignature, linkThings, rankThings, thingGuides,
 } from "../../../clip/src/index.ts";
 import type {
-  ClipSource, ThingCandidate, ThingDetection, ThingFrame, ThingGuide, ThingTrack,
+  ClipSource, ThingCandidate, ThingDetection, ThingFrame, ThingTrack,
 } from "../../../clip/src/index.ts";
 import { MP_BUNDLE, MP_WASM } from "../../../spikes/pose-match/webcam.mjs";
 import { sha256Hex } from "./fingerprint.ts";
@@ -184,12 +184,10 @@ export async function prepareThings(
   };
 }
 
-/** A guide and an outline for every thing found, best first, and why each one left out was left out. */
+/** A guide for every thing found, best first, and why each one left out was left out. */
 export function preparedThingGuides(prepared: PreparedThings): ReturnType<typeof thingGuides> {
   return thingGuides({
     fingerprint: prepared.fingerprint, source: prepared.source, frames: prepared.frames, cuts: prepared.cuts,
     tracks: prepared.tracks, candidates: prepared.candidates, warnings: prepared.warnings,
   });
 }
-
-export type { ThingGuide };

@@ -17,11 +17,16 @@
     table { border-collapse: collapse; margin-top: 12px; }
     td { border: 1px solid #ccc; padding: 4px 8px; }
     .hidden { display: none; }
+    .switch { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0; }
+    .switch span { font-weight: 600; }
+    .switch label { cursor: pointer; }
+    h2 { font-size: 1.05rem; margin: 16px 0 4px; }
+    #blind { max-width: 480px; background: #16161d; }
   </style>
 </head>
 <body>
   <h1>Clip lab</h1>
-  <p class="sub">Pick a video, choose a person, and check the skeleton sits on them.</p>
+  <p class="sub">Pick a video, choose a person, and check the skeleton and outline sit on them.</p>
   <input id="file" type="file" accept="video/*" />
   <progress id="progress" value="0" max="1"></progress>
   <p id="status">Pick a video to start.</p>
@@ -32,7 +37,26 @@
   </section>
 
   <section id="play" class="hidden">
+    <div class="switch" id="overlay-switch">
+      <span>Over the clip:</span>
+      <label><input type="radio" name="overlay" value="skeleton" /> Skeleton</label>
+      <label><input type="radio" name="overlay" value="outline" /> Outline</label>
+      <label><input type="radio" name="overlay" value="both" /> Both</label>
+    </div>
     <canvas id="overlay" width="720" height="405"></canvas>
+
+    <h2>What the player sees (blind mode)</h2>
+    <div class="switch">
+      <span>Show:</span>
+      <label><input type="radio" name="look" value="outline" /> Outline</label>
+      <label><input type="radio" name="look" value="stick" /> Stick figure</label>
+    </div>
+    <div class="switch">
+      <span>Place:</span>
+      <label><input type="radio" name="place" value="fit" /> Fit</label>
+      <label><input type="radio" name="place" value="exact" /> Exact spot</label>
+    </div>
+    <canvas id="blind" width="480" height="360"></canvas>
   </section>
 
   <table id="facts"></table>

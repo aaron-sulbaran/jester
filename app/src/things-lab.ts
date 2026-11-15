@@ -3,7 +3,8 @@
 // thing. After each run, window.__thingsLab holds a summary.
 
 import { boxPolygon } from "../../clip/src/index.ts";
-import type { Box, ThingCandidate, ThingGuide, ThingPoint } from "../../clip/src/index.ts";
+import type { Box, Guide, ThingCandidate, ThingPoint, View } from "../../clip/src/index.ts";
+import { blindView, drawBlind, guideFrameAt } from "./clipside/blind.ts";
 import { preparedThingGuides, prepareThings, type PreparedThings, type PrepareThingsResult } from "./clipside/things.ts";
 
 interface LabSummary {
@@ -40,13 +41,15 @@ interface Shown {
   prepared: PreparedThings;
   /** Each candidate's points by analysed frame. */
   pointsByTrack: Map<number, Map<number, ThingPoint>>;
-  guideByTrack: Map<number, ThingGuide>;
+  guideByTrack: Map<number, Guide>;
   reasonByTrack: Map<number, string>;
   colorByTrack: Map<number, string>;
 }
 
 let shown: Shown | null = null;
 let chosen: ThingCandidate | null = null;
+/** Where the chosen thing's guide sits on the blind canvas, worked out once per pick. */
+let chosenView: View | null = null;
 let busy = false;
 let videoUrl: string | null = null;
 
@@ -131,6 +134,8 @@ function choose(number: number) {
   const candidate = shown.prepared.candidates.find((c) => c.number === number);
   if (!candidate) return;
   chosen = candidate;
+  const guide = shown.guideByTrack.get(candidate.trackId);
+  chosenView = guide ? blindView(guide, blind, "fit") : null;
   showThings(shown);
   const reason = shown.reasonByTrack.get(candidate.trackId);
   blindTitle.textContent = reason
@@ -155,20 +160,19 @@ function tick() {
   }
 
   if (!chosen) return;
+  const color = s.colorByTrack.get(chosen.trackId)!;
+  const guide = s.guideByTrack.get(chosen.trackId);
+  if (guide && chosenView) {
+    // The game's own blind drawing, placed to fill the canvas as a player would see it.
+    drawBlind(blind, guide, guideFrameAt(guide, nowMs), "outline", chosenView, { background: "#16161d", color });
+    return;
+  }
+  // A refused thing has no guide; show its raw box where it is in the frame.
   const bctx = blind.getContext("2d")!;
   bctx.fillStyle = "#f2efe8";
   bctx.fillRect(0, 0, blind.width, blind.height);
-  const color = s.colorByTrack.get(chosen.trackId)!;
-  const guide = s.guideByTrack.get(chosen.trackId);
-  let polygon: readonly (readonly [number, number])[] | null = null;
-  if (guide) {
-    const index = Math.round((nowMs - guide.guide.range.startMs) / frameMs);
-    polygon = guide.outline[index]?.points ?? null;
-  } else {
-    const point = s.pointsByTrack.get(chosen.trackId)?.get(frame);
-    polygon = point ? boxPolygon(point.box) : null;
-  }
-  if (polygon) fillPolygon(bctx, polygon, color);
+  const point = s.pointsByTrack.get(chosen.trackId)?.get(frame);
+  if (point) fillPolygon(bctx, boxPolygon(point.box), color);
 }
 
 async function run(file: File) {
@@ -176,6 +180,7 @@ async function run(file: File) {
   busy = true;
   shown = null;
   chosen = null;
+  chosenView = null;
   video.pause();
   show("play", false);
   show("blindView", false);
@@ -214,9 +219,9 @@ async function run(file: File) {
     pointsByTrack.set(c.trackId, new Map(track.points.map((pt) => [pt.frame, pt])));
     colorByTrack.set(c.trackId, COLORS[i % COLORS.length]!);
   });
-  const guideByTrack = new Map<number, ThingGuide>();
+  const guideByTrack = new Map<number, Guide>();
   const labelToTrack = new Map(p.candidates.map((c) => [c.label, c.trackId]));
-  for (const g of guides) guideByTrack.set(labelToTrack.get(g.guide.subject.label)!, g);
+  for (const g of guides) guideByTrack.set(labelToTrack.get(g.subject.label)!, g);
   const reasonByTrack = new Map<number, string>();
   for (const s of skipped) reasonByTrack.set(labelToTrack.get(s.label)!, s.reason);
   shown = { prepared: p, pointsByTrack, guideByTrack, reasonByTrack, colorByTrack };

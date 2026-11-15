@@ -18,7 +18,29 @@ npm run build    # typecheck + static build in dist/
 
 The clip lab, http://localhost:5173/clip-lab.html (dev server only, not in the build), runs the clip side on one video so the result can be checked by eye. `?clip=<name>` runs `public/_clips/<name>` (git ignored, put test clips there), `?pick=<number>` chooses that person, `?fresh=1` ignores the saved analysis. After each run `window.__clipLab` holds a summary.
 
+The lab's switches can be set from the URL too: `?overlay=skeleton|outline|both`, `?look=outline|stick`, `?place=fit|exact`. Its table shows how many blind mode roles the clip gives.
+
 `?nocam=1` ticks "Simulated player": a stand-in copies the clip with 150 ms lag and an adjustable wobble, no camera needed.
+
+## Blind mode: the three clip side calls
+
+All three are in `src/clip.ts`. A refusal is a sentence a player can read, never a throw.
+
+```ts
+const prepared = await prepareVideo(file, videoElement, (share) => (bar.value = share));
+if (prepared.error !== null) return show(prepared.error);          // e.g. "No person found in this clip."
+const { guides, skipped } = subjectGuides(prepared.data);           // one guide per person, best first
+const roles = guides.map((guide, i) => ({ player: players[i], guide }));
+const mine = confirmSubject(prepared.data, prepared.data.candidates[0]!.trackId); // one picked person
+```
+
+- `prepareVideo(file, video, onProgress)` reads the first 30 seconds at 15 frames a second and finds up to 4 people. The same file again comes back from the saved analysis in about no time (`fromSaved: true`).
+- `subjectGuides(prepared)` gives a guide for every person in the top person's shot, so all roles share one `range` and play over the same stretch of the clip. People in another shot, out of view most of the time, or too small go to `skipped` with the sentence why.
+- `confirmSubject(prepared, trackId)` is the same guide for one person the player picked (single player rounds).
+
+Each guide carries, one entry per frame at the same times: `timeline` (pose, for the engine's pose channel), `boxTrack` (the box over time) and `outlines` (a closed polygon of up to 60 points in normalized image coordinates, null where the person is missing). `range` is the clip's media time for that stretch.
+
+To draw what a player sees without the clip: `placeSubject(guide, canvas, "fit" | "exact")` from `../clip` gives the placement once per guide, and `drawBlind(canvas, guide, guideFrameAt(guide, mediaMs), "outline" | "stick", view)` from `src/clipside/blind.ts` draws one frame. "fit" centres the subject on its own average position at about 70 percent of the canvas height and shrinks it if its movement would leave the canvas; "exact" keeps it where it is in the clip frame. The clip lab shows both.
 
 ## How the engine is wired
 
@@ -43,6 +65,8 @@ Each player frame is tagged with `clipTimeMs`, the clip's playback time when the
 - Main page `/?nocam=1`: the starter clip with the simulated player (wobble 10) scored 100 (Perfect), 133 ms behind. Picking `squat.webm` there gave "squat.webm: 7.1 s, person found in 107 of 107 samples."; picking `no-person.mp4` gave "Could not read the clip: No person found in this clip."
 
 ## Not checked
+
+- Outlines (`clip: an outline per frame for people`) and the blind mode preview: unit tests and the build pass; nobody has looked at them on a clip yet. Aaron is checking in his browser.
 
 A real camera. First person at a laptop: run a round and post the score and how it felt.
 

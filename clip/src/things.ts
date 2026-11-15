@@ -8,7 +8,7 @@
 import { constants } from "../../engine/src/index.ts";
 import type { BoxFrame } from "../../engine/src/index.ts";
 import { iou } from "./boxes.ts";
-import type { Box, ClipSource, Guide, Pace } from "./types.ts";
+import type { Box, ClipSource, Guide, Outline, Pace } from "./types.ts";
 
 /** One thing the object detector found in one frame. `category` is the model's name, such as "dog". */
 export interface ThingDetection { box: Box; category: string; score: number }
@@ -34,12 +34,8 @@ export interface ThingCandidate {
   moves: boolean;
 }
 
-/** A closed polygon in normalized image coordinates; null where the thing is not on screen. */
-export interface ThingOutlineFrame { tMs: number; points: readonly (readonly [number, number])[] | null }
-
-export interface ThingGuide { guide: Guide; outline: ThingOutlineFrame[] }
-
 export const THING_STILL = "This one does not move, so there is nothing to copy.";
+export const THING_OTHER_SHOT = "This thing is in a different shot of the clip.";
 const NOT_FOUND = "That thing is not one of the things found in this clip.";
 
 export interface ThingLinkOptions {
@@ -266,8 +262,8 @@ export function rankThings(
   });
 }
 
-/** The box as a closed four point polygon, clockwise from top left. */
-export function boxPolygon(box: Box): [number, number][] {
+/** The box as a closed four point outline, clockwise from top left. */
+export function boxPolygon(box: Box): Outline {
   const left = box.cx - box.w / 2;
   const right = box.cx + box.w / 2;
   const top = box.cy - box.h / 2;
@@ -287,9 +283,10 @@ export function thingPace(track: ThingTrack, sampleHz: number, aspect = 1): Pace
 }
 
 /**
- * The guide for one thing in its shot, with an outline per frame. Like a person's guide, time
- * starts at 0 at the shot's first frame and frames where the thing is not on screen are null.
- * A thing whose box never moves is refused with THING_STILL.
+ * The guide for one thing in its shot. Like a person's guide, time starts at 0 at the shot's
+ * first frame, and frames where the thing is not on screen have a null box and outline. The
+ * outline is the box as four points (the detector gives no mask). A thing whose box never moves
+ * is refused with THING_STILL.
  */
 export function buildThingGuide(input: {
   fingerprint: string;
@@ -299,19 +296,19 @@ export function buildThingGuide(input: {
   shot: { start: number; end: number };
   label: string;
   warnings: string[];
-}): Result<ThingGuide> {
+}): Result<Guide> {
   const { source, frames, track, shot } = input;
   const aspect = source.width / source.height;
   if (!thingMoves(track, aspect)) return { data: null, error: THING_STILL };
   const pointByFrame = new Map(track.points.map((p) => [p.frame, p]));
   const startMs = frames[shot.start]!.tMs;
   const boxFrames: BoxFrame[] = [];
-  const outline: ThingOutlineFrame[] = [];
+  const outlines: (Outline | null)[] = [];
   for (let f = shot.start; f < shot.end; f++) {
     const tMs = frames[f]!.tMs - startMs;
     const box = pointByFrame.get(f)?.box ?? null;
     boxFrames.push({ tMs, box });
-    outline.push({ tMs, points: box ? boxPolygon(box) : null });
+    outlines.push(box ? boxPolygon(box) : null);
   }
   const guide: Guide = {
     schema: "guide/1",
@@ -322,12 +319,13 @@ export function buildThingGuide(input: {
     channel: "trajectory",
     timeline: null,
     boxTrack: { schema: "box-track/1", source: { width: source.width, height: source.height }, frames: boxFrames },
+    outlines,
     keyMoments: [],
     pace: thingPace(track, source.sampleHz, aspect),
     warnings: input.warnings,
     check: null,
   };
-  return { data: { guide, outline }, error: null };
+  return { data: guide, error: null };
 }
 
 /** The frame range of the shot that starts after `cuts[shot - 1]`, end exclusive. */
@@ -338,7 +336,10 @@ function shotRange(frameCount: number, cuts: readonly number[], shot: number): {
   return { start, end: starts[shot + 1] ?? frameCount };
 }
 
-/** A guide for every thing candidate, best first, and the reason for each one left out. */
+/**
+ * A guide for every thing candidate, best first, and the reason for each one left out. Pass
+ * `shot` to keep to one shot, as the people guides do, so every role shares one range.
+ */
 export function thingGuides(input: {
   fingerprint: string;
   source: ClipSource;
@@ -347,14 +348,19 @@ export function thingGuides(input: {
   tracks: readonly ThingTrack[];
   candidates: readonly ThingCandidate[];
   warnings: string[];
-}): { guides: ThingGuide[]; skipped: { number: number; label: string; reason: string }[] } {
-  const guides: ThingGuide[] = [];
+  shot?: number;
+}): { guides: Guide[]; skipped: { number: number; label: string; reason: string }[] } {
+  const guides: Guide[] = [];
   const skipped: { number: number; label: string; reason: string }[] = [];
   for (const candidate of input.candidates) {
     const track = input.tracks.find((t) => t.id === candidate.trackId);
     const shot = track ? shotRange(input.frames.length, input.cuts, track.shot) : null;
     if (!track || !shot) {
       skipped.push({ number: candidate.number, label: candidate.label, reason: NOT_FOUND });
+      continue;
+    }
+    if (input.shot !== undefined && track.shot !== input.shot) {
+      skipped.push({ number: candidate.number, label: candidate.label, reason: THING_OTHER_SHOT });
       continue;
     }
     const result = buildThingGuide({

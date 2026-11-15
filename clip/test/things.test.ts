@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { scoreTrajectoryRound } from "../../engine/src/index.ts";
 import { playerCopyingSprite, spritePath, timeline } from "../../engine/test/synth.ts";
 import {
-  boxPolygon, buildThingGuide, linkThings, rankThings, THING_STILL, thingGuides, thingName, withoutPeople,
+  boxPolygon, buildThingGuide, linkThings, rankThings, THING_OTHER_SHOT, THING_STILL, thingGuides, thingName, withoutPeople,
 } from "../src/index.ts";
 import type { Box, ClipSource, ThingFrame } from "../src/index.ts";
 
@@ -90,7 +90,7 @@ test("buildThingGuide: a moving thing gives a trajectory guide with a box track 
   const track = linkThings(frames, [], { aspect })[0]!;
   const result = buildThingGuide({ fingerprint: "f", source, frames, track, shot: { start: 0, end: 30 }, label: "Dog 1", warnings: [] });
   assert.equal(result.error, null);
-  const { guide, outline } = result.data!;
+  const guide = result.data!;
   assert.deepEqual(guide.subject, { kind: "thing", label: "Dog 1" });
   assert.equal(guide.channel, "trajectory");
   assert.equal(guide.timeline, null);
@@ -99,9 +99,9 @@ test("buildThingGuide: a moving thing gives a trajectory guide with a box track 
   assert.equal(guide.boxTrack.frames.length, 30);
   assert.equal(guide.boxTrack.frames[0]!.box, null);
   assert.deepEqual(guide.boxTrack.frames[6]!.box, dogAt(6));
-  assert.equal(outline.length, 30);
-  assert.equal(outline[0]!.points, null);
-  assert.deepEqual(outline[6]!.points, boxPolygon(dogAt(6)));
+  assert.equal(guide.outlines.length, 30);
+  assert.equal(guide.outlines[0], null);
+  assert.deepEqual(guide.outlines[6], boxPolygon(dogAt(6)));
 });
 
 test("a thing's box track scores against a player through the engine's trajectory channel", () => {
@@ -114,7 +114,16 @@ test("a thing's box track scores against a player through the engine's trajector
   assert.deepEqual(skipped, []);
   assert.equal(guides.length, 1);
   const player = timeline(playerCopyingSprite, { durationS: seconds });
-  const result = scoreTrajectoryRound(guides[0]!.guide.boxTrack, player);
+  const result = scoreTrajectoryRound(guides[0]!.boxTrack, player);
   assert.equal(result.failure, null);
   assert.equal(typeof result.score, "number");
+});
+
+test("thingGuides: with a shot given, a thing in another shot is skipped with a reason", () => {
+  const frames = thingFrames(60, (f) => [{ box: dogAt(f % 30), category: "dog" }]);
+  const tracks = linkThings(frames, [30], { aspect });
+  const candidates = rankThings(tracks, { sampleHz: HZ, frameCount: frames.length, aspect });
+  const { guides, skipped } = thingGuides({ fingerprint: "f", source, frames, cuts: [30], tracks, candidates, warnings: [], shot: 0 });
+  assert.equal(guides.length, 1);
+  assert.deepEqual(skipped.map((s) => s.reason), [THING_OTHER_SHOT]);
 });
