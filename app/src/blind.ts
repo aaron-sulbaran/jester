@@ -14,7 +14,7 @@
 // This file is the game and makes no DOM of its own: the screens come in as a `BlindUi` (Aaron's look
 // implements it in app/src/ui/; app/src/blindScreens.ts is the plain stand-in until then).
 
-import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, type BodyPart, type LandmarkObject } from "../../engine/src/index.ts";
+import { BODY_PARTS, fromWebcamFrames, scorePoseRound, scoreTrajectoryRound, smoothTimeline, type BodyPart, type LandmarkObject } from "../../engine/src/index.ts";
 import { boxFromLandmarks, type Guide, type Outline } from "../../clip/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline, makeStickPose, sampleAt } from "../../spikes/pose-match/synthetic.mjs";
 import { PLAYER_COLORS, winnerIndex } from "../../spikes/pose-match/reveal.mjs";
@@ -707,6 +707,9 @@ function roleOf(s: Seat, scene: Scene, ui: BlindUi, leadMs: number): RoleInfo {
 /** Play one game: deal roles, one turn each on this laptop, then the reveal. Resolves with the results. */
 export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, deps: BlindDeps, options: GameOptions = {}): Promise<ResultRow[]> {
   const speed = options.speed ?? 1, leadMs = options.leadMs ?? 400;
+  // Tracking from a real video jitters; steady every person role once, so the figure, the score and the
+  // reveal all use the same steady moves.
+  clip = { ...clip, guides: clip.guides.map((g) => (g.timeline && !isThing(g) ? { ...g, timeline: smoothTimeline(g.timeline) } : g)) };
   const scene = slowScene(clip, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
