@@ -6,8 +6,8 @@ Jester looks like a party game, but underneath it is a computer vision judge: a 
 
 The pieces underneath it found two real scoring gaps on Saturday night, and each was fixed in the engine within minutes:
 
-- **Standing still scored 66** on a real round that scored 73 when played. Found by the derived test cases in `eval/` at 11:52 PM; engine 0.10.0 fixed it at 12:07 AM (jester#82). Guard cases now make `npm run eval` fail if it ever comes back.
-- **Copying with the other side scored 0.** Found after that fix; engine 0.11.0 fixed it at 12:23 AM (jester#90). It was checked on 26 live rounds: 18 of 19 same-side copies now equal their original, and every other score is unchanged.
+- **Standing still scored 66** on a real round that scored 73 when played. The derived test cases in `eval/` found it, posted at 11:39 PM; engine 0.10.0 fixed it at 12:07 AM, 28 minutes later (jester#82). Guard cases now make `npm run eval` fail if it ever comes back.
+- **Copying with the other side scored 0.** Found after that fix and posted at 12:11 AM; engine 0.11.0 fixed it at 12:23 AM, 12 minutes later (jester#90). It was checked on 26 live rounds: 18 of 19 same-side copies now equal their original, and every other score is unchanged.
 
 The coach's own first runs:
 
