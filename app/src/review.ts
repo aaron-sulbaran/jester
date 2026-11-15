@@ -6,7 +6,7 @@
 // turning away by hand need only the Supabase key; the Chamberlain also needs the model key.
 
 import type { Guide } from "../../clip/src/index.ts";
-import { addClip, analyseClip, bankLock, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
+import { addClip, analyseClip, bankLock, describe, rereadClip, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
 import { cleanText, withClip } from "./bankIndex.ts";
 import { jesterBars } from "./ui/jesterBar.ts";
 
@@ -363,8 +363,17 @@ function renderQueue(pending: Pending[]) {
   }
 }
 
+/** What "Needs you" shows now, so a refresh that changes nothing leaves the cards (and a name being typed) alone. */
+let shownWaiting = "";
+let needsYouCount = 0;
+
 function renderNeedsYou(pending: Pending[]) {
   const box = $("needsYou");
+  const handedOver = pending.filter((p) => p.logged?.verdict === "ask_a_person" || (!p.logged && status !== null && !status.canJudge));
+  const key = handedOver.map((p) => `${p.id}:${p.logged?.verdict ?? "new"}`).join(",");
+  if (key === shownWaiting && box.childElementCount > 0) { renderQueue(pending); return; }
+  shownWaiting = key;
+  noticeNeedsYou(handedOver);
   box.replaceChildren();
   // Waiting: what the Chamberlain left for a person, and with no model key every clip it has not seen.
   renderQueue(pending);
@@ -508,7 +517,32 @@ async function showBank() {
         save.disabled = false;
       }
     });
-    card.append(field, save, note);
+    const redo = document.createElement("button");
+    redo.type = "button";
+    redo.className = "btn btn-quiet";
+    redo.textContent = "Read its moves again";
+    redo.title = "Analyse this clip again with the current code (for example to add finger detail). Its name stays.";
+    redo.addEventListener("click", async () => {
+      if (busy) { note.textContent = "Wait for the review to finish."; return; }
+      busy = true;
+      redo.disabled = save.disabled = true;
+      bar.hidden = false;
+      note.textContent = "Reading its moves again, with finger detail...";
+      try {
+        const r = await rereadClip(folder, video, clip.id, (share) => { bar.value = share; });
+        if (r.error !== null) { note.textContent = r.error; return; }
+        const { before, after, handFrames } = r.data;
+        label.textContent = `Name (${after.people} ${after.people === 1 ? "person" : "people"}, ${(after.durationMs / 1000).toFixed(1)} s, ${after.credit})`;
+        note.textContent = `Read again. Before: ${describe(before)}. Now: ${describe(after)}, finger detail on ${handFrames} frames. The old moves are kept as guides.before.json. The site has it after the bank publishes, in about half a minute.`;
+        await api("publish", {});
+        void showPublish();
+      } finally {
+        busy = false;
+        bar.hidden = true;
+        redo.disabled = save.disabled = false;
+      }
+    });
+    card.append(field, save, redo, note);
     list.appendChild(card);
   }
 }
@@ -553,6 +587,33 @@ $("deskAuto").addEventListener("click", () => {
 });
 $("deskAskFirst").addEventListener("click", () => {
   $("deskAskFirst").setAttribute("aria-pressed", String(!pressed("deskAskFirst")));
+});
+
+// ---- Live: the desk keeps itself up to date for the person in the loop ----
+
+/** The tab title counts clips that need a person, and a browser notification says when a new one arrives. */
+function noticeNeedsYou(handedOver: Pending[]) {
+  const n = handedOver.length;
+  document.title = n ? `(${n}) The Chamberlain's desk` : "The Chamberlain's desk";
+  if (n > needsYouCount && typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+    const latest = handedOver[handedOver.length - 1]!;
+    new Notification("A clip needs you", { body: `${latest.title ? `"${latest.title}"` : "A clip with no name"}: ${latest.logged?.reason ?? "not reviewed by the Chamberlain"}` });
+  }
+  needsYouCount = n;
+}
+
+/** Every 15 seconds: the two lists and the decisions, without a review and without wiping a name being typed. */
+async function refreshLists() {
+  if (busy || !status?.canQueue) return;
+  const pending = await api<Pending[]>("pending");
+  if (pending.error === null) renderNeedsYou(pending.data);
+  await showLog();
+}
+window.setInterval(() => void refreshLists(), 15000);
+
+// Notifications need a click to ask for; the folder button is the first click on the desk.
+$("deskFolder").addEventListener("click", () => {
+  if (typeof Notification !== "undefined" && Notification.permission === "default") void Notification.requestPermission();
 });
 
 jesterBars();
