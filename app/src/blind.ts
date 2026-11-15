@@ -1199,11 +1199,12 @@ function drawCastCard(ctx: CanvasRenderingContext2D, W: number, H: number, rows:
 /** Each player's cutouts placed on their role, in reveal ms (the clip's own speed) from the start of the stretch. */
 function revealLayers(seats: Seat[], speed: number): RevealLayer[] {
   const toPlay = (ms: number) => ms / speed;
-  // Players who drew the same role stand side by side around it instead of on top of each other.
+  // Players who drew the same role stand on it together, each nudged a little aside so both stay visible. The
+  // step is small (0.4 of a body): at 1.3 each player landed beside the person they were copying, not on them.
   const shiftOf = (s: Seat) => {
     const same = seats.filter((o) => o.guide === s.guide);
     const k = same.indexOf(s);
-    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 1.3;
+    return same.length < 2 ? 0 : (k - (same.length - 1) / 2) * 0.4;
   };
   return seats.map((s) => ({
     cutouts: s.cutouts, lagMs: (s.result?.lagMs ?? 0) / speed, timeScale: 1 / speed, kind: followsBox(s) ? "thing" : "person",
