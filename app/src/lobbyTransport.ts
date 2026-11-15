@@ -15,9 +15,16 @@ export function supabaseLobbyTransport(url: string, publishableKey: string, me: 
   let meta: LobbyPresence | null = null;
   let ready = false;
 
-  const list = () => Object.values(channel.presenceState<LobbyPresence>()).flat()
-    .filter((p) => typeof p?.id === "string" && typeof p.since === "number")
-    .map(({ id, name, since, beat }) => ({ id, name: String(name ?? ""), since, beat: Number(beat) || 0 }));
+  // One entry per client: a client that tracked more than once keeps only its newest.
+  const list = () => {
+    const newest = new Map<string, LobbyPresence>();
+    for (const p of Object.values(channel.presenceState<LobbyPresence>()).flat()) {
+      if (typeof p?.id !== "string" || typeof p.since !== "number") continue;
+      const entry = { id: p.id, name: String(p.name ?? ""), since: p.since, beat: Number(p.beat) || 0 };
+      if ((newest.get(p.id)?.beat ?? -1) < entry.beat) newest.set(p.id, entry);
+    }
+    return [...newest.values()];
+  };
   channel.on("presence", { event: "sync" }, () => { const now = list(); for (const fn of presenceFns) fn(now); });
   channel.on("broadcast", { event: "msg" }, ({ payload }) => { for (const fn of messageFns) fn(payload); });
   channel.subscribe((status) => {
