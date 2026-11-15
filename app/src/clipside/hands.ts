@@ -103,6 +103,43 @@ export async function addHands(guides: Guide[], file: File, video: HTMLVideoElem
   }
   return guides.map((g) => {
     const hands = found.get(g);
-    return hands && hands.some((h) => h) ? { ...g, hands } : g;
+    return hands && hands.some((h) => h) ? { ...g, hands: steadyHands(hands) } : g;
   });
+}
+
+/** Longest run of frames with no hand that is filled in between two sightings (a fifth of a second at 15 Hz is 3). */
+const MAX_GAP = 3;
+
+/**
+ * Takes the jitter out of the fingers and fills short dropouts: a hand missing for up to MAX_GAP frames between two
+ * sightings is blended across, then each hand is averaged with its neighbours (1-2-1). Longer gaps stay empty.
+ */
+export function steadyHands(frames: readonly (GuideHands | null)[]): (GuideHands | null)[] {
+  const out = frames.map((f) => (f ? { ...f } : null));
+  for (const side of ["left", "right"] as const) {
+    const at = (i: number) => out[i]?.[side] ?? null;
+    // Fill the gaps.
+    for (let i = 0; i < out.length; i++) {
+      if (at(i)) continue;
+      let j = i;
+      while (j < out.length && !at(j)) j++;
+      const before = at(i - 1), after = at(j);
+      if (before && after && j - i <= MAX_GAP) {
+        for (let k = i; k < j; k++) {
+          const u = (k - i + 1) / (j - i + 1);
+          const hand = before.map(([x, y], n) => [round4(x + (after[n]![0] - x) * u), round4(y + (after[n]![1] - y) * u)] as [number, number]);
+          out[k] = { ...(out[k] ?? { left: null, right: null }), [side]: hand };
+        }
+      }
+      i = j;
+    }
+    // Smooth: each hand with its neighbours, only where both exist.
+    const raw = out.map((f) => f?.[side] ?? null);
+    for (let i = 1; i < out.length - 1; i++) {
+      const p = raw[i - 1], c = raw[i], n = raw[i + 1];
+      if (!p || !c || !n) continue;
+      out[i] = { ...out[i]!, [side]: c.map(([x, y], k) => [round4(x * 0.5 + (p[k]![0] + n[k]![0]) * 0.25), round4(y * 0.5 + (p[k]![1] + n[k]![1]) * 0.25)] as [number, number]) };
+    }
+  }
+  return out;
 }

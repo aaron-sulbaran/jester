@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Jester's crown: the doodled crown from the scrapbook mockups, as a sticker (white edge, gold, ink), tipped like the one on the J. -->
+  <g transform="rotate(-14 32 34)" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8 52 L10 18 L22 32 L32 8 L42 32 L54 18 L56 52 Z" fill="#FFFEFA" stroke="#FFFEFA" stroke-width="12" />
+    <path d="M8 52 L10 18 L22 32 L32 8 L42 32 L54 18 L56 52 Z" fill="#FFC93C" stroke="#1E1B18" stroke-width="5" />
+    <path d="M13 44 H51" fill="none" stroke="#1E1B18" stroke-width="3.5" />
+    <circle cx="32" cy="38" r="3.4" fill="#D93A2B" />
+  </g>
+</svg>
