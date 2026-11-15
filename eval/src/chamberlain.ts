@@ -12,8 +12,8 @@
 // Keys: read from the review env file by absolute path (JESTER_REVIEW_ENV, else jester-deploy/.env.review found
 // beside a parent of this repo) and never printed. Desk cases are its sibling folder chamberlain-cases/, saved by
 // the dev server; reports go to chamberlain-cases/runs/. Both are outside the repo: they hold real titles.
-// With LANGSMITH_API_KEY in the env file, synthetic runs are traced to the LangSmith project
-// jester-chamberlain-eval. Desk runs never are (mayTrace): their frames, titles and credits come from real people.
+// With LANGSMITH_API_KEY and JESTER_REVIEW_TRACE=1 in the env file (the same two the desk's tracing needs),
+// synthetic runs are traced to the LangSmith project jester-chamberlain-eval. Desk runs never are (mayTrace): their frames, titles and credits come from real people.
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -201,7 +201,8 @@ async function main(): Promise<number> {
   }
   // Tracing is opt-in per run (traceTo), never global: a LANGSMITH_TRACING in the shell must not send desk frames.
   for (const k of ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING"]) delete process.env[k];
-  const tracing = Boolean(env.LANGSMITH_API_KEY);
+  // Two explicit settings, as for the desk: the key alone never turns tracing on.
+  const tracing = Boolean(env.LANGSMITH_API_KEY) && env.JESTER_REVIEW_TRACE === "1";
   if (tracing) for (const [k, v] of Object.entries(env)) if (k.startsWith("LANGSMITH_") && k !== "LANGSMITH_TRACING") process.env[k] = v;
   const secrets = [apiKey, env.LANGSMITH_API_KEY, env.SUPABASE_SERVICE_ROLE_KEY].filter((k): k is string => Boolean(k));
   const scrub = (text: string) => secrets.reduce((t, k) => t.split(k).join("[key]"), text);
@@ -267,7 +268,7 @@ async function main(): Promise<number> {
     console.log(`Saved to ${join(runsDir, `${stamp}.md`)}.`);
   }
   if (tracing) console.log(`Traces: LangSmith project ${env.LANGSMITH_PROJECT || PROJECT}, synthetic cases only; desk cases are never traced.`);
-  else console.log("No LANGSMITH_API_KEY in the env file, so nothing was traced.");
+  else console.log("Tracing is off (it needs LANGSMITH_API_KEY and JESTER_REVIEW_TRACE=1 in the env file), so nothing was traced.");
 
   // A false approval or a review that did not run fails the run. False rejections, escalations and name checks
   // that are off are reported for a person to read; they do not fail it.
