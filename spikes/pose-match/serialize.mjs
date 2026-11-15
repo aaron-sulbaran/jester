@@ -6,10 +6,10 @@ const Q = 1000, OFFSET = 0.5;
 const qc = (v) => Math.max(0, Math.min(2 * Q, Math.round((v + OFFSET) * Q)));
 const dc = (n) => n / Q - OFFSET;
 
-export function serializeTimeline(timeline) {
+export function serializeTimeline(timeline, { every = 1 } = {}) {
   return {
     v: 1, aspect: timeline.aspect, dur: timeline.durationMs, cov: Math.round(timeline.coverage * 100) / 100, model: timeline.model,
-    f: timeline.frames.map((fr) => {
+    f: timeline.frames.filter((_, i) => i % every === 0).map((fr) => {
       const lm = [];
       for (const p of fr.landmarks) lm.push(qc(p.x), qc(p.y), Math.round((p.visibility ?? 1) * 100));
       const o = [];
