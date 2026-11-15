@@ -100,7 +100,7 @@ export function drawBlind(
     ctx.stroke();
   }
   if (hands) {
-    for (const hand of [hands.left, hands.right]) if (hand) drawFingers(ctx, hand, map, Math.max(2, sizePx * 0.009), style.color);
+    for (const hand of [hands.left, hands.right]) if (hand) drawFingers(ctx, hand, map, Math.max(2, sizePx * 0.012), style.color);
     drawHandInset(canvas, guide, hands, style);
   }
 }
