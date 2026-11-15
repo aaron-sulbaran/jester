@@ -11,10 +11,15 @@ import { submitClip } from "../submit.ts";
 import { playWithSound } from "../sound.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
 import { jesterBars } from "./jesterBar.ts";
+import { countUp, guardCamera, installFeel, waitOrSkip } from "./feel.ts"; // GAME FEEL (sounds, camera card, keys)
+import { awardsFor, motionOf, rankFor } from "../feelText.ts";
+import { say } from "../host.ts";
+import * as sfx from "../sfx.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 import { deserializeTimeline } from "../../../spikes/pose-match/serialize.mjs";
 import { initRoomLobby, ONLINE_SCENES, type LobbyRoom, type OnlineRound, type OnlineSceneId } from "./room.ts";
-import { playMyRole } from "../onlineBlind.ts";
+import { playMyRole, sendMyMedia, whenMediaIn } from "../onlineBlind.ts";
+import { unpackCutouts, unpackFace } from "../packMedia.ts";
 
 /** A CSS custom property from the skin, or the fallback. */
 const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -127,6 +132,9 @@ export function initGame(deps: GameDeps) {
   let speed: number = SPEEDS[0];
   let rows: ResultRow[] = [];
   let videoUrl: string | null = null;
+  // The camera for the game's turns: a loading card, a card when it fails, the simulated player (?demo=1).
+  const camera = guardCamera(deps, () => goHome());
+  installFeel();
 
   const guideCanvas = $<HTMLCanvasElement>("guideCanvas");
   const playerCanvas = $<HTMLCanvasElement>("youCanvas");
@@ -336,7 +344,7 @@ export function initGame(deps: GameDeps) {
     running = true;
     try {
       if (mode === "watch") await watchFirst(scene);
-      await runBlindGame(scene, cast, ui, deps, { speed, colors: playerColors(), theme: revealTheme() });
+      await runBlindGame(scene, cast, ui, { ...deps, getCamera: camera.getCamera, simMode: camera.simMode }, { speed, colors: playerColors(), theme: revealTheme() });
     } catch (err) {
       if (signal.aborted) return; // they left on purpose
       // Never stall silently: say what broke and offer a way back.
@@ -371,15 +379,20 @@ export function initGame(deps: GameDeps) {
     const colorOf = (id: string) => colors[Math.max(0, roster.findIndex((p) => p.id === id)) % colors.length]!;
     const onlineUi: BlindUi = { ...ui, handover: async () => {}, results: () => {} };
     try {
-      await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      const mine = await playMyRole(room as never, played, onlineUi, deps, { speed: round.extra?.speed ?? 1, colors: [colorOf(room.me)], theme: revealTheme(), reveal: false });
+      await sendMyMedia(room as never, mine); // my face and cutouts go to the others in the room
       // Wait for the others, on the drum roll screen.
       while (!room.allDone) { live(); await ui.beat?.(); }
+      await whenMediaIn(room as never); // their pictures, so the recap and the crowning show real people
       live();
-      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
-      const results: RemoteResult[] = standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map((s) => ({
+      const standings = room.standings() as { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+      const results: RemoteResult[] = await Promise.all(standings.filter((s) => s.extra && played.guides[s.extra.guideIndex]).map(async (s) => ({
         name: s.name, color: colorOf(s.id), guideIndex: s.extra!.guideIndex, part: (s.extra!.part ?? "body") as BodyPart, score: s.score, tier: null, lagMs: s.extra!.lagMs ?? 0,
         timeline: s.timeline ? (deserializeTimeline(s.timeline) as unknown as RemoteResult["timeline"]) : null,
-      }));
+        // My own pictures are already here at full size; the others' arrive packed.
+        cutouts: s.id === room.me ? [...(mine.layer?.cutouts ?? [])] : await unpackCutouts(s.media?.cuts),
+        face: s.id === room.me ? mine.face : await unpackFace(s.media?.face),
+      })));
       // The same reveal as a game on one laptop (title card, cast over the clip, side by side, cast card), then the
       // crowning and results. Remote players are drawn as their stick figures.
       await revealRemoteGame(played, results, ui, { speed: round.extra?.speed ?? 1, colors, theme: revealTheme() });
@@ -485,6 +498,7 @@ export function initGame(deps: GameDeps) {
   const ui: BlindUi = {
     async handover(player, previous) {
       live();
+      camera.newTurn();
       activeRestart = null;
       hideRestart();
       show("handover");
@@ -514,7 +528,7 @@ export function initGame(deps: GameDeps) {
       // The game's own explanation is long; the screen says it in two lines.
       $("partText").textContent = "Copy this shape like a mirror. Move when it moves.";
       if (!startingOver || role.problem) {
-        $("partProblem").textContent = role.problem ?? "";
+        $("partProblem").textContent = role.problem ? camera.partNote() ?? role.problem : "";
         $("partProblem").hidden = !role.problem;
       }
       const chips = $("partChips");
@@ -558,9 +572,11 @@ export function initGame(deps: GameDeps) {
         el.classList.remove("tick");
         void el.offsetWidth; // restart the tick animation
         el.classList.add("tick");
+        sfx.tick(s);
         try { await wait(1000, sig()); } catch (err) { el.hidden = true; throw err; }
       }
       el.hidden = true;
+      sfx.go();
     },
 
     turnStarted(restart) {
@@ -582,7 +598,9 @@ export function initGame(deps: GameDeps) {
       activeRestart = null;
       hideRestart();
       show("drumroll");
-      await wait(1500, sig());
+      say("beat");
+      const roll = sfx.drumRoll();
+      try { await waitOrSkip(1500, sig()); } finally { roll(); }
     },
 
     revealCanvas: () => revealCanvas,
@@ -646,9 +664,16 @@ export function initGame(deps: GameDeps) {
     const spot = $("crownSpot");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let cancel = false;
+    // The drum roll plays while the spotlight sweeps; only the latest run may land the crash.
+    let roll = () => {};
+    let runs = 0;
 
     const run = async () => {
       cancel = false;
+      const mine = ++runs;
+      roll();
+      roll = sfx.drumRoll();
+      say("roll");
       $("crownWinner").hidden = true;
       $("crownAsk").hidden = false;
       $("crownDrum").hidden = false;
@@ -673,6 +698,11 @@ export function initGame(deps: GameDeps) {
         await wait(350);
       }
       if (cancel) return;
+      if (mine === runs) {
+        roll();
+        sfx.crown();
+        say(winners.length === 0 ? "nobody" : winners.length > 1 ? "tie" : "crown", { winner: winners.map((w) => w.name).join(" and ") });
+      }
       spot.style.transition = "none";
       spot.style.left = `${centre(target.slot)}%`;
       $("screen-crown").dataset.phase = "won";
@@ -693,6 +723,7 @@ export function initGame(deps: GameDeps) {
     try { await clicked($("crownGo"), sig()); }
     finally {
       cancel = true;
+      roll();
       $("crownAgain").removeEventListener("click", again);
       for (const x of jesters) x.j.stop();
     }
@@ -741,6 +772,8 @@ export function initGame(deps: GameDeps) {
     letters($("resultsHeadline"), headline);
     const list = $("podium");
     list.innerHTML = "";
+    // Everyone leaves with something: the crown, or an award from how they played.
+    const awards = awardsFor(rows.map((r) => ({ score: r.score, winner: r.winner, motion: motionOf(r.timeline) })));
     rows.forEach((r, i) => {
       // Tied scores share a place.
       const place = 1 + rows.filter((o) => (o.score ?? -1) > (r.score ?? -1)).length;
@@ -748,7 +781,7 @@ export function initGame(deps: GameDeps) {
       li.className = "place" + (r.winner ? " won" : "");
       li.style.setProperty("--who", r.color);
       li.style.setProperty("--i", String(i));
-      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span></span><span class="place-score"></span>`;
+      li.innerHTML = `<span class="badge"></span><span class="place-who"><span class="place-rank"></span><b class="tape"></b><span class="place-part"></span><span class="aside place-award"></span></span><span class="place-score"></span>`;
       li.querySelector(".place-rank")!.textContent = ordinal(place);
       // Each player's own jester, wearing their face: the winner holds the win pose, the rest their slump.
       const j = new FaceJester(r.face, variantOf(r), 200);
@@ -758,9 +791,16 @@ export function initGame(deps: GameDeps) {
       podiumJesters.push(j);
       li.querySelector("b")!.textContent = r.name;
       li.querySelector(".place-part")!.textContent = `was ${r.role}`;
-      li.querySelector(".place-score")!.textContent = r.score == null ? "no score" : String(r.score);
+      li.querySelector(".place-award")!.textContent = awards[i]!;
+      const score = li.querySelector<HTMLElement>(".place-score")!;
+      if (r.score == null) score.textContent = "no score";
+      else countUp(score, r.score, 250 + i * 180);
       list.appendChild(li);
     });
+    sfx.fanfare();
+    // The host speaks once the fanfare has played.
+    const top = winners[0];
+    if (top) window.setTimeout(() => { if (document.body.dataset.screen === "results") say("results", { winner: winners.map((w) => w.name).join(" and "), title: rankFor(top.score).title }); }, 1800);
     const video = $<HTMLVideoElement>("resultsVideo");
     const save = $<HTMLAnchorElement>("resultsSave");
     if (videoUrl) {
