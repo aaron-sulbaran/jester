@@ -6,6 +6,7 @@
 // turning away by hand need only the Supabase key; the Chamberlain also needs the model key.
 
 import type { Guide } from "../../clip/src/index.ts";
+import { applyCast, castSummary } from "./castSummary.ts";
 import { addClip, analyseClip, bankLock, describe, rereadClip, mayWrite, pickFolder, readIndex, rememberFolder, rememberedFolder, seek, videoType, whenReady, writeIndex, type Found, type Result, type VideoType } from "./bankLabCore.ts";
 import { cleanText, withClip } from "./bankIndex.ts";
 import { jesterBars } from "./ui/jesterBar.ts";
@@ -18,6 +19,8 @@ interface Decision {
   verdict: "approve" | "reject" | "ask_a_person"; reason: string; nameCheck: NameCheck; nameNote: string; framesCheck: string; findings: Finding[]; steps: string[];
   /** Sent back with a flag, so Aaron's decision on it can become a precedent (review-precedents.ts). */
   contentCheck?: string; steering?: boolean; playability?: string; nameKind?: string;
+  /** Things the Chamberlain's cast check found to be pieces of another subject or not really there. */
+  castDrops?: { label: string; reason?: string; of?: string; why: string }[]; castNote?: string;
 }
 interface Status { missing: string[]; canQueue: boolean; canJudge: boolean; model: string; bankFolder: string | null; envFile: string | null; publish: { state: string; at: string | null; detail: string } }
 interface LogLine { title: string | null; verdict: string; by: string; reason: string; bankId?: string; at: string }
@@ -100,6 +103,7 @@ function factsOf(found: Found) {
     })),
     skipped: found.skipped.map((s) => ({ ...(s.label ? { label: s.label } : {}), reason: s.reason })),
     warnings: g0.warnings,
+    cast: castSummary(found.guides),
   };
 }
 
@@ -205,7 +209,9 @@ async function approve(p: Pending, title: string, by: "agent" | "aaron", d: Part
   if (twin) return { data: null, error: `This video is already in the bank as "${twin.title}". Turn this copy away.` };
   const name = cleanText(title, 80);
   if (!name) return { data: null, error: "Give your clip a name." };
-  const added = await addClip(folder, video, ready.data.file, ready.data.type, ready.data.found.guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
+  // The Chamberlain's cast check: things that were pieces of another subject, or not really there, stay out of the bank.
+  const guides = applyCast(ready.data.found.guides, (d.castDrops ?? []).map((x) => x.label));
+  const added = await addClip(folder, video, ready.data.file, ready.data.type, guides, name, cleanText(p.credit ?? "", 60) || SUBMITTED_CREDIT);
   if (added.error !== null) return added;
   const saved = await api("decide", {
     id: p.id, video_path: p.video_path, title: added.data.entry.title, status: "approved", by, bankId: added.data.entry.id,
@@ -250,7 +256,13 @@ function showDecision(d: Decision, outcome: string, title: string | null) {
   }));
   $("workFinding").textContent = d.findings.map((f) => `The ${f.from.replace(/-/g, " ")}: ${f.text}`).join(" ") || "The playability checker did not answer.";
   $("workName").textContent = title ? `The name "${title}" ${NAME_WORDS[d.nameCheck]}. ${d.nameNote}` : `No name was given. ${d.nameNote}`;
-  $("workSaw").textContent = d.framesCheck ? `In the frames: ${d.framesCheck}` : "";
+  // Each part on its own line, so it scans at a glance (the frontend agent's review of PR 160).
+  const lines = [
+    d.framesCheck ? `In the frames: ${d.framesCheck}` : "",
+    d.castNote ? `The cast: ${d.castNote}` : "",
+    d.castDrops?.length ? `Left out: ${d.castDrops.map((x) => `${x.label} (${x.why})`).join(", ")}.` : "",
+  ].filter(Boolean);
+  $("workSaw").replaceChildren(...lines.flatMap((line, i) => (i ? [document.createElement("br"), document.createTextNode(line)] : [document.createTextNode(line)])));
   $("workDecision").textContent = outcome;
 }
 
@@ -309,7 +321,7 @@ async function reviewQueue() {
       const frames = await framesOf(ready.data.found.guides[0]!);
       showFrames(frames);
       $("workTitle").textContent = `${p.title ?? "Untitled clip"}: the Chamberlain is looking at it...`;
-      const judged = await api<Decision>("judge", { title: p.title, credit: p.credit, facts: factsOf(ready.data.found), frames });
+      const judged = await api<Decision>("judge", { id: p.id, video_path: p.video_path, title: p.title, credit: p.credit, facts: factsOf(ready.data.found), frames });
       if (judged.error !== null) { problem(`${judged.error} It stays in the queue for next time.`); continue; }
       const d = judged.data;
       // The Chamberlain only approves under the submitter's own name (review-agent.ts enforces it).

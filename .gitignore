@@ -5,3 +5,9 @@ node_modules/
 .vercel/
 
 # Reference screenshots of other games: kept local, not redistributed
+
+# The Chamberlain's desk cases hold real frames and titles; they belong beside jester-deploy/.env.review, never here.
+chamberlain-cases/
+# The review desk's log and the Chamberlain's precedents hold real titles; they belong beside the env file too.
+jester-review-log*.json
+jester-precedents.json

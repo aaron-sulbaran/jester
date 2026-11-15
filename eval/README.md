@@ -72,3 +72,25 @@ npm run check                         # typecheck and tests
 `npm run eval` exits with an error only when a frozen case's expectation held in `baseline.json` and no longer holds. It also lists every round whose score moved by 5 or more since it was played, and gives calibration hints (the score ceiling that would put the median nailed copy at 90). It changes nothing in the engine.
 
 Frozen cases are `cases/<id>.json.gz`, with each clip's reference stored once in `cases/refs/`.
+
+## The Chamberlain's eval
+
+The Chamberlain (`app/review-agent.ts`, a LangChain deep agent) decides which clips sent with Submit your own join the bank. `npm run chamberlain` replays its cases through `reviewSubmission` with the prompt and model on disk, so a prompt change shows what it does to brand-new clips before Aaron's desk sees it.
+
+**Cases.** Two kinds:
+
+- Synthetic, in `chamberlain-cases.ts` (committed): clean controls, steering in the name, the credit and painted into the frames, names that do not fit or are missing or inappropriate, borderline analysis facts, and the cast check (one parked car the tracker split into pieces, one car tracked whole, a ghost ball). Frames are stick figures, with a parked car where a case needs one, drawn by `src/frames.ts`, never real people. Each case says the verdict it should get, and a cast case also how many thing roles should be left after the Chamberlain's drops.
+- Desk: off by default. With `JESTER_REVIEW_CAPTURE=1` in the review env file, every clip the desk judges is saved by the dev server (`app/review-cases.ts`) as `chamberlain-cases/<submission id>.json` beside that env file (`jester-deploy/`, outside every repo, owner-only): the exact judge input with its frames, the precedents it read, the decision, and later the outcome from the desk's decide route. A case whose file missed its outcome takes it from the desk's review log. They hold real frames and titles: nothing is saved, and the runner refuses to run, when that folder is inside a git checkout or a bank folder (the one the dev server serves, or any folder with a bank `index.json`), and `.gitignore` covers any `chamberlain-cases/` folder.
+
+**Truth.** For a desk case, only a person's outcome counts: let in under the name it was sent with means approve; renamed (or named for the first time) means the Chamberlain should have asked a person, since it never names a clip; rejected means reject. An outcome the Chamberlain reached alone confirms nothing, so that case only shows whether the verdict changed. A hand label in the case file wins: `"label": { "want": "reject", "alsoOk": ["ask_a_person"], "note": "why" }`.
+
+**Report.** Agreement with the truth, false approvals (approved what a person turned away or renamed), false rejections, how often it asked a person when the answer was clear, the escalation rate, verdicts that changed since a case was captured or since the last run, and every differing case with its reasons. A false approval or a review that did not run fails the run; the rest is for a person to read. It prints the number of reviews before it starts and the tokens (with the cached ones) and dollars after: one case is one review. Each run is in one mode (`--mode`, else JESTER_REVIEW_MODE in the env file, else deep), its prompt version hashes that mode's prompts, and it is compared only with the last run in the same mode. Reports go to `chamberlain-cases/runs/`.
+
+```
+npm run chamberlain                          # synthetic cases and every desk case
+npm run chamberlain -- --dry-run             # list the cases and their truth, no model calls
+npm run chamberlain -- --source synthetic    # or desk; --only id1,id2; --model claude-opus-5-5; --concurrency 2
+npm run chamberlain -- --mode fast           # deep (default: a plan and the playability-checker subagent) or fast (one call)
+```
+
+Keys are read from `JESTER_REVIEW_ENV`, else `jester-deploy/.env.review` beside a parent of this repo, and never printed. Tracing is off by default; with both `LANGSMITH_API_KEY` and `JESTER_REVIEW_TRACE=1` in that file (the same two settings the desk's tracing needs), synthetic runs are traced to the LangSmith project `jester-chamberlain-eval` (or `LANGSMITH_PROJECT`), and the report links each trace. Desk cases are never traced (`mayTrace` in `src/chamberlainCases.ts`): a case read from the cases folder is always a desk case, whatever the file says, since its frames, title and credit come from real people. A real submission is never traced: with a LANGSMITH_TRACING or LANGCHAIN_TRACING_V2 variable in the environment, or a tracer passed in, `tracingRefusal` in `app/review-agent.ts` refuses it before anything is loaded or sent. For a review that passes, inherited tracing variables are then removed (`stopInheritedTracing`), so a synthetic case is traced only through the runner's own tracer.
