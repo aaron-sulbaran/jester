@@ -12,13 +12,15 @@
 //   hostDeal(room, scene, "demo");                      // host only, once everyone has joined
 
 import { serializeTimeline, deserializeTimeline } from "../../spikes/pose-match/serialize.mjs";
-import { deal, runBlindGame, type BlindDeps, type BlindUi, type GameOptions, type Scene } from "./blind.ts";
+import { deal, runBlindGame, type BlindDeps, type BlindUi, type GameOptions, type ResultRow, type Scene } from "./blind.ts";
+import { packCutouts, packFace } from "./packMedia.ts";
 import type { RevealRole } from "./composite.ts";
 
 type RoomLike = {
   me: string; name: string; round: { roundNo: number; extra?: { assign?: Record<string, number> } } | null; allDone: boolean;
   roster(): { id: string; name: string }[];
-  standings(): { id: string; name: string; score: number | null; timeline: unknown; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+  standings(): { id: string; name: string; score: number | null; timeline: unknown; media?: Record<string, string>; extra: { guideIndex: number; role: string; part?: string; lagMs?: number } | null }[];
+  sendMedia(kind: string, text: string): Promise<void>;
   start(clipId: string, delayMs?: number, extra?: object): unknown;
   submitResult(r: { score: number; timeline?: unknown; extra?: unknown }): void;
   on(event: "update" | "start", fn: (arg: never) => void): () => void;
@@ -60,4 +62,30 @@ export function revealRoles(room: RoomLike, scene: Scene): RevealRole[] {
   return room.standings()
     .filter((r) => r.timeline && r.extra && scene.guides[r.extra.guideIndex])
     .map((r) => ({ name: `${r.name} (${r.extra!.role})`, score: r.score, guide: scene.guides[r.extra!.guideIndex]!, timeline: deserializeTimeline(r.timeline) as never }));
+}
+
+/**
+ * Sends my face and my cutouts to the others in the room (pictures only travel to them, after the round), then a
+ * "done" marker so they know nothing more is coming. A failure just means the others see a stick figure for me.
+ */
+export async function sendMyMedia(room: RoomLike, row: ResultRow) {
+  try {
+    const face = packFace(row.face);
+    if (face) await room.sendMedia("face", face);
+    const cutouts = row.layer?.cutouts ?? [];
+    if (cutouts.length > 0) await room.sendMedia("cuts", packCutouts(cutouts));
+  } catch (err) {
+    console.warn("Could not send my pictures:", err);
+  }
+  try { await room.sendMedia("done", "1"); } catch { /* the others stop waiting after a while anyway */ }
+}
+
+/** Resolves once every other player has sent their pictures (or said they have none), or after timeoutMs. */
+export function whenMediaIn(room: RoomLike, timeoutMs = 25000): Promise<void> {
+  const ready = () => room.standings().every((r) => r.id === room.me || !r.timeline || !!r.media?.done);
+  return new Promise((resolve) => {
+    if (ready()) return resolve();
+    const stop = window.setTimeout(() => { off(); resolve(); }, timeoutMs);
+    const off = room.on("update", () => { if (ready()) { clearTimeout(stop); off(); resolve(); } });
+  });
 }
