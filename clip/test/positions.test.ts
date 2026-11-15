@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { meanCentreX, medianCentreX, nameByPosition, positionNames } from "../src/index.ts";
+import { meanCentreX, medianCentreX, nameByPosition, partName, positionNames } from "../src/index.ts";
 import type { Box, Guide } from "../src/index.ts";
 
 /** A guide whose subject's box centre is at each x in turn (null where it is not seen). */
@@ -17,15 +17,15 @@ function guideAt(kind: "person" | "thing", label: string, xs: (number | null)[])
 
 const labels = (guides: Guide[]) => guides.map((g) => g.subject.label);
 
-test("positionNames: one dancer, a pair, three and four in a row", () => {
+test("positionNames: one person, a pair, three and four in a row", () => {
   assert.deepEqual(positionNames(0), []);
-  assert.deepEqual(positionNames(1), ["the dancer"]);
-  assert.deepEqual(positionNames(2), ["the dancer on the left", "the dancer on the right"]);
-  assert.deepEqual(positionNames(3), ["the dancer on the left", "the dancer in the middle", "the dancer on the right"]);
+  assert.deepEqual(positionNames(1), ["the person in the clip"]);
+  assert.deepEqual(positionNames(2), ["the person on the left", "the person on the right"]);
+  assert.deepEqual(positionNames(3), ["the person on the left", "the person in the middle", "the person on the right"]);
   assert.deepEqual(positionNames(4), [
-    "the dancer on the left", "the dancer second from the left", "the dancer second from the right", "the dancer on the right",
+    "the person on the left", "the person second from the left", "the person second from the right", "the person on the right",
   ]);
-  assert.equal(positionNames(5)[2], "the dancer in the middle");
+  assert.equal(positionNames(5)[2], "the person in the middle");
 });
 
 test("meanCentreX: averages only the frames the subject is seen in", () => {
@@ -35,21 +35,21 @@ test("meanCentreX: averages only the frames the subject is seen in", () => {
 
 test("nameByPosition: the best ranked person standing on the right is named on the right; order is kept", () => {
   const guides = [guideAt("person", "Person 1", [0.7, 0.75]), guideAt("person", "Person 2", [0.3, 0.2])];
-  assert.deepEqual(labels(nameByPosition(guides)), ["the dancer on the right", "the dancer on the left"]);
+  assert.deepEqual(labels(nameByPosition(guides)), ["the person on the right", "the person on the left"]);
 });
 
-test("nameByPosition: one person is just the dancer, and things keep their labels", () => {
+test("nameByPosition: one person is the person in the clip, and things keep their labels", () => {
   const guides = [guideAt("person", "Person 1", [0.5]), guideAt("thing", "Ball 1", [0.1])];
-  assert.deepEqual(labels(nameByPosition(guides)), ["the dancer", "Ball 1"]);
+  assert.deepEqual(labels(nameByPosition(guides)), ["the person in the clip", "Ball 1"]);
 });
 
 test("nameByPosition: three people, a tie keeps the given order, and someone never seen goes last", () => {
   const three = [guideAt("person", "a", [0.5]), guideAt("person", "b", [0.9]), guideAt("person", "c", [0.1])];
-  assert.deepEqual(labels(nameByPosition(three)), ["the dancer in the middle", "the dancer on the right", "the dancer on the left"]);
+  assert.deepEqual(labels(nameByPosition(three)), ["the person in the middle", "the person on the right", "the person on the left"]);
   const tied = [guideAt("person", "a", [0.5]), guideAt("person", "b", [0.5])];
-  assert.deepEqual(labels(nameByPosition(tied)), ["the dancer on the left", "the dancer on the right"]);
+  assert.deepEqual(labels(nameByPosition(tied)), ["the person on the left", "the person on the right"]);
   const unseen = [guideAt("person", "a", [null]), guideAt("person", "b", [0.8])];
-  assert.deepEqual(labels(nameByPosition(unseen)), ["the dancer on the right", "the dancer on the left"]);
+  assert.deepEqual(labels(nameByPosition(unseen)), ["the person on the right", "the person on the left"]);
 });
 
 test("nameByPosition: does not change the guides it is given", () => {
@@ -64,17 +64,29 @@ test("medianCentreX: where the subject stands for most of the frames it is seen 
   assert.equal(medianCentreX(guideAt("person", "a", [null])), null);
 });
 
-test("nameByPosition: a dancer who steps across for a moment keeps the side they stand on most of the time", () => {
-  // Dancer a stands left of b for 8 frames in 10, then runs far right; the mean would put a on the right.
+test("nameByPosition: someone who steps across for a moment keeps the side they stand on most of the time", () => {
+  // Person a stands left of b for 8 frames in 10, then runs far right; the mean would put a on the right.
   const a = guideAt("person", "a", [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.95, 0.95]);
   const b = guideAt("person", "b", Array(10).fill(0.5));
   assert.ok(meanCentreX(a)! > meanCentreX(b)!);
-  assert.deepEqual(labels(nameByPosition([a, b])), ["the dancer on the left", "the dancer on the right"]);
+  assert.deepEqual(labels(nameByPosition([a, b])), ["the person on the left", "the person on the right"]);
 });
 
-test("nameByPosition: two dancers who swap sides are named by the side each holds for longer", () => {
+test("nameByPosition: two people who swap sides are named by the side each holds for longer", () => {
   // They swap after 7 frames in 10: a is on the left for most of the clip.
   const a = guideAt("person", "a", [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.7, 0.7, 0.7]);
   const b = guideAt("person", "b", [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.3, 0.3, 0.3]);
-  assert.deepEqual(labels(nameByPosition([b, a])), ["the dancer on the right", "the dancer on the left"]);
+  assert.deepEqual(labels(nameByPosition([b, a])), ["the person on the right", "the person on the left"]);
+});
+
+test("partName: the whole body is the name; a body part comes first; a thing is the thing", () => {
+  const left = { kind: "person" as const, label: "the person on the left" };
+  assert.equal(partName(left), "the person on the left");
+  assert.equal(partName(left, "leftHand"), "the left hand of the person on the left");
+  assert.equal(partName({ kind: "person", label: "the person in the middle" }, "rightFoot"), "the right foot of the person in the middle");
+  assert.equal(partName({ kind: "person", label: "the person in the clip" }, "leftHand"), "the left hand of the person in the clip");
+  assert.equal(partName({ kind: "person", label: "the person on the right" }, "head"), "the head of the person on the right");
+  assert.equal(partName({ kind: "thing", label: "Ball 1" }), "the ball");
+  assert.equal(partName({ kind: "thing", label: "Ball 1" }, "rightHand"), "the ball, with the right hand");
+  assert.equal(partName({ kind: "thing", label: "the basketball" }), "the basketball");
 });
