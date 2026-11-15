@@ -946,7 +946,7 @@ body[data-screen="turn"] #clipReady { display: none; }
    content, laptop widths only, start screen only. Still under prefers-reduced-motion and Calm motion (body.calm). */
 #screen-start { position: relative; isolation: isolate; }
 .home-drift { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
-.drift-prop { position: absolute; width: var(--s); height: var(--s); overflow: visible; rotate: var(--r); filter: url(#die-cut); }
+.drift-prop { position: absolute; width: var(--s); height: var(--s); overflow: visible; rotate: var(--r); filter: url(#die-cut-prop); }
 @media (prefers-reduced-motion: no-preference) {
   body:not(.calm) .drift-prop { animation: home-drift var(--d) ease-in-out var(--t) infinite alternate; }
 }
