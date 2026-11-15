@@ -3,13 +3,17 @@
 // npm run eval -- --set ROUND.ceiling=0.9   what-if: change engine constants for this run only (never saved)
 // npm run eval -- --cases-only      leave out the local rounds in eval/data
 //
-// Exits with an error only when a frozen case's expectation held in the baseline and no longer holds.
+// Every nailed round, and every untagged round scoring 60 or more, also gets six derived cases (src/derive.ts).
+//
+// Exits with an error only when a frozen case's expectation, or one of its derived cases, held in the baseline and
+// no longer holds.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { SCORER_VERSION, constants, type TrajectoryRoundResult } from "../../engine/src/index.ts";
 import { EXPECT } from "../expectations.ts";
 import { clipName, judge, median, rawPoseValue, rescore, setConstant, type Rescored, type Verdict } from "./judge.ts";
 import { BASELINE_FILE, REPORT_FILE, currentEngineHash, isFrozen, loadCases, loadDataRounds } from "./store.ts";
+import { deriveAll, type DerivedCase } from "./derive.ts";
 
 interface Baseline {
   savedAt: string;
@@ -19,7 +23,11 @@ interface Baseline {
   cases: Record<string, { tag: string | null; score: number | null; holds: boolean | null }>;
 }
 
-interface Headline { cases: number; tagged: number; holding: number; notHolding: number; drifted: number; localRounds: number }
+interface Headline {
+  cases: number; tagged: number; holding: number; notHolding: number; drifted: number; localRounds: number;
+  /** Derived cases from frozen cases (baselines saved before derived cases existed lack these). */
+  derived?: number; derivedHolding?: number; derivedNotHolding?: number;
+}
 
 // ---- Arguments ----
 
@@ -54,9 +62,12 @@ const localItems = localRounds.map(toItem);
 const everything = [...caseItems, ...localItems];
 const verdicts = new Map<Rescored, Verdict | null>(everything.map((it) => [it, judge(it, everything)]));
 const engineHash = currentEngineHash();
+const caseDerived = deriveAll(caseItems);
+const localDerived = deriveAll(localItems);
 
 const baseline: Baseline | null = existsSync(BASELINE_FILE) ? (JSON.parse(readFileSync(BASELINE_FILE, "utf8")) as Baseline) : null;
 const regressions = caseItems.filter((it) => baseline?.cases[it.record.id]?.holds === true && verdicts.get(it)?.holds === false);
+const derivedRegressions = caseDerived.filter((d) => baseline?.cases[d.id]?.holds === true && d.verdict.holds === false);
 const moved = (it: Rescored) => (it.was === null) !== (it.now.score === null) || (it.was !== null && it.now.score !== null && Math.abs(it.now.score - it.was) >= EXPECT.driftMin);
 const drifted = everything.filter(moved);
 // Same engine code as when played (and no uncommitted engine change), no what-if: an exactly stored round must replay
@@ -94,10 +105,13 @@ const headline: Headline = {
   notHolding: tagged.filter((it) => verdicts.get(it)?.holds === false).length,
   drifted: caseItems.filter(moved).length,
   localRounds: localItems.length,
+  derived: caseDerived.length,
+  derivedHolding: caseDerived.filter((d) => d.verdict.holds === true).length,
+  derivedNotHolding: caseDerived.filter((d) => d.verdict.holds === false).length,
 };
 
 out.push(`# Jester eval, ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} Eastern`, "");
-out.push(`Engine ${SCORER_VERSION}, code ${engineHash}. ${headline.cases} frozen cases (${headline.tagged} tagged: ${headline.holding} holding, ${headline.notHolding} not), ${headline.localRounds} local rounds not frozen.`);
+out.push(`Engine ${SCORER_VERSION}, code ${engineHash}. ${headline.cases} frozen cases (${headline.tagged} tagged: ${headline.holding} holding, ${headline.notHolding} not), ${headline.localRounds} local rounds not frozen. ${caseDerived.length + localDerived.length} derived cases (${[...caseDerived, ...localDerived].filter((d) => d.verdict.holds === true).length} holding, ${[...caseDerived, ...localDerived].filter((d) => d.verdict.holds === false).length} not).`);
 if (whatIf.length) out.push("", `**What-if run, nothing saved:** ${whatIf.join("; ")}.`);
 if (cases.skipped.length || local.skipped.length) out.push("", `Skipped unreadable files: ${[...cases.skipped, ...local.skipped].join(", ")}.`);
 
@@ -111,6 +125,14 @@ for (const t of tags) {
   out.push(`| ${t} | ${vs.length} | ${vs.filter((v) => v?.holds === true).length} | ${vs.filter((v) => v?.holds === false).length} | ${vs.filter((v) => v?.holds === null).length} |`);
 }
 if (!tags.length) out.push("| (no tagged rounds yet) | | | | |");
+
+const derivedTable = (title: string, items: DerivedCase[]) => {
+  out.push("", title, "", "| case | clip | source | now | expectation | holds | detail |", "|---|---|---|---|---|---|---|");
+  for (const d of items) out.push(`| ${d.id} | ${cell(clipName(d.record))} | ${score(d.source.now.score)} | ${score(d.now.score)} | ${cell(d.verdict.expectation)} | ${holdsText(d.verdict)} | ${cell(d.verdict.detail)} |`);
+};
+if (caseDerived.length) derivedTable("## Derived cases from frozen cases", caseDerived);
+if (localDerived.length) derivedTable("## Derived cases from local rounds", localDerived);
+if (!caseDerived.length && !localDerived.length) out.push("", "## Derived cases", "", `None yet: they come from nailed rounds and untagged rounds scoring ${EXPECT.derived.minSourceScore} or more.`);
 
 out.push("", `## Scores that moved by ${EXPECT.driftMin} or more since they were played`, "");
 if (drifted.length) {
@@ -142,7 +164,7 @@ if (recorderMisses.length) {
 out.push("", "## Verdict", "");
 if (whatIf.length) out.push("What-if run: no verdict.");
 else if (!baseline) out.push("No baseline yet. Save one with `npm run eval -- --save`.");
-else if (regressions.length) out.push(`**FAIL:** held in the baseline (${baseline.savedAt}) and no longer holds: ${regressions.map((it) => `${it.record.id} (${it.record.tag}: ${verdicts.get(it)?.detail})`).join("; ")}.`);
+else if (regressions.length || derivedRegressions.length) out.push(`**FAIL:** held in the baseline (${baseline.savedAt}) and no longer holds: ${[...regressions.map((it) => `${it.record.id} (${it.record.tag}: ${verdicts.get(it)?.detail})`), ...derivedRegressions.map((d) => `${d.id} (${d.verdict.detail})`)].join("; ")}.`);
 else out.push(`OK: every expectation that held in the baseline (${baseline.savedAt}, ${baseline.scorerVersion}) still holds.`);
 
 const report = out.join("\n") + "\n";
@@ -155,10 +177,13 @@ if (save) {
     scorerVersion: SCORER_VERSION,
     engineHash,
     headline,
-    cases: Object.fromEntries(caseItems.map((it) => [it.record.id, { tag: it.record.tag, score: it.now.score, holds: verdicts.get(it)?.holds ?? null }])),
+    cases: Object.fromEntries([
+      ...caseItems.map((it) => [it.record.id, { tag: it.record.tag, score: it.now.score, holds: verdicts.get(it)?.holds ?? null }] as const),
+      ...caseDerived.map((d) => [d.id, { tag: `derived:${d.transform}`, score: d.now.score, holds: d.verdict.holds }] as const),
+    ]),
   };
   writeFileSync(BASELINE_FILE, JSON.stringify(next, null, 2) + "\n");
-  console.log(`\nBaseline saved: ${headline.cases} cases, ${headline.holding} holding.`);
+  console.log(`\nBaseline saved: ${headline.cases} cases (${headline.holding} holding) and ${caseDerived.length} derived cases (${headline.derivedHolding} holding).`);
 }
 
-if (!whatIf.length && regressions.length) process.exit(1);
+if (!whatIf.length && (regressions.length || derivedRegressions.length)) process.exit(1);

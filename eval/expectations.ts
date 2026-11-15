@@ -24,4 +24,26 @@ export const EXPECT = {
   nailedTarget: 90,
   /** The hint needs at least this many nailed rounds. */
   minNailedForHint: 3,
+  /**
+   * Derived cases (src/derive.ts): copies of a good round changed in a way whose effect on the score is known.
+   * A round is a source when it is tagged nailed, or untagged with at least `minSourceScore`.
+   */
+  derived: {
+    minSourceScore: 60,
+    /** late: every frame shifted this much later; the lag must move by it, give or take the tolerance. */
+    lateShiftMs: 500,
+    lateLagToleranceMs: 150,
+    /** ... and the score may drop at most this much from the source. */
+    lateMaxBelowSource: 15,
+    /** frozen: the first frame held for the whole round must score this or less. */
+    frozenMaxScore: 10,
+    /** seated: legs hidden must be capped at this, on a clip whose legs swing at least `seated.legRangeDeg`. */
+    seatedMaxScore: 50,
+    /** walked out: no body for this share of the round, in the middle; no score or capped. */
+    walkedOutShare: 0.4,
+    walkedOutMaxScore: 50,
+    /** jittered: every point moved by up to this share of the frame (0.003 is about 2 pixels at 640 wide). */
+    jitter: 0.003,
+    jitterMaxMove: 5,
+  },
 } as const;

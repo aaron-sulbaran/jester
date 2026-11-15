@@ -24,6 +24,21 @@ What each tag promises is in `expectations.ts`, one file:
 | walked-out-of-frame | no score, or 50 or less |
 | left-right-swapped | report only: whether swapping should cost points is Alex's call |
 
+## Derived cases
+
+Every nailed round, and every untagged round scoring 60 or more, also becomes six transformed copies whose effect on the score is known (`src/derive.ts`, thresholds in `expectations.ts` under `derived`). They need no AI and no one playing more rounds.
+
+| transform | what changes in the player's recording | holds when |
+|---|---|---|
+| late | every frame 500 ms later | the lag moves by 500 (give or take 150) and the score drops at most 15; n/a when the source's lag plus 500 passes the engine's lag search |
+| frozen | the first frame held for the whole round | 10 or less, or no score |
+| seated | legs (points 25 to 32) invisible | 50 or less, on a clip whose thighs or shins swing 25 degrees or more |
+| walked-out | no body for the middle 40 percent | no score, or 50 or less |
+| jittered | every point moved up to 0.003 of the frame in a fixed pattern | within 5 of the source |
+| mirrored | the same moves done with the other side | report only |
+
+Derived cases of frozen cases join the baseline: one that held and stops holding fails `npm run eval`. Their ids are `<source id>~<transform>`.
+
 ## Commands (in `eval/`)
 
 ```

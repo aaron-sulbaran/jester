@@ -1,12 +1,12 @@
 // Pose channel: compare the player's limbs to the clip subject's limbs, frame by frame,
 // at one global lag, and turn it into a round score. Pure functions only.
 
-import { GRID_MS, LAG, MOTION, PLACEMENT, POSE, ROUND, SCORER_VERSION } from "./constants.ts";
+import { GRID_MS, LAG, MOTION, ORIENTATION, PLACEMENT, POSE, ROUND, SCORER_VERSION } from "./constants.ts";
 import { scorePlacement } from "./placement.ts";
 import { LIMBS, LIMB_NAMES, limbDirection, mirrorLandmarks, swapSide, type Direction } from "./geometry.ts";
 import { gridLength, resamplePoses } from "./resample.ts";
 import { clamp01, falloff, mapToScore, tierFor, timingCredit } from "./scoring.ts";
-import type { Landmarks, LimbBreakdown, PoseRoundResult, PoseTimeline } from "./types.ts";
+import type { Landmarks, LimbBreakdown, Orientation, PoseRoundResult, PoseTimeline } from "./types.ts";
 
 const RAD = 180 / Math.PI;
 const LIMB_DEFS = LIMB_NAMES.map((n) => LIMBS[n]!);
@@ -43,6 +43,8 @@ export interface PoseComparison {
   /** Weighted mean limb credit 0..1, or null when too little of the body is visible on both sides. */
   credit: number | null;
   limbs: LimbComparison[];
+  /** 0.11.0: which reading of the player gave this credit (set by comparePoses). */
+  orientation?: Orientation;
 }
 
 /**
@@ -99,21 +101,39 @@ function limbActivity(r: Direction, b: number, mult: number): number {
 export interface CompareOptions {
   referenceAspect?: number;
   playerAspect?: number;
-  /** Apply the mirror rule to the player (default true: the player faces the screen like a mirror). */
+  /**
+   * Apply the mirror rule to the player (default true: the player faces the screen like a mirror). With
+   * eitherSide on, this only picks which reading wins an exact tie.
+   */
   mirror?: boolean;
+  /** 0.11.0: compare both mirrored and same side and keep the better (default ORIENTATION.eitherSide). */
+  eitherSide?: boolean;
+}
+
+/** Higher credit wins; null (not scorable) loses to any number; an exact tie keeps the preferred reading `a`. */
+function betterCredit(a: number | null, b: number | null): boolean {
+  if (b === null) return true;
+  if (a === null) return false;
+  return a >= b;
 }
 
 /**
  * Compare a single reference pose with a single player pose. Use this for live feedback
  * (limb colors, a running meter). The authoritative score comes from scorePoseRound.
+ * 0.11.0: compares the player both mirrored and same side and keeps the better, like scorePoseRound.
  */
 export function comparePoses(reference: Landmarks, player: Landmarks, options: CompareOptions = {}): PoseComparison {
-  const { referenceAspect = 1, playerAspect = 1, mirror = true } = options;
-  const p = player && mirror ? mirrorLandmarks(player) : player;
+  const { referenceAspect = 1, playerAspect = 1, mirror = true, eitherSide = ORIENTATION.eitherSide } = options;
   const rd = directions(reference, referenceAspect);
-  const pd = directions(p, playerAspect);
-  if (!rd || !pd) return { credit: null, limbs: [] };
-  return compareDirs(rd, pd);
+  if (!rd || !player) return { credit: null, limbs: [] };
+  const once = (flip: boolean, orientation: Orientation): PoseComparison => {
+    const pd = directions(flip ? mirrorLandmarks(player) : player, playerAspect);
+    return pd ? { ...compareDirs(rd, pd), orientation } : { credit: null, limbs: [] };
+  };
+  const preferred = mirror ? once(true, "mirror") : once(false, "same-side");
+  if (!eitherSide) return preferred;
+  const other = mirror ? once(false, "same-side") : once(true, "mirror");
+  return betterCredit(preferred.credit, other.credit) ? preferred : other;
 }
 
 /**
@@ -236,24 +256,81 @@ export function motionShare(refTurns: (Turn | null)[][], playerTurns: (Turn | nu
   return total > 1e-9 ? clamp01(matched / total) : 0;
 }
 
+/**
+ * Moved share 0..1 (0.10.0): whether the player moved at all, in or out of time and in any direction, as a
+ * share of how much the clip moves. Unlike motionShare there is no projection: a blind player's moves are
+ * often late or loose, so they barely project on the clip's turns, but they are still moves. Each turn counts
+ * its size less MOTION.movedFloorDeg, on both sides, so tracker jitter, breathing and sway on a body standing
+ * still count about 0 and an exact copy counts 1. Per limb, the player's sum over the round is capped at the
+ * clip's sum over the same frames, so moving a limb the clip holds still (the other arm, say) or fidgeting
+ * one limb a lot cannot stand in for the limbs the clip moves. Limbs are weighted by their LIMBS weight.
+ * A body held still earns 0, whatever pose it holds. 1 when the clip itself never moves.
+ */
+export function movedShare(refTurns: (Turn | null)[][], playerTurns: (Turn | null)[][], frameMatch: readonly number[], valid: readonly boolean[]): number {
+  const floor = 2 * Math.sin((MOTION.movedFloorDeg * Math.PI) / 360);
+  const over = (t: Turn | null | undefined): number => (t ? Math.max(0, Math.hypot(t.x, t.y) - floor) : 0);
+  const L = LIMB_DEFS.length;
+  const refSum = new Array<number>(L).fill(0), moveSum = new Array<number>(L).fill(0);
+  for (let i = 0; i < frameMatch.length; i++) {
+    const j = frameMatch[i]!;
+    if (j < 0 || !valid[i]) continue;
+    for (let b = 0; b < L; b++) {
+      refSum[b]! += over(refTurns[j]?.[b]);
+      moveSum[b]! += over(playerTurns[i]?.[b]);
+    }
+  }
+  let total = 0, moved = 0;
+  for (let b = 0; b < L; b++) {
+    const w = LIMB_DEFS[b]!.weight;
+    total += w * refSum[b]!;
+    moved += w * Math.min(refSum[b]!, moveSum[b]!);
+  }
+  // A clip that never moves leaves nothing to tell a mover from a statue: count the player as moved.
+  return total > 1e-9 ? clamp01(moved / total) : 1;
+}
+
 export interface PoseRoundOptions {
-  /** Apply the mirror rule to the player (default true). Ignored when the player's frames were already flipped. */
+  /**
+   * Apply the mirror rule to the player (default true). With eitherSide on, this only picks which reading
+   * wins an exact tie.
+   */
   mirror?: boolean;
+  /** 0.11.0: score both mirrored and same side and keep the better (default ORIENTATION.eitherSide). */
+  eitherSide?: boolean;
 }
 
 /**
  * Score a whole round. Inputs are the clip subject's timeline and the player's timeline, both on
  * the clip's clock. The result depends only on these inputs and the constants: run it twice, get
  * the same result.
+ *
+ * 0.11.0: the round is scored twice, once reading the player as a mirror copy and once as a same-side copy,
+ * each through the whole pipeline, and the better score is kept (result.orientation says which). An exact tie
+ * keeps the preferred reading (mirror unless options.mirror is false).
  */
 export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, options: PoseRoundOptions = {}): PoseRoundResult {
+  const prefer: Orientation = options.mirror ?? true ? "mirror" : "same-side";
+  const preferred = scorePoseOriented(reference, player, prefer);
+  if (!(options.eitherSide ?? ORIENTATION.eitherSide)) return preferred;
+  const other = scorePoseOriented(reference, player, prefer === "mirror" ? "same-side" : "mirror");
+  const rank = (r: PoseRoundResult) => (r.score === null ? -1 : r.score);
+  if (rank(preferred) >= rank(other)) return preferred;
+  // Outline fit is where the player stands on the mirrored screen they see, whichever way they copied.
+  const view = other.orientation === "mirror" ? other : preferred;
+  return { ...other, placement: { ...other.placement, outlineFit: view.placement.outlineFit, outlineHints: view.placement.outlineHints } };
+}
+
+/** One reading of the player: as a mirror copy, or as a same-side copy. */
+function scorePoseOriented(reference: PoseTimeline, player: PoseTimeline, orientation: Orientation): PoseRoundResult {
   const lastRef = reference.frames.reduce((m, f) => (Number.isFinite(f.tMs) && f.tMs > m ? f.tMs : m), -1);
   const n = gridLength(lastRef);
   const refAspect = reference.source.width / reference.source.height;
   const playerAspect = player.source.width / player.source.height;
-  const applyMirror = (options.mirror ?? true) && !player.source.mirrored;
+  // A mirror copy is flipped onto the reference's sides, unless the frames were flipped before tracking.
+  // A same-side copy already matches the reference's sides on an unflipped camera.
+  const applyMirror = orientation === "mirror" ? !player.source.mirrored : player.source.mirrored;
   // The player's own side is opposite to the reference's whenever the player copies as a mirror image.
-  const mirrorView = options.mirror ?? true;
+  const mirrorView = orientation === "mirror";
 
   const refGrid = resamplePoses(reference.frames, n);
   const playerGrid = resamplePoses(player.frames, n).map((l) => (l && applyMirror ? mirrorLandmarks(l) : l));
@@ -262,8 +339,8 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
   const mult = motionMultipliers(refDirs);
 
   const empty = (failure: PoseRoundResult["failure"]): PoseRoundResult => ({
-    channel: "pose", scorerVersion: SCORER_VERSION, score: null, tier: null, failure,
-    accuracy: 0, stillBaseline: 0, motion: { share: 0, gate: 0, credit: 0, gainOverStill: 0, gain: 0 }, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
+    channel: "pose", scorerVersion: SCORER_VERSION, score: null, orientation, tier: null, failure,
+    accuracy: 0, stillBaseline: 0, motion: { share: 0, gate: 0, credit: 0, moved: 0, stillGate: 0, gainOverStill: 0, gain: 0 }, timing: 0, lagMs: 0, validShare: 0, perLimb: {}, worstLimb: null, hiddenLimbs: [], frameCredits: new Array(n).fill(null),
     placement: { used: false, credit: 0, stillBaseline: 0, gain: 0, worst: null, outlineFit: null, outlineHints: { distance: null, side: null } },
   });
   if (n === 0 || refDirs.every((d) => d === null)) return empty("no-reference");
@@ -348,10 +425,17 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
 
   // 2b. Moving credit (0.9.0): absolute accuracy, unlocked by moving like the clip.
   //     A clip that never moves leaves nothing to tell a copier from a statue: the share is 0.
-  const share = motionShare(limbTurns(refDirs), limbTurns(playerDirs), frameMatch, frameCredits.map((c) => c !== null));
+  const refTurns = limbTurns(refDirs), playerTurns = limbTurns(playerDirs);
+  const validFrames = frameCredits.map((c) => c !== null);
+  const share = motionShare(refTurns, playerTurns, frameMatch, validFrames);
   const gate = clamp01((share - MOTION.gateLow) / (MOTION.gateHigh - MOTION.gateLow));
   const absoluteCredit = clamp01((accuracy - MOTION.accuracyFloor) / (MOTION.accuracyFull - MOTION.accuracyFloor));
-  const gain = Math.max(gainOverStill, gate * absoluteCredit);
+  // 2c. Still gate (0.10.0): the gain over the fixed arms-down pose counts only as far as the player moved at
+  //     all. On a clip that mostly stands, a player's own standing pose beats the fixed pose by a lot, so
+  //     without this a statue scored up to 66. A clip that never moves cannot tell them apart: moved is 1.
+  const moved = movedShare(refTurns, playerTurns, frameMatch, validFrames);
+  const stillGate = clamp01((moved - MOTION.movedLow) / (MOTION.movedHigh - MOTION.movedLow));
+  const gain = Math.max(stillGate * gainOverStill, gate * absoluteCredit);
   const lagMs = Math.round(lag * GRID_MS);
   const timing = timingCredit(lagMs);
 
@@ -425,11 +509,12 @@ export function scorePoseRound(reference: PoseTimeline, player: PoseTimeline, op
     channel: "pose",
     scorerVersion: SCORER_VERSION,
     score,
+    orientation,
     tier: score === null ? null : tierFor(score),
     failure: failed ? "low-tracking" : null,
     accuracy: clamp01(accuracy),
     stillBaseline,
-    motion: { share, gate, credit: absoluteCredit, gainOverStill, gain },
+    motion: { share, gate, credit: absoluteCredit, moved, stillGate, gainOverStill, gain },
     timing,
     lagMs,
     validShare,
