@@ -25,6 +25,12 @@
     #roles .role { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; }
     #roles .role.watching { font-weight: 700; }
     #roles .skipped { color: #777; padding: 2px 0; }
+    #game .stage { display: flex; flex-wrap: wrap; gap: 8px; }
+    #game .stage canvas { width: 360px; max-width: 100%; height: auto; background: #16161d; }
+    #game-count { font-size: 3rem; font-weight: 800; min-height: 1.2em; }
+    #game-results td.win { font-weight: 700; }
+    #game-parts button[aria-pressed="true"] { font-weight: bold; outline: 2px solid #f5c542; }
+    #cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     .kind { font-size: 0.8rem; color: #555; border: 1px solid #ccc; border-radius: 4px; padding: 0 4px; }
     progress { width: 100%; }
     table { border-collapse: collapse; margin-top: 12px; }
@@ -113,6 +119,34 @@
       <label><input type="radio" name="look" value="stick" /> Stick figure</label>
     </div>
     <canvas id="blind" class="view" width="480" height="360"></canvas>
+  </section>
+
+  <section id="play-section" class="hidden">
+    <h2>Play blind mode with these roles</h2>
+    <p class="note">One laptop, passed round. Each player gets a secret role from the ticked ones and copies it without seeing the clip; the reveal comes at the end. The clip itself is never shown: its people and things are drawn as figures.</p>
+    <div class="row">
+      <label><input type="checkbox" id="sim" /> Simulated players (no camera)</label>
+      <label>Speed <select id="speed"><option value="1">Full</option><option value="0.75" selected>Three quarters</option><option value="0.5">Half</option></select></label>
+      <button id="play-roles" class="primary">Play these roles</button>
+    </div>
+    <div id="game" class="hidden">
+      <p id="game-msg"></p>
+      <div class="row" id="game-parts"></div>
+      <div class="row">
+        <button id="game-watch" class="hidden">Watch it once</button>
+        <button id="game-go" class="primary hidden">Go</button>
+      </div>
+      <div id="game-count"></div>
+      <div class="stage">
+        <canvas id="guide-canvas" width="480" height="360"></canvas>
+        <canvas id="player-canvas" width="480" height="360"></canvas>
+      </div>
+      <canvas id="reveal-canvas" class="view hidden" width="640" height="360"></canvas>
+      <progress id="reveal-progress" class="hidden" value="0" max="1"></progress>
+      <table id="game-results"></table>
+      <video id="reveal-video" class="view hidden" controls playsinline></video>
+    </div>
+    <video id="cam" playsinline muted></video>
   </section>
 
   <table id="facts"></table>

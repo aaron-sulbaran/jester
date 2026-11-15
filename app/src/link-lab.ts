@@ -13,6 +13,10 @@ import {
 } from "./clipside/grab.ts";
 import { grabKey, parseLink, type ParsedLink } from "./clipside/link.ts";
 import { createPlayer, EMBED_OFF, STATE, type YtPlayer } from "./clipside/youtube.ts";
+import { linkScene } from "./clipside/linkScene.ts";
+import { runBlindGame, type BlindDeps, type BlindUi, type ResultRow } from "./blind.ts";
+import { cameraPlayer, type Player } from "./round.ts";
+import type { BodyPart } from "../../engine/src/index.ts";
 import type { View } from "../../clip/src/index.ts";
 
 type Flow = "player" | "tab";
@@ -31,6 +35,8 @@ interface LabSummary {
   /** The roles ticked, and for how many players. */
   picked: string[];
   players: number;
+  /** The last blind mode round played from these roles. */
+  game?: { role: string; score: number | null; winner: boolean }[] | null;
   guide: { label: string; range: Guide["range"]; pace: Guide["pace"]; timelineFrames: number; outlineFrames: number } | null;
   error: string | null;
 }
@@ -65,6 +71,7 @@ const confirmCanvas = $<HTMLCanvasElement>("confirm");
 const rolesList = $("roles");
 const rolesNote = $("roles-note");
 const playersSelect = $<HTMLSelectElement>("players");
+const playRolesButton = $<HTMLButtonElement>("play-roles");
 const blindCanvas = $<HTMLCanvasElement>("blind");
 const facts = $<HTMLTableElement>("facts");
 
@@ -315,6 +322,7 @@ function renderRoles(watching: string | null) {
 
 /** The note under the roles, the summary for the console, and the boxes, after a tick or a player count changes. */
 function rolesChanged(watching: string | null) {
+  playRolesButton.disabled = picked.size === 0 || gameRunning;
   const players = Number(playersSelect.value);
   const count = picked.size;
   const names = roleGuides.map((g) => g.subject.label).filter((l) => picked.has(l));
@@ -393,6 +401,7 @@ function showPrepared(p: Prepared, from: Flow, seconds: number | null, stats: Gr
     player.seekTo(p.confirmTMs / 1000, true);
     show(overlay, true);
   }
+  show($("play-section"), true);
   pickTop();
   rolesChanged(null);
   const dashed = drawConfirm(p, null);
@@ -415,6 +424,8 @@ function handleResult(result: GrabResult, from: Flow, linkKey: string | null, be
 
 function clearResult() {
   stopPreview();
+  show($("play-section"), false);
+  show(gameBox, false);
   prepared = null;
   summary = null;
   show($("choose"), false);
@@ -609,6 +620,138 @@ async function useSaved() {
   showPrepared(saved, fromPlayer ? "player" : "tab", 0);
 }
 
+// ---- Blind mode with the ticked roles ----
+
+const gameBox = $("game");
+const gameMsg = $("game-msg");
+const gameParts = $("game-parts");
+const gameWatch = $<HTMLButtonElement>("game-watch");
+const gameGo = $<HTMLButtonElement>("game-go");
+const gameCount = $("game-count");
+const guideStage = $<HTMLCanvasElement>("guide-canvas");
+const playerStage = $<HTMLCanvasElement>("player-canvas");
+const revealCanvas = $<HTMLCanvasElement>("reveal-canvas");
+const revealProgress = $<HTMLProgressElement>("reveal-progress");
+const gameResults = $<HTMLTableElement>("game-results");
+const revealVideo = $<HTMLVideoElement>("reveal-video");
+const cam = $<HTMLVideoElement>("cam");
+const simBox = $<HTMLInputElement>("sim");
+let gameRunning = false;
+let camera: Player | null = null;
+
+/** Resolves on the next click of `el`. */
+const clicked = (el: HTMLElement) => new Promise<void>((resolve) => el.addEventListener("click", () => resolve(), { once: true }));
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const deps: BlindDeps = {
+  simMode: () => simBox.checked,
+  noise: () => 10,
+  async getCamera() {
+    camera ??= await cameraPlayer(cam);
+    return camera;
+  },
+};
+
+/** The plainest screens blind mode needs, on this page. The real ones are the game's (ui/game.ts). */
+const ui: BlindUi = {
+  async handover(player, previous) {
+    gameParts.replaceChildren();
+    show(gameWatch, false);
+    gameMsg.textContent = previous ? `${previous.name} is done. Pass the laptop to ${player.name}.` : `${player.name} goes first.`;
+    gameGo.textContent = `I am ${player.name}`;
+    show(gameGo, true);
+    await clicked(gameGo);
+  },
+  async showPart(player, role) {
+    gameMsg.textContent = `${player.name}: ${role.problem ? `${role.problem} ` : ""}${role.text}`;
+    let part: BodyPart = role.parts[0]?.key ?? "body";
+    const buttons = role.parts.map(({ key, label }) => {
+      const button = document.createElement("button");
+      button.textContent = label;
+      button.setAttribute("aria-pressed", String(key === part));
+      button.addEventListener("click", () => {
+        part = key;
+        for (const b of buttons) b.setAttribute("aria-pressed", String(b === button));
+      });
+      return button;
+    });
+    gameParts.replaceChildren(...buttons);
+    show(gameWatch, true);
+    gameWatch.onclick = () => { gameWatch.disabled = true; void role.preview().finally(() => { gameWatch.disabled = false; }); };
+    gameGo.textContent = "Go";
+    show(gameGo, true);
+    await clicked(gameGo);
+    gameParts.replaceChildren();
+    show(gameWatch, false);
+    show(gameGo, false);
+    return part;
+  },
+  playStage: () => ({ guideCanvas: guideStage, playerCanvas: playerStage, cam }),
+  async countdown(seconds) {
+    for (let left = seconds; left > 0; left--) {
+      gameCount.textContent = String(left);
+      await wait(1000);
+    }
+    gameCount.textContent = "";
+  },
+  beat: () => wait(800),
+  revealCanvas: () => revealCanvas,
+  progress(share) { revealProgress.value = share; },
+  results(rows: ResultRow[]) {
+    gameMsg.textContent = "Everyone has played. The reveal is recording below.";
+    show(revealCanvas, true);
+    show(revealProgress, true);
+    gameResults.replaceChildren(...rows.map((row) => {
+      const tr = document.createElement("tr");
+      for (const text of [row.name, row.role, row.score === null ? "no score" : `${row.score}${row.tier ? ` (${row.tier})` : ""}`, row.winner ? (row.tied ? "tied for best" : "best") : ""]) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (row.winner) td.className = "win";
+        tr.append(td);
+      }
+      return tr;
+    }));
+    if (summary) summary.game = rows.map((row) => ({ role: row.role, score: row.score, winner: row.winner }));
+  },
+  revealReady(url) {
+    show(revealProgress, false);
+    if (url) {
+      revealVideo.src = url;
+      show(revealVideo, true);
+      show(revealCanvas, false);
+      gameMsg.textContent = "The reveal is ready.";
+    } else {
+      gameMsg.textContent = "The reveal played above; this browser cannot record it to a file.";
+    }
+  },
+};
+
+async function playRoles() {
+  const p = prepared;
+  if (!p || gameRunning) return;
+  const scene = linkScene(p, [...picked], link?.url ?? "A grabbed clip");
+  if (scene.error !== null) return setStatus(scene.error);
+  gameRunning = true;
+  playRolesButton.disabled = true;
+  stopPreview();
+  player?.pauseVideo();
+  show(gameBox, true);
+  show(revealCanvas, false);
+  show(revealVideo, false);
+  gameResults.replaceChildren();
+  gameBox.scrollIntoView({ block: "start" });
+  const names = Array.from({ length: Number(playersSelect.value) }, (_, i) => `Player ${i + 1}`);
+  try {
+    await runBlindGame(scene.data, names, ui, deps, { speed: Number($<HTMLSelectElement>("speed").value) });
+  } catch (error) {
+    gameMsg.textContent = `The round stopped: ${(error as Error).message}`;
+  } finally {
+    gameRunning = false;
+    show(gameGo, false);
+    playRolesButton.disabled = picked.size === 0;
+  }
+}
+
 $("open").addEventListener("click", () => void openLink());
 linkInput.addEventListener("keydown", (e) => { if (e.key === "Enter") void openLink(); });
 playButton.addEventListener("click", () => {
@@ -636,6 +779,7 @@ startOtherButton.addEventListener("click", () => {
 });
 stopOtherButton.addEventListener("click", () => other?.stop());
 useSavedButton.addEventListener("click", () => void useSaved());
+playRolesButton.addEventListener("click", () => void playRoles());
 playersSelect.addEventListener("change", () => {
   if (!prepared) return;
   pickTop();

@@ -19,13 +19,13 @@ import { STATE, type YtPlayer } from "./youtube.ts";
 export const SAMPLE_HZ = 15;
 export const MAX_GRAB_MS = 30000;
 export const MIN_GRAB_MS = 3000;
-const MAX_SIDE = 720;
+const MAX_SIDE = 512;
 const SIGNATURE_WIDTH = 32;
 const STEP_MS = 1000 / SAMPLE_HZ;
 /** A person lost for up to this long is joined back into one track; same as the file path. */
 const REJOIN_SECONDS = 3;
-/** With things on, the object detector looks at every this many grabbed frames; same as the file path. */
-const THING_EVERY = 3;
+/** With things on, the object detector looks at every this many grabbed frames; same as the file path (#41). */
+const THING_EVERY = 6;
 const NO_PERSON = "No person found in this clip.";
 
 export interface GrabOptions {
