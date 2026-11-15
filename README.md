@@ -11,7 +11,7 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 ## Any video is now a game
 
 - **Any clip becomes a level.** Jester finds the people (up to 4) and the things that move in a short video (a dancer, a dog, a ball) and turns each one into a part someone can play. No level design, no markers, no training.
-- **Play it blind, or dance along.** In Blind, each player sees only their own part's outline or stick figure, never the clip and never who they are, and finds out what they actually did at the reveal. In Normal, the clip plays during your turn and your part is marked on it with a thin outline in your colour and your name above.
+- **Play it blind, or dance along.** In Blind, each player sees only a 3D jester moving the way their part moves, never the clip and never who they are, and finds out what they actually did at the reveal. In Normal, the clip plays during your turn and your part is marked on it with a thin outline in your colour and your name above.
 - **One to four players.** The start screen asks how many are playing. One player plays alone. Two or more take turns on one laptop, play a Duel (everyone copies the same person, best copy wins), or play online, each on their own device.
 - **The reveal is the payoff.** The real video plays with every player's cutout on their part, the jester crowns the winner, and the reveal saves as a video you can keep.
 
@@ -23,7 +23,7 @@ Built at HackPrinceton Fall 2026 (November 13 to 15). Main track: **Entertainmen
 
 1. **Pick a clip and a mode.** The video bank holds ten clips, or play a file from your computer; with an empty bank the game falls back to two built-in starter clips that also work offline. Then pick Blind or Normal.
 2. **Jester reads the moves.** The clip side finds up to 4 people per frame and the things that move, notices cuts, follows each subject through the clip, and writes a guide for each: the pose over time (33 body points), the box over time and an outline. A clip it cannot use is refused with a sentence a player can read.
-3. **Copy your secret part.** Pass the laptop, or play online with a room code, each on your own device. In Blind you see only your part's shape; in Normal the clip plays too. The mirror view shows where to stand: the subject's place and size, never who it is. The guide is a stick figure; `?guide=d` swaps in a 3D jester. Pick how to copy it: with your whole body, or with one hand, your head or one foot following it. Slower speeds (0.75 and 0.5) are scored in the clip's own time.
+3. **Copy your secret part.** Pass the laptop, or play online with a room code, each on your own device. In Blind you see only your part's shape; in Normal the clip plays too. The mirror view shows where to stand: the subject's place and size, never who it is. The guide is a 3D jester, with the plain stick figure on a corner card that a tap swaps in; `?guide=stick` brings back the stick figure alone. Pick how to copy it: with your whole body, or with one hand, your head or one foot following it. Slower speeds (0.75 and 0.5) are scored in the clip's own time.
 4. **Score and reveal.** The engine scores each copy from 0 to 100 limb by limb, then the reveal plays: a title card, the cast over the clip, the busiest few seconds beside the original, and a cast card with every score.
 
 <!-- PICTURE SLOT: a blind turn (the outline a player copies) and the reveal (players over the real clip). Real screenshots only. -->
