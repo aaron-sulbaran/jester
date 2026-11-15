@@ -266,10 +266,11 @@ export function initGame(deps: GameDeps) {
       return chosen;
     },
 
-    playStage: () => ({ guideCanvas, playerCanvas, cam: deps.cam }),
+    // Switch to the playing layout first (role left, you right), so the role is sized for its half.
+    playStage: () => { turn.dataset.state = "play"; return { guideCanvas, playerCanvas, cam: deps.cam }; },
 
     async countdown(seconds) {
-      // The countdown is the moment the turn starts: the camera comes in under the shape.
+      // The countdown is the moment the turn starts (playStage has already switched to the playing layout).
       turn.dataset.state = "play";
       const el = $("count");
       el.hidden = false;

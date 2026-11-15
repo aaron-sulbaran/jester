@@ -211,6 +211,37 @@ function eraseSubjects(c: CanvasRenderingContext2D, W: number, H: number, video:
   }
 }
 
+/** Below this, a limb is not drawn (clipside/blind.ts and draw.ts). */
+const DRAWN_VISIBILITY = 0.5;
+
+/**
+ * A person role made steady: jitter softened, and every frame with no person filled with a best guess
+ * (a straight line between the poses either side, or the nearest pose held at the ends). Its box follows
+ * the steadied pose, so the reveal never loses its place either.
+ */
+function steadyRole(g: Guide): Guide {
+  if (!g.timeline || isThing(g)) return g;
+  const timeline = smoothTimeline(g.timeline, { maxFill: Infinity, holdEnds: true });
+  const frames = g.boxTrack.frames;
+  const boxTrack = timeline.frames.length !== frames.length ? g.boxTrack : {
+    ...g.boxTrack,
+    frames: frames.map((f, i) => {
+      const lms = timeline.frames[i]!.landmarks;
+      return { ...f, box: (lms && boxFromLandmarks(lms)) ?? f.box };
+    }),
+  };
+  return { ...g, timeline, boxTrack };
+}
+
+/** The role as drawn: every point shown, using the tracker's best guess where it was unsure. Scoring keeps the real visibility. */
+function fullFigure(g: Guide): Guide {
+  if (!g.timeline || isThing(g)) return g;
+  return {
+    ...g,
+    timeline: { ...g.timeline, frames: g.timeline.frames.map((f) => ({ ...f, landmarks: f.landmarks && f.landmarks.map(([x, y, v]) => [x, y, Math.max(v, DRAWN_VISIBILITY)] as const) })) },
+  };
+}
+
 /** The same guide played slower: every time stretched by 1 / speed. `range.startMs` stays the clip's media start. */
 function slowGuide(g: Guide, speed: number): Guide {
   if (speed === 1) return g;
@@ -409,7 +440,10 @@ function simulatedFor(s: Seat, scene: Scene, deps: BlindDeps): Player {
 
 /** How a role is drawn for its player: a person centred and sized to fill the view, a thing in its place so its travel shows. */
 function roleView(s: Seat, canvas: HTMLCanvasElement, scene: Scene) {
-  fitCanvas(canvas, scene.width / scene.height);
+  // A person fills whatever space the screen gives the role (half the stage while playing); a thing keeps
+  // the clip's shape, so where it travels stays true.
+  const shown = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 0;
+  fitCanvas(canvas, !isThing(s.guide) && shown ? shown : scene.width / scene.height);
   return { view: blindView(s.guide, canvas, isThing(s.guide) ? "exact" : "fit"), style: { background: "#16161d", color: s.color } };
 }
 
@@ -605,24 +639,6 @@ function videoClock(video: HTMLVideoElement, fromMs: number): SegmentClock {
   };
 }
 
-/** Start (clip ms from the shared stretch's start) of the `windowMs` where the roles move the most together. */
-function busiestWindow(guides: readonly Guide[], windowMs: number): number {
-  const g0 = guides[0];
-  if (!g0) return 0;
-  const frameMs = 1000 / g0.source.sampleHz, n = g0.boxTrack.frames.length, w = Math.max(1, Math.round(windowMs / frameMs));
-  if (n <= w) return 0;
-  const motion = new Array<number>(n).fill(0);
-  for (const g of guides) {
-    g.boxTrack.frames.forEach((f, i) => {
-      const p = g.boxTrack.frames[i - 1]?.box;
-      if (f.box && p) motion[i]! += Math.abs(f.box.cx - p.cx) + Math.abs(f.box.cy - p.cy) + Math.abs(f.box.h - p.h);
-    });
-  }
-  let sum = motion.slice(0, w).reduce((a, b) => a + b, 0), best = sum, at = 0;
-  for (let i = w; i < n; i++) { sum += motion[i]! - motion[i - w]!; if (sum > best) { best = sum; at = i - w + 1; } }
-  return at * frameMs;
-}
-
 /** How the recorded reveal looks. The look sets it per game through `GameOptions.theme`. */
 export interface RevealTheme { card: string; ink: string; soft: string; accent: string; font: string; title: string; glow: number }
 export const REVEAL_THEME: RevealTheme = { card: "#16161d", ink: "#f2f2f5", soft: "#a0a3b1", accent: "#f5c542", font: "system-ui, -apple-system, sans-serif", title: "Blind mode", glow: 12 };
@@ -638,22 +654,6 @@ function drawTitle(ctx: CanvasRenderingContext2D, W: number, H: number, sceneNam
   ctx.fillStyle = theme.ink; ctx.font = font(H, 0.05); ctx.fillText(`${players} players. Nobody knew who they were playing.`, W / 2, H * 0.56);
   ctx.fillStyle = theme.soft; ctx.font = font(H, 0.04, 400); ctx.fillText(sceneName, W / 2, H * 0.66);
   ctx.globalAlpha = 1;
-}
-
-/** One frame of the side by side: the clip on the left, the cast on the right. */
-function drawSideBySide(ctx: CanvasRenderingContext2D, W: number, H: number, full: HTMLCanvasElement, background: (c: CanvasRenderingContext2D, ms: number) => void, castBackground: (c: CanvasRenderingContext2D, ms: number) => void, layers: RevealLayer[], ms: number) {
-  full.width = W; full.height = H;
-  const f = full.getContext("2d")!;
-  ctx.fillStyle = theme.card; ctx.fillRect(0, 0, W, H);
-  const pad = W * 0.02, w = (W - 3 * pad) / 2, h = w * (H / W), y = (H - h) / 2 + H * 0.04;
-  background(f, ms);
-  ctx.drawImage(full, pad, y, w, h);
-  castBackground(f, ms);
-  drawLayers(f, W, H, layers, ms);
-  ctx.drawImage(full, 2 * pad + w, y, w, h);
-  ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.font = font(H, 0.05, 700);
-  ctx.fillStyle = theme.ink; ctx.fillText("The clip", pad + w / 2, y - H * 0.02);
-  ctx.fillStyle = theme.accent; ctx.fillText("Your cast", 2 * pad + 1.5 * w, y - H * 0.02);
 }
 
 /** The closing card: who played what, how well, and who won. Each player's picture is their own cutout. */
@@ -725,21 +725,27 @@ async function recordGroupReveal(seats: Seat[], rows: ResultRow[], played: Scene
     background(from)(c, ms);
     if (video) eraseSubjects(c, W, H, video, roles, toPlay(from + ms));
   };
-  const sideMs = Math.min(6000, realMs);
-  const sideFrom = busiestWindow(seats.map((s) => s.original), sideMs);
-  const sideLayers = layers.map((l) => ({ ...l, boxAt: (ms: number) => l.boxAt(sideFrom + ms), cutouts: l.cutouts.map((c) => ({ ...c, clipMs: c.clipMs - toPlay(sideFrom) })) }));
-  const full = document.createElement("canvas");
+  // A label at the top centre, clear of the stage's valance, readable on any clip.
+  const caption = (c: CanvasRenderingContext2D, text: string, color: string) => {
+    c.save();
+    c.font = font(H, 0.065, 800); c.textAlign = "center"; c.textBaseline = "top";
+    c.lineJoin = "round"; c.lineWidth = Math.max(4, H / 90); c.strokeStyle = "rgba(0,0,0,0.75)"; c.strokeText(text, W / 2, H * 0.1);
+    c.fillStyle = color; c.fillText(text, W / 2, H * 0.1);
+    c.restore();
+  };
   // Each player's picture on the cast card: a cutout from the middle of their turn.
   const faces = seats.map((s) => s.cutouts[Math.floor(s.cutouts.length / 2)]?.image ?? null);
   const segments: Segment[] = [
     { durationMs: 2200, draw: (c, ms) => drawTitle(c, W, H, scene.name, seats.length, ms) },
     {
+      // The clip as it was, so everyone sees what they were copying.
       durationMs: realMs, clock: video ? videoClock(video, scene.startMs) : undefined,
-      draw: (c, ms) => { withoutSubjects(0)(c, ms); drawLayers(c, W, H, layers, ms); },
+      draw: (c, ms) => { background(0)(c, ms); caption(c, "The original", "#ffffff"); },
     },
     {
-      durationMs: sideMs, clock: video ? videoClock(video, scene.startMs + sideFrom) : undefined,
-      draw: (c, ms) => drawSideBySide(c, W, H, full, background(sideFrom), withoutSubjects(sideFrom), sideLayers, ms),
+      // The same clip with each player standing in for the subject they played.
+      durationMs: realMs, clock: video ? videoClock(video, scene.startMs) : undefined,
+      draw: (c, ms) => { withoutSubjects(0)(c, ms); drawLayers(c, W, H, layers, ms); caption(c, "Your cast", theme.accent); },
     },
     { durationMs: 1200 + rows.length * 450 + 3000, draw: (c, ms) => drawCastCard(c, W, H, rows, faces, ms) },
   ];
@@ -766,10 +772,10 @@ function roleOf(s: Seat, scene: Scene, ui: BlindUi, leadMs: number): RoleInfo {
 /** Play one game: deal roles, one turn each on this laptop, then the reveal. Resolves with the results. */
 export async function runBlindGame(clip: Scene, names: string[], ui: BlindUi, deps: BlindDeps, options: GameOptions = {}): Promise<ResultRow[]> {
   const speed = options.speed ?? 1, leadMs = options.leadMs ?? 400;
-  // Tracking from a real video jitters; steady every person role once, so the figure, the score and the
-  // reveal all use the same steady moves.
-  clip = { ...clip, guides: clip.guides.map((g) => (g.timeline && !isThing(g) ? { ...g, timeline: smoothTimeline(g.timeline) } : g)) };
-  const scene = slowScene(clip, speed);
+  // Tracking from a real video jitters and loses people; steady every person role once (scored as is) and
+  // draw a copy with every limb shown, so the figure never cuts out.
+  clip = { ...clip, guides: clip.guides.map(steadyRole) };
+  const scene = slowScene({ ...clip, guides: clip.guides.map(fullFigure) }, speed);
   theme = { ...REVEAL_THEME, ...options.theme };
   const seats = deal(names, scene.guides, options.colors ?? PLAYER_COLORS);
   for (const s of seats) s.original = clip.guides[scene.guides.indexOf(s.guide)]!;

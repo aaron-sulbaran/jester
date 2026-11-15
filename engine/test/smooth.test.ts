@@ -59,3 +59,15 @@ test("an unsure point is pulled toward its sure neighbours", () => {
   const out = smoothTimeline(timeline(frames));
   assert.ok(xAt(out, 10) < 0.58, `x ${xAt(out, 10)}`);
 });
+
+test("with no fill limit and held ends, every frame gets a best guess", () => {
+  const frames: (Landmark[] | null)[] = Array.from({ length: 40 }, (_, i) => pose(0.2 + i * 0.01, 0.5));
+  for (let i = 0; i < 4; i++) frames[i] = null;
+  for (let i = 15; i < 30; i++) frames[i] = null; // a whole second lost
+  for (let i = 36; i < 40; i++) frames[i] = null;
+  const out = smoothTimeline(timeline(frames), { maxFill: Infinity, holdEnds: true });
+  assert.ok(out.frames.every((f) => f.landmarks), "no empty frame");
+  assert.ok(Math.abs(xAt(out, 22) - (0.2 + 22 * 0.01)) < 0.005, `straight line across the gap: ${xAt(out, 22)}`);
+  assert.ok(Math.abs(xAt(out, 0) - 0.24) < 0.001 && Math.abs(xAt(out, 3) - 0.24) < 0.005, `start held at the first pose: ${xAt(out, 0)}`);
+  assert.ok(Math.abs(xAt(out, 39) - 0.55) < 0.001, `end held at the last pose: ${xAt(out, 39)}`);
+});
