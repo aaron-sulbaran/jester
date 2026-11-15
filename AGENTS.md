@@ -11,3 +11,15 @@ Team hub rule (HackPrinceton, Nov 13 to 15, hacking ends Sun 8:30 AM Eastern). O
 5. A lesson worth keeping goes in a small kb page: `<HUB>/hub learn kb/<slug>.md "<what changed>"`.
 6. Once the project repo exists (its URL is in <HUB>/kb/project-repo.md), clone it beside the hub and run `node <HUB>/scripts/install-hooks.mjs <that clone>`.
 ```
+
+## Design changes: one look
+
+Approved by Aaron on Nov 14. It binds Aaron's sessions; for everyone else it is a request, and the hub rule "merge without waiting" still holds.
+
+- **What counts:** anything a player, a judge or a reviewer sees: new screens or pages, on-screen wording, colours, type, icons, motion, layout, and the Devpost pictures.
+- **Feature work keeps to logic.** Write plain markup with stable ids and reuse the parts that exist: `.screen`, `.masking .tape` headings, `.note-wrap .note` for the Jester's lines, `.btn-main` (ticket), `.btn-quiet` (tag), `.chip`, `.box` (the shoebox stage), `.jbar` (loading bar), `.tab-btn`. Add no new colours, fonts or icons.
+- **Something new to see?** Send a short design request: which screen, what it must show and do, which element ids the logic needs, and any sketch. Aaron's sessions send it to the lead session, which relays it to the frontend agent. Others can post `<HUB>/hub ask "Design request: <what>" --for aaron`.
+- **Nothing waits.** Keep building on plain markup; the markup and styles in the scrapbook theatre look follow.
+- **Review.** A pull request from one of Aaron's sessions that touches `app/index.html`, `app/src/style.css` or `app/src/ui/` gets the frontend agent's design review before it merges. After anyone else's merge, the frontend agent sweeps main and fixes what drifted.
+
+The full page is `kb/jester-design-flow` on the hub.
