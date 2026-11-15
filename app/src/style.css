@@ -331,7 +331,12 @@ body[data-mode="normal"] .clip-pic:has(img) .clip-q { display: none; }
 #submitForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 44px; align-items: start; }
 #submitForm .send-fields, #submitForm .send-go { display: grid; gap: 12px; }
 #submitForm .send-dont h3 { margin: 0 0 6px; font: 700 28px/1 var(--hand); letter-spacing: -.045em; }
-#submitForm .send-dont li::marker { color: var(--stamp); }
+/* The X on the heading and on each line says "no" before the words do. */
+#submitForm .send-dont h3 { display: flex; align-items: center; gap: .22em; }
+#submitForm .send-dont h3 .ico { width: 1.05em; height: 1.05em; }
+#submitForm .send-dont .how { padding-left: 0; list-style: none; }
+#submitForm .send-dont .how li { display: grid; grid-template-columns: auto 1fr; gap: .45em; align-items: start; }
+#submitForm .send-dont .how .ico { width: 1.05em; height: 1.05em; margin-top: .2em; }
 #submitCredit::placeholder { color: #6B5A48; opacity: 1; font-weight: 400; }
 
 /* The four steps, built like How to play's. Each picture is a little scene on the desk made of the game's own
