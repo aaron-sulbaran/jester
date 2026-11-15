@@ -304,7 +304,7 @@ async function reviewQueue() {
       const frames = await framesOf(ready.data.found.guides[0]!);
       showFrames(frames);
       $("workTitle").textContent = `${p.title ?? "Untitled clip"}: the Chamberlain is looking at it...`;
-      const judged = await api<Decision>("judge", { title: p.title, credit: p.credit, facts: factsOf(ready.data.found), frames });
+      const judged = await api<Decision>("judge", { id: p.id, video_path: p.video_path, title: p.title, credit: p.credit, facts: factsOf(ready.data.found), frames });
       if (judged.error !== null) { problem(`${judged.error} It stays in the queue for next time.`); continue; }
       const d = judged.data;
       // The Chamberlain only approves under the submitter's own name (review-agent.ts enforces it).
