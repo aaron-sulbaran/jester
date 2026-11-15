@@ -99,7 +99,7 @@ export async function reviewSubmission(input: ReviewInput, apiKey: string): Prom
 
   const agent = createDeepAgent({
     name: "jester-submission-reviewer",
-    model: new ChatAnthropic({ model: MODEL, apiKey, maxTokens: 2000 }),
+    model: new ChatAnthropic({ model: MODEL, apiKey, maxTokens: 2000, maxRetries: 2 }),
     systemPrompt: SYSTEM,
     tools: [readClipFacts, recordDecision],
     subagents: [{
