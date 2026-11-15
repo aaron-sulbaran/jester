@@ -3,7 +3,7 @@
 
 import {
   buildGuide, checkClip, checkSubject, findCuts, frameSignature, linkTracks, linkThings, pickConfirmFrame,
-  rankCandidates, rankThings, rejoinTracks, shotRanges, thingGuides, withConfirmBoxes, withoutPeople,
+  rankCandidates, rankThings, rejoinTracks, repairIdentities, shotRanges, thingGuides, withConfirmBoxes, withoutPeople,
 } from "../../../clip/src/index.ts";
 import type {
   Candidate, ClipSource, FrameDetections, Guide, ThingCandidate, ThingFrame, ThingTrack, Track,
@@ -85,7 +85,10 @@ function signatureOf(canvas: FrameCanvas, scratch: HTMLCanvasElement): number[] 
  */
 function findPeople(frames: readonly FrameDetections[], cuts: readonly number[], source: ClipSource) {
   const linked = linkTracks(frames, cuts, { maxGap: SAMPLE_HZ });
-  const tracks = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect: source.width / source.height });
+  const aspect = source.width / source.height;
+  const joined = rejoinTracks(linked, { maxGap: REJOIN_SECONDS * SAMPLE_HZ, aspect });
+  // Puts back skeletons that crossing dancers swapped, and drops frames that show someone else's pose.
+  const { tracks } = repairIdentities(joined, { aspect });
   const ranked = rankCandidates(tracks, { sampleHz: SAMPLE_HZ, frameCount: frames.length });
   const confirmFrame = pickConfirmFrame(ranked, tracks);
   const candidates = withConfirmBoxes(ranked, tracks, confirmFrame);
