@@ -251,6 +251,14 @@
           <circle cx="24" cy="28" r="5.5" fill="#D93A2B" />
         </g>
       </symbol>
+      <symbol id="ico-settings" viewBox="0 0 48 48">
+        <g stroke="#1E1B18" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M6 11.5 H42 M6 24 H42 M6 36.5 H42" fill="none" />
+          <circle cx="30" cy="11.5" r="6" fill="#D93A2B" stroke-width="3.6" />
+          <circle cx="15" cy="24" r="6" fill="#FFC93C" stroke-width="3.6" />
+          <circle cx="34" cy="36.5" r="6" fill="#4F7BF0" stroke-width="3.6" />
+        </g>
+      </symbol>
     </defs>
   </svg>
 
@@ -285,7 +293,7 @@
     <nav class="side-nav" id="sideNav" aria-label="Help and sound">
       <button type="button" class="btn btn-quiet" id="howtoLink"><svg class="ico" aria-hidden="true"><use href="#ico-howto" /></svg>How to play</button>
       <button type="button" class="btn btn-quiet" id="soundToggle" aria-pressed="true"><svg class="ico ico-on" aria-hidden="true"><use href="#ico-sound-on" /></svg><svg class="ico ico-off" aria-hidden="true"><use href="#ico-sound-off" /></svg><span id="soundSay">Sound: on</span></button>
-      <button type="button" class="btn btn-quiet" id="settingsOpen">Settings</button>
+      <button type="button" class="btn btn-quiet" id="settingsOpen"><svg class="ico" aria-hidden="true"><use href="#ico-settings" /></svg>Settings</button>
     </nav>
     <nav class="game-nav" id="gameNav" aria-label="Game" hidden>
       <button type="button" class="tab-btn" id="home" aria-label="Home: back to the game modes">
@@ -454,7 +462,7 @@
         <h2 class="library-title" id="libraryTitle">Pick from the library</h2>
         <span class="library-count" id="libraryCount"></span>
         <button type="button" class="link library-more" id="libraryMore" hidden></button>
-        <label class="field library-find" role="search"><span>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
+        <label class="field library-find" role="search"><span><svg class="ico" aria-hidden="true"><use href="#ico-search" /></svg>Find a clip by name</span><input type="search" id="clipSearch" autocomplete="off" spellcheck="false" /></label>
       </div>
       <div class="bank" id="bank" role="group" aria-labelledby="libraryTitle"></div>
       <p class="typed library-none" id="libraryNone" role="status" hidden></p>
@@ -559,7 +567,7 @@
           </div>
           <div class="room-have-code" id="roomHaveCode">
             <label class="field"><span>Or join with a friend's code</span><input id="roomCode" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></label>
-            <button type="button" class="btn btn-quiet" id="roomEnter"><span class="ticket"><span class="ticket-text">Join</span></span></button>
+            <button type="button" class="btn btn-quiet" id="roomEnter"><svg class="ico" aria-hidden="true"><use href="#ico-join" /></svg><span class="ticket"><span class="ticket-text">Join</span></span></button>
           </div>
         </div>
         <!-- In a room: the code and a QR to get in, everyone's jester, the host's choices or the guest's ready
@@ -572,7 +580,7 @@
               <h2 class="room-code" id="roomCodeText"></h2>
               <div class="room-link-row">
                 <p class="room-link" id="roomLinkLine" hidden><span id="roomLinkText" hidden></span> <span id="roomWhere"></span></p>
-                <button type="button" class="btn btn-quiet" id="roomCopy">Copy link</button>
+                <button type="button" class="btn btn-quiet" id="roomCopy"><svg class="ico" aria-hidden="true"><use href="#ico-copy" /></svg><span id="roomCopySay">Copy link</span></button>
               </div>
             </div>
             <figure class="print room-qr" id="roomQr">
@@ -632,13 +640,13 @@
               </div>
               <form class="room-chat-form" id="roomChatForm">
                 <input id="roomChatText" type="text" maxlength="140" autocomplete="off" aria-labelledby="roomChatHead" placeholder="Write a message" />
-                <button type="submit" class="btn btn-quiet" id="roomChatSend">Send</button>
+                <button type="submit" class="btn btn-quiet" id="roomChatSend"><svg class="ico" aria-hidden="true"><use href="#ico-send" /></svg>Send</button>
               </form>
             </div>
           </section>
         </div>
         <p class="problem" id="roomProblem" role="alert" hidden></p>
-        <button type="button" class="link" id="roomBack">Back</button>
+        <button type="button" class="link" id="roomBack"><svg class="ico" aria-hidden="true"><use href="#ico-back" /></svg><span id="roomBackSay">Back</span></button>
       </div>
     </section>
 
