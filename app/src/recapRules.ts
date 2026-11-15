@@ -4,6 +4,7 @@
 //   packTier(sizes, budget)    the first picture tier whose pictures fit a room's budget
 //   keepFinished(seen, now)    the standings, keeping players who finished but dropped while pictures arrived
 //   sameDancer(a, b)           how often two roles' boxes sit on the same person (a clip tracking slip)
+//   dropShrunkCrops(cutouts)   leaves out the frames whose crop shrank onto part of the body (a tracker slip)
 
 /** The cast card's rows come in one after another; the first is there from the card's first frame. */
 export const CAST_ROW_GAP_MS = 450;
@@ -63,4 +64,24 @@ export function sameDancer(a: readonly (PlainBox | null)[], b: readonly (PlainBo
     if (overlap(x, y) > threshold) same++;
   }
   return both ? same / both : 0;
+}
+
+/** A cutout as far as this rule needs: where its crop came from in the camera frame (cutout.ts CutAnchor). */
+export interface CropLike { anchor?: { region?: { side: number } } | null }
+
+/**
+ * The cutouts without the frames whose crop square shrank well below the player's usual size: the tracker lost the
+ * head (or the legs) for a moment, so that frame's square is cut tight round the rest of the body and, drawn on
+ * the role, shows a body with a straight edge where the head should be. A remote player is sent about 5 frames a
+ * second and each one is shown for about 200 ms, so one such frame stays in view. Needs 5 anchored frames to know
+ * the usual size; frames with no anchor are kept.
+ */
+export function dropShrunkCrops<T extends CropLike>(cutouts: readonly T[], ratio = 0.8): T[] {
+  const sides = cutouts.map((c) => c.anchor?.region?.side).filter((s): s is number => typeof s === "number" && s > 0).sort((a, b) => a - b);
+  if (sides.length < 5) return [...cutouts];
+  const usual = sides[sides.length >> 1]!;
+  return cutouts.filter((c) => {
+    const side = c.anchor?.region?.side;
+    return typeof side !== "number" || side >= usual * ratio;
+  });
 }

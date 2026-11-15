@@ -4,7 +4,7 @@
 // server's storage, and only after a round; the room page says so.
 
 import type { Cutout } from "./cutout.ts";
-import { packTier } from "./recapRules.ts";
+import { dropShrunkCrops, packTier } from "./recapRules.ts";
 
 const MAX_CHARS = 2_500_000;
 /**
@@ -52,6 +52,8 @@ export async function unpackFace(text: string | undefined): Promise<HTMLCanvasEl
  */
 export function packCutouts(cutouts: readonly Cutout[]): string {
   let text = JSON.stringify({ v: 1, items: [] });
+  // Frames where the tracker lost the head are left out first, so the thinning below picks a whole body instead.
+  cutouts = dropShrunkCrops(cutouts);
   packTier(TIERS.length, MAX_CHARS, (i) => {
     const [size, quality, gap] = TIERS[i]!;
     let last = -Infinity, chars = 0;
