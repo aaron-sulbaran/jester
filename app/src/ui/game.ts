@@ -9,6 +9,7 @@ import { listBank, type BankClip } from "../bank.ts";
 import { bankScene } from "../bankRound.ts";
 import { submitClip } from "../submit.ts";
 import { FaceJester, preloadJesters, variantFor } from "./faceJester.ts";
+import { jesterBars } from "./jesterBar.ts";
 import { PLAYER_COLORS } from "../../../spikes/pose-match/reveal.mjs";
 
 /** A CSS custom property from the skin, or the fallback. */
@@ -714,6 +715,9 @@ export function initGame(deps: GameDeps) {
   $("again").addEventListener("click", () => { stopPodium(); if (scene) openCast(); else show("start"); });
   $("newClip").addEventListener("click", () => { stopPodium(); show("start"); });
   $("oopsBack").addEventListener("click", () => show("start"));
+
+  // Every loading bar, here and in the practice area, gets the running jester.
+  jesterBars(document);
 
   let seen = false;
   try { seen = localStorage.getItem(HOWTO_SEEN) === "1"; } catch { /* storage blocked: treat as seen, never trap them */ seen = true; }
