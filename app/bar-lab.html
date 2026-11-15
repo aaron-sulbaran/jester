@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bar lab</title>
+  <link rel="stylesheet" href="./src/style.css" />
+  <style>
+    .lab { display: grid; gap: 36px; justify-items: center; padding: 48px 16px; }
+    .lab p { margin: 0; }
+  </style>
+</head>
+<body>
+  <main class="lab">
+    <p class="typed">Filling over 6 seconds, in steps like a real load</p>
+    <progress id="filling" value="0" max="1"></progress>
+    <p class="typed">Held at 40 percent</p>
+    <progress value="0.4" max="1"></progress>
+    <p class="typed">Done</p>
+    <progress value="1" max="1"></progress>
+  </main>
+  <script type="module">
+    import { jesterBars } from "./src/ui/jesterBar.ts";
+    jesterBars(document);
+    const bar = document.getElementById("filling");
+    const t0 = performance.now();
+    // Real loads report in uneven steps; mimic that so the transition smoothing is what is judged.
+    const tick = () => {
+      const share = Math.min(1, (performance.now() - t0) / 6000);
+      bar.value = Math.round(share * 12) / 12;
+      if (share < 1) setTimeout(tick, 180);
+    };
+    tick();
+  </script>
+</body>
+</html>
