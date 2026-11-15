@@ -1,7 +1,7 @@
 import { skeletonGate } from "../../engine/src/index.ts";
 import type { BoxFrame, PoseFrame } from "../../engine/src/index.ts";
 import { keyMoments, paceOf } from "./moments.ts";
-import type { ClipSource, FrameDetections, Guide, Outline, Track } from "./types.ts";
+import type { ClipSource, Depth, FrameDetections, Guide, Outline, Track } from "./types.ts";
 
 /**
  * Builds the guide for one subject in one shot. Timeline time starts at 0 at the shot's first
@@ -22,12 +22,14 @@ export function buildGuide(input: {
   const poseFrames: PoseFrame[] = [];
   const boxFrames: BoxFrame[] = [];
   const outlines: (Outline | null)[] = [];
+  const depths: (Depth | null)[] = [];
   for (let f = shot.start; f < shot.end; f++) {
     const tMs = frames[f]!.tMs - startMs;
     const point = pointByFrame.get(f);
     poseFrames.push({ tMs, landmarks: point ? point.landmarks : null });
     boxFrames.push({ tMs, box: point ? point.box : null });
     outlines.push(point ? point.outline : null);
+    depths.push(point?.depth ?? null);
   }
   const timeline = {
     schema: "pose-timeline/1" as const,
@@ -48,6 +50,7 @@ export function buildGuide(input: {
       frames: boxFrames,
     },
     outlines,
+    ...(depths.some((d) => d !== null) ? { depths } : {}),
     keyMoments: keyMoments(timeline),
     pace: paceOf(track, source.sampleHz),
     warnings: input.warnings,
