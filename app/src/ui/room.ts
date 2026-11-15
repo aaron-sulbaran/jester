@@ -280,7 +280,10 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
       await navigator.clipboard.writeText(link);
       copyBtn.textContent = "Copied";
     } catch {
-      // No clipboard here: select the link so it can be copied by hand.
+      // No clipboard here: show the link and select it, so it can be copied by hand. Otherwise it stays off
+      // screen: the QR and Copy link carry it.
+      $("roomLinkText").hidden = false;
+      $("roomLinkLine").hidden = false;
       const range = document.createRange();
       range.selectNodeContents($("roomLinkText"));
       getSelection()?.removeAllRanges();
@@ -315,7 +318,9 @@ export function initRoomLobby(hooks: { show(): void; goHome(): void; onRound(roo
     codeStickers($("roomCodeText"), code);
     link = joinLink(code, location);
     $("roomLinkText").textContent = linkShown(link);
+    $("roomLinkText").hidden = true;
     $("roomWhere").textContent = hosted ? "" : "(this browser only: the hosted connection is not set up on this copy)";
+    $("roomLinkLine").hidden = !!hosted; // only the "this browser only" notice shows here
     $("roomQrCode").replaceChildren();
     void drawQr($("roomQrCode"), link).catch(() => { $("roomQr").hidden = true; });
     history.replaceState(history.state, "", addressWithRoom(location.href, code));
