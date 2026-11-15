@@ -1,10 +1,11 @@
 // The clip side entry points: the starter clip, or a video file analysed by ./clipside
 // (people found, followed and ranked) and turned into pose samples and a guide.
 
-import { fromClipSamples, type BoxTrack, type ClipSample, type PoseTimeline } from "../../engine/src/index.ts";
+import { fromClipSamples, type ClipSample, type PoseTimeline } from "../../engine/src/index.ts";
 import { DEMO_SEQUENCE, makeSequenceTimeline } from "../../spikes/pose-match/synthetic.mjs";
-import { boxTrackAt, thingHint, thingObjectName, type Box, type Guide } from "../../clip/src/index.ts";
+import { boxTrackAt, thingHint, thingObjectName, type Guide } from "../../clip/src/index.ts";
 import { finishClip, prepareClip, type PrepareOptions, type Prepared } from "./clipside/analyze.ts";
+import type { ObjectClip } from "./objectClips.ts";
 
 export { subjectGuides } from "./clipside/analyze.ts";
 export type { Prepared, PrepareOptions } from "./clipside/analyze.ts";
@@ -66,13 +67,10 @@ export function prepareVideo(file: File, video: HTMLVideoElement, onProgress: (s
 }
 
 /**
- * A thing's guide in the shape the app's object rounds take (`ObjectClip` in ./objectClips.ts on
- * main): `track` is the guide's box-track/1 as is, and clip time 0 is the guide's `range.startMs`.
+ * A thing's guide as an object clip for `playObjectRound`: `track` is the guide's box-track/1 as
+ * is, and clip time 0 is the guide's `range.startMs`.
  */
-export function thingObjectClip(guide: Guide): {
-  kind: "object"; name: string; hint: string; track: BoxTrack; durationMs: number; width: number; height: number;
-  boxAt(ms: number): Box | null;
-} {
+export function thingObjectClip(guide: Guide): ObjectClip {
   const frames = guide.boxTrack.frames;
   const durationMs = (frames[frames.length - 1]?.tMs ?? 0) + 1000 / guide.source.sampleHz;
   return {
